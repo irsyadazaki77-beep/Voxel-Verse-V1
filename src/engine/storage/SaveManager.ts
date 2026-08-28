@@ -204,6 +204,14 @@ export class SaveManager {
     };
   }
 
+  // Check if world exists in index or storage
+  public static hasWorld(worldId: string): boolean {
+    const worlds = this.getWorlds();
+    if (worlds.some((w) => w.id === worldId)) return true;
+    if (localStorage.getItem(`voxelverse_world_${worldId}`)) return true;
+    return false;
+  }
+
   // Atomic Save Strategy: Write temporary save -> validate -> rotate backups -> swap to primary save
   public static saveWorld(data: WorldSaveData): boolean {
     try {
@@ -221,37 +229,28 @@ export class SaveManager {
       const serialized = JSON.stringify(data);
       const checksum = this.calculateChecksum(serialized);
       const payload = JSON.stringify({ data, checksum });
-
-      // Step 1: Write to temp save
-      localStorage.setItem(tempKey, payload);
-
-      // Step 2: Validate temp save payload
-      const verifyRaw = localStorage.getItem(tempKey);
-      if (!verifyRaw) throw new Error('Temp save validation failed: empty payload');
-      const verifyParsed = JSON.parse(verifyRaw);
-      if (verifyParsed.checksum !== checksum) {
-        throw new Error('Temp save validation failed: checksum mismatch');
-      }
-
-      // Step 3: Rotate backups
-      const existingCurrent = localStorage.getItem(key);
-      const existingBackup1 = localStorage.getItem(backup1Key);
-
-      if (existingBackup1) {
-        localStorage.setItem(backup2Key, existingBackup1);
-      }
-      if (existingCurrent) {
-        localStorage.setItem(backup1Key, existingCurrent);
-      }
-
-      // Step 4: Promote temp to primary save
-      localStorage.setItem(key, payload);
-      localStorage.removeItem(tempKey);
-
+      
       // Async sync to IndexedDB for high-capacity persistence
       IndexedDBStorage.setItem(STORE_WORLDS, { id: data.id, payload, updatedAt: Date.now() });
 
-      // Step 5: Update world index
+      // Save to localStorage with rotating backup support
+      try {
+        const existingPrimary = localStorage.getItem(key);
+        if (existingPrimary) {
+          const existingBackup1 = localStorage.getItem(backup1Key);
+          if (existingBackup1) {
+            localStorage.setItem(backup2Key, existingBackup1);
+          }
+          localStorage.setItem(backup1Key, existingPrimary);
+        }
+        localStorage.setItem(tempKey, payload);
+        localStorage.setItem(key, payload);
+        localStorage.removeItem(tempKey);
+      } catch (quotaError) {
+        Logger.warn('SaveManager', 'LocalStorage quota exceeded or unavailable; IndexedDB utilized for save state.', { error: (quotaError as Error).message });
+      }
+
+      // Save lightweight world index to localStorage
       const existingWorlds = this.getWorlds();
       const existingEntry = existingWorlds.find((w) => w.id === data.id);
       const createdAt = existingEntry ? existingEntry.createdAt : data.createdAt;
@@ -275,6 +274,39 @@ export class SaveManager {
     }
   }
 
+  // Load World Asynchronously, preferring IndexedDB
+  public static async loadWorldAsync(worldId: string): Promise<WorldSaveData | null> {
+    try {
+      const data = await IndexedDBStorage.getItem(STORE_WORLDS, worldId) as any;
+      if (data && data.payload) {
+        let parsed: any;
+        try {
+          parsed = JSON.parse(data.payload);
+        } catch {
+          Logger.warn('SaveManager', 'Failed to parse IndexedDB payload');
+        }
+
+        const dataObj = parsed?.data ? parsed.data : parsed;
+        if (dataObj) {
+          // Verify Checksum
+          if (parsed?.checksum) {
+            const calculatedChecksum = this.calculateChecksum(JSON.stringify(dataObj));
+            if (calculatedChecksum !== parsed.checksum) {
+              Logger.warn('SaveManager', 'IndexedDB save checksum mismatch, but proceeding with caution.');
+            }
+          }
+          Logger.info('SaveManager', `Loaded world '${worldId}' from IndexedDB`);
+          return this.validateAndSanitizeSave(dataObj, worldId, 42819);
+        }
+      }
+    } catch (e) {
+      Logger.warn('SaveManager', 'Failed to load from IndexedDB, falling back to localStorage', { error: (e as Error).message });
+    }
+
+    // Fallback to synchronous loadWorld
+    return this.loadWorld(worldId);
+  }
+
   // Load World with Automatic Backup Fallback
   public static loadWorld(worldId: string): WorldSaveData | null {
     const keysToTry = [
@@ -283,10 +315,13 @@ export class SaveManager {
       `voxelverse_world_${worldId}_backup_2`,
     ];
 
+    let foundAnyKey = false;
+
     for (const key of keysToTry) {
       try {
         const raw = localStorage.getItem(key);
         if (!raw) continue;
+        foundAnyKey = true;
 
         let parsed: any;
         try {
@@ -305,7 +340,11 @@ export class SaveManager {
       }
     }
 
-    Logger.error('SaveManager', `All load attempts and backups failed for world '${worldId}'`);
+    if (foundAnyKey) {
+      Logger.warn('SaveManager', `Save keys found for '${worldId}' but could not be parsed; starting with fresh defaults.`);
+    } else {
+      Logger.info('SaveManager', `No existing save found for world '${worldId}'; initializing fresh realm.`);
+    }
     return null;
   }
 

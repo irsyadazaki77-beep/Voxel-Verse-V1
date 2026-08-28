@@ -292,4 +292,182 @@ export class SoundSynthesizer {
   public playPlayerHit(): void {
     this.playHitImpact();
   }
+
+  // 11. Critical Hit Strike Feedback
+  public playCriticalHit(): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    
+    // Low punchy transient
+    const subOsc = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    subOsc.type = 'triangle';
+    subOsc.frequency.setValueAtTime(320, t);
+    subOsc.frequency.exponentialRampToValueAtTime(45, t + 0.25);
+
+    const vol = this.masterVolume * this.sfxVolume * 0.45;
+    subGain.gain.setValueAtTime(vol, t);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+
+    subOsc.connect(subGain);
+    subGain.connect(this.ctx.destination);
+    subOsc.start(t);
+    subOsc.stop(t + 0.25);
+
+    // High critical resonance chime
+    const bellOsc = this.ctx.createOscillator();
+    const bellGain = this.ctx.createGain();
+    bellOsc.type = 'sine';
+    bellOsc.frequency.setValueAtTime(1174.66, t); // D6
+    bellOsc.frequency.exponentialRampToValueAtTime(1760, t + 0.35); // A6
+
+    bellGain.gain.setValueAtTime(vol * 0.4, t);
+    bellGain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+
+    bellOsc.connect(bellGain);
+    bellGain.connect(this.ctx.destination);
+    bellOsc.start(t);
+    bellOsc.stop(t + 0.35);
+  }
+
+  // 12. Bow Tension Draw
+  public playBowDraw(): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(180, t);
+    osc.frequency.linearRampToValueAtTime(380, t + 0.4);
+
+    const vol = this.masterVolume * this.sfxVolume * 0.18;
+    gain.gain.setValueAtTime(0.01, t);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.35);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(600, t);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.45);
+  }
+
+  // 13. Bow Arrow Release Twang
+  public playBowRelease(isCritical: boolean = false): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = isCritical ? 'sawtooth' : 'triangle';
+    osc.frequency.setValueAtTime(isCritical ? 720 : 520, t);
+    osc.frequency.exponentialRampToValueAtTime(isCritical ? 160 : 110, t + 0.18);
+
+    const vol = this.masterVolume * this.sfxVolume * (isCritical ? 0.45 : 0.38);
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.18);
+  }
+
+  // 14. Shield Block & Parry Clank
+  public playShieldBlock(isParry: boolean = false): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = isParry ? 'sine' : 'sawtooth';
+    osc.frequency.setValueAtTime(isParry ? 950 : 380, t);
+    osc.frequency.exponentialRampToValueAtTime(isParry ? 400 : 90, t + (isParry ? 0.3 : 0.12));
+
+    const vol = this.masterVolume * this.sfxVolume * (isParry ? 0.45 : 0.35);
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + (isParry ? 0.3 : 0.12));
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + (isParry ? 0.3 : 0.12));
+  }
+
+  // 15. Entity Alert Growl / Hiss
+  public playEntityAlert(): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(160, t);
+    osc.frequency.linearRampToValueAtTime(240, t + 0.15);
+    osc.frequency.linearRampToValueAtTime(110, t + 0.35);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(450, t);
+
+    const vol = this.masterVolume * this.sfxVolume * 0.24;
+    gain.gain.setValueAtTime(0.01, t);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.35);
+  }
+
+  // 16. Entity Death Dissolve
+  public playEntityDeath(): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(280, t);
+    osc.frequency.exponentialRampToValueAtTime(40, t + 0.45);
+
+    const vol = this.masterVolume * this.sfxVolume * 0.3;
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.45);
+  }
 }

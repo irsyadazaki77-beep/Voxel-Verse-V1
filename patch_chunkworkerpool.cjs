@@ -1,4 +1,6 @@
-import { WorkerTaskInput, WorkerTaskResult, GenerateTaskInput, MeshTaskInput, GenerateTaskResult, MeshTaskResult } from './WorldWorker';
+const fs = require('fs');
+
+const content = `import { WorkerTaskInput, WorkerTaskResult, GenerateTaskInput, MeshTaskInput, GenerateTaskResult, MeshTaskResult } from './WorldWorker';
 import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { Logger } from '../ui/Logger';
 import { TransferableMeshData, VoxelMesher } from './VoxelMesher';
@@ -58,11 +60,11 @@ export class ChunkWorkerPool {
       };
 
       worker.onerror = (err) => {
-        Logger.warn('ChunkWorkerPool', `Worker ${index} error`, { error: err });
+        Logger.warn('ChunkWorkerPool', \`Worker \${index} error\`, { error: err });
         this.handleWorkerError(index);
       };
     } catch (e) {
-      Logger.warn('ChunkWorkerPool', `Failed to create Worker ${index}`, { error: e });
+      Logger.warn('ChunkWorkerPool', \`Failed to create Worker \${index}\`, { error: e });
       this.workers[index] = null;
       this.workerBusy[index] = false;
     }
@@ -90,7 +92,7 @@ export class ChunkWorkerPool {
 
   private executeSync(task: WorkerTask) {
     if (task.type === 'generate') {
-      Logger.info('ChunkWorkerPool', `Generating chunk ${task.cx}, ${task.cz} synchronously`);
+      Logger.info('ChunkWorkerPool', \`Generating chunk \${task.cx}, \${task.cz} synchronously\`);
       if (!this.cpuFallbackGenerator) {
         this.cpuFallbackGenerator = new WorldGeneratorCore(task.seed);
       }
@@ -100,10 +102,10 @@ export class ChunkWorkerPool {
           task.onComplete(blocks.buffer);
         }
       } catch (e) {
-        Logger.error('ChunkWorkerPool', `Sync generation failed for ${task.cx}, ${task.cz}`, { error: e });
+        Logger.error('ChunkWorkerPool', \`Sync generation failed for \${task.cx}, \${task.cz}\`, { error: e });
       }
     } else if (task.type === 'mesh') {
-      Logger.info('ChunkWorkerPool', `Meshing chunk ${task.cx}, ${task.cz} synchronously`);
+      Logger.info('ChunkWorkerPool', \`Meshing chunk \${task.cx}, \${task.cz} synchronously\`);
       try {
         const centerBlocks = new Uint8Array(task.centerBuffer);
         const neighbors: Record<string, Uint8Array> = {};
@@ -127,7 +129,7 @@ export class ChunkWorkerPool {
           if (targetCx === task.cx && targetCz === task.cz) {
             return centerBlocks[targetLx + targetLz * 16 + ly * 256];
           } else {
-            const nKey = `${targetCx}_${targetCz}`;
+            const nKey = \`\${targetCx}_\${targetCz}\`;
             const nBuffer = neighbors[nKey];
             return nBuffer ? nBuffer[targetLx + targetLz * 16 + ly * 256] : 0;
           }
@@ -138,7 +140,7 @@ export class ChunkWorkerPool {
           task.onComplete(meshData);
         }
       } catch (e) {
-        Logger.error('ChunkWorkerPool', `Sync meshing failed for ${task.cx}, ${task.cz}`, { error: e });
+        Logger.error('ChunkWorkerPool', \`Sync meshing failed for \${task.cx}, \${task.cz}\`, { error: e });
       }
     }
   }
@@ -203,7 +205,7 @@ export class ChunkWorkerPool {
         (worker as any)._currentTask = task;
         
         const timeout = setTimeout(() => {
-          Logger.warn('ChunkWorkerPool', `Task ${task.taskId} timed out in worker ${i}`);
+          Logger.warn('ChunkWorkerPool', \`Task \${task.taskId} timed out in worker \${i}\`);
           this.handleWorkerError(i);
         }, 15000);
         this.taskTimeouts.set(task.taskId, timeout);
@@ -303,3 +305,6 @@ export class ChunkWorkerPool {
     this.taskQueue = [];
   }
 }
+`;
+
+fs.writeFileSync('src/engine/world/ChunkWorkerPool.ts', content);

@@ -1,7 +1,7 @@
 // Chunk Representation, Linear Voxel Storage & State Pipeline
 import * as THREE from 'three';
 import { BlockType } from '../../types';
-import { VoxelMesher } from './VoxelMesher';
+import { VoxelMesher, TransferableMeshData } from './VoxelMesher';
 
 export const CHUNK_SIZE_X = 16;
 export const CHUNK_SIZE_Y = 128; // Increased 128-block vertical world height
@@ -19,7 +19,72 @@ export enum ChunkState {
   UNLOADING = 'unloading',
 }
 
+
+function createGeometryFromTransferable(data: TransferableMeshData): { solidMesh: THREE.BufferGeometry; transMesh: THREE.BufferGeometry; waterMesh: THREE.BufferGeometry } {
+  const createGeo = (pos: Float32Array, norm: Float32Array, col: Float32Array, uv: Float32Array, ind: Uint32Array) => {
+    const geo = new THREE.BufferGeometry();
+    if (pos.length > 0) {
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      geo.setIndex(new THREE.BufferAttribute(ind, 1));
+      geo.computeBoundingBox();
+      geo.computeBoundingSphere();
+    }
+    return geo;
+  };
+
+  return {
+    solidMesh: createGeo(data.solidPositions, data.solidNormals, data.solidColors, data.solidUvs, data.solidIndices),
+    transMesh: createGeo(data.transPositions, data.transNormals, data.transColors, data.transUvs, data.transIndices),
+    waterMesh: createGeo(data.waterPositions, data.waterNormals, data.waterColors, data.waterUvs, data.waterIndices),
+  };
+}
+
 export class Chunk {
+  public applyTransferableMesh(
+    meshData: TransferableMeshData,
+    solidMaterial: THREE.Material,
+    transMaterial: THREE.Material,
+    waterMaterial: THREE.Material
+  ): void {
+    if (this.solidMesh) {
+      this.group.remove(this.solidMesh);
+      this.solidMesh.geometry.dispose();
+      this.solidMesh = undefined;
+    }
+    if (this.transMesh) {
+      this.group.remove(this.transMesh);
+      this.transMesh.geometry.dispose();
+      this.transMesh = undefined;
+    }
+    if (this.waterMesh) {
+      this.group.remove(this.waterMesh);
+      this.waterMesh.geometry.dispose();
+      this.waterMesh = undefined;
+    }
+
+    const { solidMesh: sGeo, transMesh: tGeo, waterMesh: wGeo } = createGeometryFromTransferable(meshData);
+
+    if (sGeo.attributes.position && sGeo.attributes.position.count > 0) {
+      this.solidMesh = new THREE.Mesh(sGeo, solidMaterial);
+      this.solidMesh.castShadow = true;
+      this.solidMesh.receiveShadow = true;
+      this.group.add(this.solidMesh);
+    }
+    if (tGeo.attributes.position && tGeo.attributes.position.count > 0) {
+      this.transMesh = new THREE.Mesh(tGeo, transMaterial);
+      this.group.add(this.transMesh);
+    }
+    if (wGeo.attributes.position && wGeo.attributes.position.count > 0) {
+      this.waterMesh = new THREE.Mesh(wGeo, waterMaterial);
+      this.group.add(this.waterMesh);
+    }
+
+    this.isDirty = false;
+  }
+
   public cx: number;
   public cz: number;
   public state: ChunkState = ChunkState.UNLOADED;
@@ -107,7 +172,7 @@ export class Chunk {
       this.waterMesh = null;
     }
 
-    const { solidMesh: sGeo, transMesh: tGeo, waterMesh: wGeo } = VoxelMesher.buildChunkMesh(
+    const meshData = VoxelMesher.buildChunkMeshData(
       (lx, ly, lz) => {
         if (lx >= 0 && lx < CHUNK_SIZE_X && ly >= 0 && ly < CHUNK_SIZE_Y && lz >= 0 && lz < CHUNK_SIZE_Z) {
           return this.getBlock(lx, ly, lz);
@@ -118,6 +183,7 @@ export class Chunk {
       CHUNK_SIZE_Y,
       CHUNK_SIZE_Z
     );
+    const { solidMesh: sGeo, transMesh: tGeo, waterMesh: wGeo } = createGeometryFromTransferable(meshData);
 
     if (sGeo.attributes.position && sGeo.attributes.position.count > 0) {
       this.solidMesh = new THREE.Mesh(sGeo, solidMaterial);

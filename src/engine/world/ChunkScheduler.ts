@@ -71,10 +71,12 @@ export class ChunkScheduler {
               const chunk = new Chunk(cx, cz);
               chunk.state = ChunkState.QUEUED;
               this.world.chunks.set(key, chunk);
+              this.world.worldGroup.add(chunk.group);
 
               const modBlocksObj = this.getModifiedBlocksObject(cx, cz);
 
               this.workerPool.enqueueTask({
+                type: 'generate',
                 taskId: `task_${key}_${Date.now()}`,
                 cx,
                 cz,
@@ -113,6 +115,9 @@ export class ChunkScheduler {
       }
     }
 
+    // Cancel queued tasks for chunks that are now out of range
+    this.workerPool.cancelTasksOutofRange(playerCX, playerCZ, unloadRadius);
+
     // 2. Unload Chunks outside Unload Radius (with Hysteresis)
     for (const [key, chunk] of this.world.chunks.entries()) {
       const [cx, cz] = key.split(',').map(Number);
@@ -138,25 +143,56 @@ export class ChunkScheduler {
       }
     }
 
-    // 3. Process Remesh / Dirty Queue within Frame Time Budget
+    // 3. Process Remesh / Dirty Queue to Worker
     let uploads = 0;
     for (const key of Array.from(this.dirtyQueue)) {
-      if (performance.now() - startTime >= frameBudgetMs) {
-        break; // Stop if frame time budget reached to preserve 60 FPS
-      }
-
       const chunk = this.world.chunks.get(key);
-      if (chunk && chunk.isDirty) {
-        chunk.rebuildMesh(
-          (wx, wy, wz) => this.world.getBlock(wx, wy, wz),
-          this.world.solidMaterial,
-          this.world.transMaterial,
-          this.world.waterMaterial
-        );
-        chunk.state = ChunkState.READY;
+      if (chunk && chunk.isDirty && chunk.state !== ChunkState.QUEUED && chunk.state !== ChunkState.GENERATING && chunk.state !== ChunkState.MESHING) {
+        
+        // Prepare neighbor buffers
+        const [cx, cz] = key.split(',').map(Number);
+        const neighborKeys = [
+          `${cx - 1}_${cz}`, `${cx + 1}_${cz}`, `${cx}_${cz - 1}`, `${cx}_${cz + 1}`,
+          `${cx - 1}_${cz - 1}`, `${cx + 1}_${cz - 1}`, `${cx - 1}_${cz + 1}`, `${cx + 1}_${cz + 1}`
+        ];
+        
+        const neighborBuffers: Record<string, ArrayBuffer> = {};
+        for (const nKey of neighborKeys) {
+          const [nx, nz] = nKey.split('_').map(Number);
+          const nChunk = this.world.chunks.get(`${nx},${nz}`);
+          if (nChunk && nChunk.blocks) {
+            neighborBuffers[nKey] = nChunk.blocks.buffer;
+          }
+        }
+
+        chunk.state = ChunkState.MESHING;
+        chunk.isDirty = false;
         this.dirtyQueue.delete(key);
-        uploads++;
-      } else {
+
+        this.workerPool.enqueueTask({
+          type: 'mesh',
+          taskId: `mesh_${key}_${Date.now()}`,
+          cx,
+          cz,
+          priority: 100, // Meshing gets high priority
+          sessionToken: this.workerPool.currentSessionToken,
+          centerBuffer: chunk.blocks!.buffer,
+          neighborBuffers,
+          onComplete: (meshData) => {
+            const targetChunk = this.world.chunks.get(key);
+            if (targetChunk) {
+              targetChunk.applyTransferableMesh(
+                meshData, 
+                this.world.solidMaterial, 
+                this.world.transMaterial, 
+                this.world.waterMaterial
+              );
+              targetChunk.state = ChunkState.READY;
+              uploads++;
+            }
+          }
+        });
+      } else if (!chunk) {
         this.dirtyQueue.delete(key);
       }
     }

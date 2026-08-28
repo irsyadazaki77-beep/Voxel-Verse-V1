@@ -1,9 +1,26 @@
 // High Performance Greedy Voxel Mesher with Face Culling, AO, Texture Atlas UVs & Specialized Meshers
-import * as THREE from 'three';
 import { BlockShape, BlockType } from '../../types';
 import { BLOCK_DEFS } from './BlockRegistry';
 import { TextureAtlas } from './TextureAtlas';
 
+
+export interface TransferableMeshData {
+  solidPositions: Float32Array;
+  solidNormals: Float32Array;
+  solidColors: Float32Array;
+  solidUvs: Float32Array;
+  solidIndices: Uint32Array;
+  transPositions: Float32Array;
+  transNormals: Float32Array;
+  transColors: Float32Array;
+  transUvs: Float32Array;
+  transIndices: Uint32Array;
+  waterPositions: Float32Array;
+  waterNormals: Float32Array;
+  waterColors: Float32Array;
+  waterUvs: Float32Array;
+  waterIndices: Uint32Array;
+}
 export interface ChunkMeshData {
   solidPositions: number[];
   solidNormals: number[];
@@ -51,12 +68,12 @@ export class VoxelMesher {
     return Boolean(def.solid && !def.transparent && def.shape === 'full');
   }
 
-  public static buildChunkMesh(
+  public static buildChunkMeshData(
     getBlock: (lx: number, ly: number, lz: number) => BlockType,
     chunkWidth: number,
     chunkHeight: number,
     chunkDepth: number
-  ): { solidMesh: THREE.BufferGeometry; transMesh: THREE.BufferGeometry; waterMesh: THREE.BufferGeometry } {
+  ): TransferableMeshData {
     const data: ChunkMeshData = {
       solidPositions: [],
       solidNormals: [],
@@ -437,25 +454,24 @@ export class VoxelMesher {
       }
     }
 
-    // 3. CONVERT ARRAYS TO THREE.js BUFFER GEOMETRIES
-    const createGeo = (pos: number[], norm: number[], col: number[], uv: number[], ind: number[]) => {
-      const geo = new THREE.BufferGeometry();
-      if (pos.length > 0) {
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-        geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
-        geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-        geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-        geo.setIndex(ind);
-        geo.computeBoundingBox();
-        geo.computeBoundingSphere();
-      }
-      return geo;
-    };
-
+        // 3. CONVERT ARRAYS TO TYPED ARRAYS FOR WORKER TRANSFER
     return {
-      solidMesh: createGeo(data.solidPositions, data.solidNormals, data.solidColors, data.solidUvs, data.solidIndices),
-      transMesh: createGeo(data.transPositions, data.transNormals, data.transColors, data.transUvs, data.transIndices),
-      waterMesh: createGeo(data.waterPositions, data.waterNormals, data.waterColors, data.waterUvs, data.waterIndices),
+      solidPositions: new Float32Array(data.solidPositions),
+      solidNormals: new Float32Array(data.solidNormals),
+      solidColors: new Float32Array(data.solidColors),
+      solidUvs: new Float32Array(data.solidUvs),
+      solidIndices: new Uint32Array(data.solidIndices),
+      transPositions: new Float32Array(data.transPositions),
+      transNormals: new Float32Array(data.transNormals),
+      transColors: new Float32Array(data.transColors),
+      transUvs: new Float32Array(data.transUvs),
+      transIndices: new Uint32Array(data.transIndices),
+      waterPositions: new Float32Array(data.waterPositions),
+      waterNormals: new Float32Array(data.waterNormals),
+      waterColors: new Float32Array(data.waterColors),
+      waterUvs: new Float32Array(data.waterUvs),
+      waterIndices: new Uint32Array(data.waterIndices),
     };
   }
+
 }

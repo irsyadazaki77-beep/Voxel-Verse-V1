@@ -99,6 +99,11 @@ export class PlayerController {
   private bobTimer: number = 0;
   public landingDip: number = 0;
   public damageTilt: number = 0;
+  public screenShakeAmount: number = 0;
+
+  // Combat posture states
+  public isBlockingShield: boolean = false;
+  public bowDrawRatio: number = 0; // 0..1
 
   public keys: KeyState = {
     forward: false,
@@ -422,16 +427,23 @@ export class PlayerController {
       }
     }
 
-    // 9. Arm Swing Animation
+    // 9. Arm Swing & Combat Posture Animations
     if (this.isSwinging) {
       this.swingProgress += dt * 6.0;
       if (this.swingProgress >= 1.0) {
         this.swingProgress = 0;
         this.isSwinging = false;
       }
-      const swingAngle = Math.sin(this.swingProgress * Math.PI) * 1.3;
+      const swingAngle = Math.sin(this.swingProgress * Math.PI) * 1.35;
       this.rightArm.rotation.x = -swingAngle;
-      this.rightArm.rotation.y = -swingAngle * 0.35;
+      this.rightArm.rotation.y = -swingAngle * 0.4;
+      this.rightArm.rotation.z = Math.sin(this.swingProgress * Math.PI) * 0.2;
+    } else if (this.isBlockingShield) {
+      // Shield raise posture
+      this.rightArm.rotation.set(-0.8, -0.6, 0.4);
+    } else if (this.bowDrawRatio > 0) {
+      // Bow draw tension posture
+      this.rightArm.rotation.set(-1.2, 0.3 * this.bowDrawRatio, -0.2);
     } else {
       this.rightArm.rotation.set(0, 0, 0);
     }
@@ -449,9 +461,10 @@ export class PlayerController {
     }
     const bobOffset = Math.sin(this.bobTimer) * 0.035;
 
-    // Decay landing dip and damage tilt
+    // Decay landing dip, damage tilt, and screen shake
     this.landingDip = Math.max(0, this.landingDip - dt * 1.8);
     this.damageTilt = Math.max(0, this.damageTilt - dt * 0.8);
+    this.screenShakeAmount = Math.max(0, this.screenShakeAmount - dt * 4.0);
 
     // Update Player Group position & Avatar yaw
     this.playerGroup.position.copy(this.position);
@@ -470,11 +483,17 @@ export class PlayerController {
     return { fallDamage: fallDamageToApply };
   }
 
+  public applyScreenShake(amount: number = 0.5): void {
+    this.screenShakeAmount = Math.min(1.0, this.screenShakeAmount + amount);
+  }
+
   // Camera placement with obstacle collision for third-person views
   private updateCamera(world: VoxelWorld, bobOffset: number): void {
+    const shakeX = (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
+    const shakeY = (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
     const eyePos = new THREE.Vector3(
-      this.position.x,
-      this.position.y + this.currentEyeHeight + bobOffset - this.landingDip,
+      this.position.x + shakeX,
+      this.position.y + this.currentEyeHeight + bobOffset - this.landingDip + shakeY,
       this.position.z
     );
 

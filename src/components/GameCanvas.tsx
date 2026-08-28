@@ -22,6 +22,8 @@ import { BLOCK_DEFS } from '../engine/world/BlockRegistry';
 import { ITEM_DEFS } from '../engine/items/ItemRegistry';
 import { CraftingSystem } from '../engine/items/CraftingSystem';
 import { HUD } from './HUD';
+import { LoadingScreen } from './LoadingScreen';
+import { GameStatsManager } from '../engine/player/GameStatsManager';
 import { TelemetryStore } from '../engine/ui/TelemetryStore';
 import { GameEventBus } from '../engine/events/GameEventBus';
 import { InventoryModal } from './InventoryModal';
@@ -44,6 +46,7 @@ import { WorldEventManager } from '../engine/events/WorldEventManager';
 import { MapManager } from '../engine/map/MapManager';
 import { WorldProgression } from '../engine/progression/WorldProgression';
 import { BossCombatState } from '../types';
+import { CombatStateMachine } from '../engine/combat/CombatStateMachine';
 
 interface GameCanvasProps {
   worldId: string;
@@ -116,6 +119,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const activeHotbarIndexRef = useRef<number>(0);
   const activeModalRef = useRef<ModalType>('none');
   const targetHitRef = useRef<RaycastHit | null>(null);
+  const gameStatsRef = useRef<GameStatsManager | null>(null);
+  const [isWorldLoaded, setIsWorldLoaded] = useState(false);
+  const [loadingStage, setLoadingStage] = useState("Initializing Engine...");
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [worldData, setWorldData] = useState<WorldSaveData | null>(null);
   const isPointerLockedRef = useRef<boolean>(false);
 
   // Active interaction positions
@@ -130,6 +138,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [equipmentState, setEquipmentState] = useState<PlayerEquipment>({ head: null, chest: null, legs: null, feet: null, accessory: null });
   const [activeHotbarIndex, setActiveHotbarIndex] = useState(0);
   const [activeBossState, setActiveBossState] = useState<BossCombatState | null>(null);
+  const activeBossStateRef = useRef<BossCombatState | null>(null);
 
   // Throttled Telemetry state for HUD
   const hudStatsRef = useRef({
@@ -159,8 +168,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const [targetHitState, setTargetHitState] = useState<RaycastHit | null>(null);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
+  const [bowChargeRatio, setBowChargeRatio] = useState<number>(0);
 
-  // Mining progressive state
+  // Combat State Machine & Mining progressive state
+  const combatMachineRef = useRef<CombatStateMachine>(new CombatStateMachine());
   const combatStateRef = useRef<{
     lastAttackTime: number;
     rangedCharge: number;
@@ -221,12 +232,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         type: weatherRef.current ? weatherRef.current.weather.type : 'clear',
         intensity: weatherRef.current ? weatherRef.current.weather.intensity : 0,
       },
-      stats: {
-        blocksMined: 0,
-        blocksPlaced: 0,
-        monstersDefeated: 0,
-        distanceTraveled: 0,
-      },
+      stats: gameStatsRef.current?.getStats() || { blocksMined: 0, blocksPlaced: 0, monstersDefeated: 0, distanceTraveled: 0 },
       modifiedBlocks: SaveManager.serializeModifiedBlocks(worldRef.current),
       containers: BlockPlacementEngine.serializeContainers(),
       furnaces: FurnaceManager.serialize(),
@@ -240,8 +246,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     SaveManager.saveWorld(saveData);
   }, [worldId, worldName, seed, gameMode]);
 
+
+  // Async Data Loader
+  useEffect(() => {
+    const loadData = async () => {
+      setLoadingStage("Loading Save Data...");
+      setLoadingProgress(20);
+      const existingSave = await SaveManager.loadWorldAsync(worldId);
+      
+      setLoadingProgress(60);
+      setWorldData(existingSave);
+      
+      const statsManager = new GameStatsManager(existingSave?.stats);
+      statsManager.initialize();
+      gameStatsRef.current = statsManager;
+      
+      setLoadingStage("Generating Chunks...");
+      setLoadingProgress(80);
+      
+      // Allow slight delay for rendering
+      setTimeout(() => {
+        setIsWorldLoaded(true);
+        setLoadingProgress(100);
+      }, 500);
+    };
+    loadData();
+    
+    return () => {
+      gameStatsRef.current?.dispose();
+    };
+  }, [worldId]);
+
   // Main Three.js Initialization & Game Loop
   useEffect(() => {
+    if (!isWorldLoaded || !containerRef.current) return;
+
     if (!containerRef.current) return;
 
     // 1. Scene & Camera
@@ -285,7 +324,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     entitiesRef.current = entities;
 
     // Load any existing saved world data
-    const existingSave = SaveManager.loadWorld(worldId);
+    const existingSave = worldData;
     let initialSpawn: [number, number, number] = [0, 80, 0];
 
     // Phase 8 Progression & Exploration systems initialization
@@ -439,13 +478,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     let currentFps = 60;
     let lastTelemetryTime = performance.now();
     let lastTargetPosKey = '';
+    let accumulator = 0;
+    let lastSimTimeMs = 0;
+    let lastRenderTimeMs = 0;
 
     const animate = (now: number) => {
       reqId = requestAnimationFrame(animate);
 
       const currentTime = now;
-      const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.1);
+      let frameTime = (currentTime - lastTime) / 1000;
+      if (frameTime > 0.25) frameTime = 0.25;
       lastTime = currentTime;
+      accumulator += frameTime;
 
       // FPS Counter
       frameCount++;
@@ -454,6 +498,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         frameCount = 0;
         lastFpsTime = currentTime;
       }
+      
+
+      let simStart = performance.now();
+      const dt = 1/60;
+      while (accumulator >= dt) {
+        // We redefine deltaTime as dt so we don't have to rename all variables inside the loop
+        const deltaTime = dt;
+
 
       // Check if player died
       if (statsRef.current.isDead && activeModalRef.current !== 'death') {
@@ -485,7 +537,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Boss Combat State Check
       const nearbyBoss = entities.getActiveBossState(player.position);
-      setActiveBossState(nearbyBoss);
+      if (nearbyBoss?.id !== activeBossStateRef.current?.id) {
+          activeBossStateRef.current = nearbyBoss;
+          setActiveBossState(nearbyBoss);
+        }
 
       // Only process player physics and interactions when game is not paused by a modal
       if (activeModalRef.current === 'none') {
@@ -564,37 +619,78 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const placeBlock = activeItem ? ITEM_DEFS[activeItem.itemId]?.blockType : undefined;
         world.updateTargetHighlight(hit, placeBlock);
 
+        // Update Combat State Machine
+        const combatMachine = combatMachineRef.current;
+        combatMachine.update(deltaTime);
+        player.bowDrawRatio = combatMachine.bowDrawProgress;
+        player.isBlockingShield = combatMachine.isBlocking;
+        
+        // Sync bow charge ratio to HUD
+        if (activeItem?.itemId === 'hunting_bow') {
+          if (combatMachine.bowDrawProgress !== bowChargeRatio) {
+            setBowChargeRatio(combatMachine.bowDrawProgress);
+          }
+        } else if (bowChargeRatio > 0) {
+          setBowChargeRatio(0);
+        }
+
         // 5. Left Click: Combat or Hold-to-Mine
         if (inputManager.isActionActive('Attack')) {
           let hasAttackedEntity = false;
 
           // Check if we hit an entity first
           if (hitEntityId) {
-             const now = Date.now();
-             const attackCooldownMs = activeItem ? (1000 / (ITEM_DEFS[activeItem.itemId]?.attackSpeed || 2.0)) : 500;
-             if (now - combatStateRef.current.lastAttackTime > attackCooldownMs) {
-                 combatStateRef.current.lastAttackTime = now;
-                 player.triggerSwing();
-                 const dmg = activeItem ? (ITEM_DEFS[activeItem.itemId]?.attackDamage || 1.0) : 1.0;
-                 const result = entities.attackEntity(hitEntityId, dmg, player.position);
-                 audioRef.current.playPlayerHit(); // Sound for punch/slash
-                 if (result?.killed) {
-                     statsRef.current.addXP(5);
-                 }
-                 
-                 // Consume weapon durability
-                 if (activeItem && gameMode !== 'creative') {
-                     const durResult = MiningEngine.consumeDurability(activeItem, 'combat');
-                     if (durResult.broken) {
-                         audioRef.current.playDamage();
-                         inventoryRef.current[activeHotbarIndexRef.current] = null;
-                     } else {
-                         inventoryRef.current[activeHotbarIndexRef.current] = durResult.item;
-                     }
-                     setInventoryState([...inventoryRef.current]);
-                 }
-             }
-             hasAttackedEntity = true;
+            const isAirborneOrFalling = !player.isGrounded && player.velocity.y < 0;
+            const canSwing = combatMachine.triggerMeleeAttack(activeItem);
+
+            if (canSwing) {
+              player.triggerSwing();
+              const attackCalc = combatMachine.calculateMeleeDamage(activeItem, isAirborneOrFalling, player.isSprinting);
+              const result = entities.attackEntity(
+                hitEntityId,
+                attackCalc.damage,
+                player.position,
+                attackCalc.isCritical,
+                attackCalc.comboIndex
+              );
+
+              // Apply Hit Feedback (Screen Shake, Audio & Event Bus)
+              const feedback = combatMachine.applyHitFeedback(
+                attackCalc.isCritical,
+                attackCalc.damage,
+                [player.position.x, player.position.y, player.position.z]
+              );
+              player.applyScreenShake(feedback.screenShake);
+
+              GameEventBus.emit('COMBAT_HIT', {
+                hitType: attackCalc.isCritical ? 'crit' : 'hit',
+                damage: attackCalc.damage,
+                targetPos: [player.position.x, player.position.y, player.position.z],
+              });
+
+              if (attackCalc.isCritical) {
+                audioRef.current.playCriticalHit();
+              } else {
+                audioRef.current.playPlayerHit();
+              }
+
+              if (result?.killed) {
+                statsRef.current.addXP(5);
+              }
+
+              // Consume weapon durability
+              if (activeItem && gameMode !== 'creative') {
+                const durResult = MiningEngine.consumeDurability(activeItem, 'combat');
+                if (durResult.broken) {
+                  audioRef.current.playDamage();
+                  inventoryRef.current[activeHotbarIndexRef.current] = null;
+                } else {
+                  inventoryRef.current[activeHotbarIndexRef.current] = durResult.item;
+                }
+                setInventoryState([...inventoryRef.current]);
+              }
+            }
+            hasAttackedEntity = true;
           }
 
           // If didn't attack an entity, and we are hitting a block, do mining
@@ -654,41 +750,44 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           miningStateRef.current.progress = 0;
         }
 
-        // 5.5 Ranged Combat (Bow)
+        // 5.5 Ranged Combat (Bow Draw & Release Dynamics)
         if (activeItem && activeItem.itemId === 'hunting_bow') {
           if (inputManager.isActionActive('Use')) {
-             combatStateRef.current.rangedCharge += deltaTime;
-             // Could add FOV zoom or bow draw animation here
+            if (combatMachine.state === 'IDLE') {
+              combatMachine.startBowDraw();
+              audioRef.current.playBowDraw();
+            }
           } else {
-             if (combatStateRef.current.rangedCharge > 0.3) {
-                 // Release Bow
-                 const charge = Math.min(combatStateRef.current.rangedCharge, 1.5);
-                 const rayOrigin = player.getCameraPosition();
-                 const rayDir = player.getForwardVector();
-                 
-                 // Spawn Arrow
-                 entities.spawnProjectile(
-                     rayOrigin.clone().addScaledVector(rayDir, 0.5),
-                     rayDir.clone().multiplyScalar(20 + charge * 20),
-                     10 + charge * 10,
-                     true
-                 );
-                 
-                 audioRef.current.playPlayerHit(); // Generic sound for now
-                 
-                 // Consume durability
-                 if (gameMode !== 'creative') {
-                     const durResult = MiningEngine.consumeDurability(activeItem, 'combat');
-                     if (durResult.broken) {
-                         audioRef.current.playDamage();
-                         inventoryRef.current[activeHotbarIndexRef.current] = null;
-                     } else {
-                         inventoryRef.current[activeHotbarIndexRef.current] = durResult.item;
-                     }
-                     setInventoryState([...inventoryRef.current]);
-                 }
-             }
-             combatStateRef.current.rangedCharge = 0;
+            if (combatMachine.state === 'BOW_DRAWING' || combatMachine.state === 'BOW_CHARGED') {
+              const bowRelease = combatMachine.releaseBow(activeItem);
+              if (bowRelease.released) {
+                const rayOrigin = player.getCameraPosition();
+                const rayDir = player.getForwardVector();
+
+                // Spawn Arrow with calculated velocity and damage
+                entities.spawnProjectile(
+                  rayOrigin.clone().addScaledVector(rayDir, 0.6),
+                  rayDir.clone().multiplyScalar(bowRelease.arrowVelocity),
+                  bowRelease.arrowDamage,
+                  true
+                );
+
+                audioRef.current.playBowRelease(bowRelease.isCritical);
+                player.applyScreenShake(bowRelease.isCritical ? 0.4 : 0.2);
+
+                // Consume durability
+                if (gameMode !== 'creative') {
+                  const durResult = MiningEngine.consumeDurability(activeItem, 'combat');
+                  if (durResult.broken) {
+                    audioRef.current.playDamage();
+                    inventoryRef.current[activeHotbarIndexRef.current] = null;
+                  } else {
+                    inventoryRef.current[activeHotbarIndexRef.current] = durResult.item;
+                  }
+                  setInventoryState([...inventoryRef.current]);
+                }
+              }
+            }
           }
         }
 
@@ -852,6 +951,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         inputManager.postUpdate();
       }
 
+      
+        accumulator -= dt;
+      } // End while loop (Simulation Tick)
+      
+      let simEnd = performance.now();
+      lastSimTimeMs = simEnd - simStart;
+      let renderStart = performance.now();
+      
       // Throttled HUD Telemetry update (~6.6 Hz / every 150ms)
       if (currentTime - lastTelemetryTime >= 150) {
         lastTelemetryTime = currentTime;
@@ -881,7 +988,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           playerYaw: player.yaw,
           fps: currentFps,
           loadedChunks: world.chunks.size,
-          profilerMetrics: world.scheduler.metrics,
+          profilerMetrics: {
+            ...world.scheduler.metrics,
+            frameTimeMs: frameTime * 1000,
+            simTimeMs: lastSimTimeMs,
+            renderTimeMs: lastRenderTimeMs,
+            drawCalls: renderer.info.render.calls,
+            triangles: renderer.info.render.triangles,
+            memoryEst: (performance as any).memory ? (performance as any).memory.usedJSHeapSize / 1048576 : 0,
+          },
           timeOfDay: sky.timeOfDay,
           weatherType: weather.weather.type,
           breakProgress: miningStateRef.current.progress,
@@ -890,6 +1005,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Render Scene
       renderer.render(scene, camera);
+      lastRenderTimeMs = performance.now() - renderStart;
     };
 
     reqId = requestAnimationFrame(animate);
@@ -923,7 +1039,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
       renderer.dispose();
     };
-  }, [worldId, seed, gameMode, worldName, saveGame]);
+  }, [isWorldLoaded, worldId, seed, gameMode, worldName, preset, saveGame]);
 
   const handleResume = () => {
     setModal('none');
@@ -1007,6 +1123,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           onOpenJournal={() => setModal('journal')}
           onOpenContentDebug={() => setModal('contentDebug')}
           activeBoss={activeBossState}
+          bowChargeRatio={bowChargeRatio}
         />
       )}
 

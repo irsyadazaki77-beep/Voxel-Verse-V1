@@ -1,6 +1,7 @@
 // Unified Network Session & Replication Manager
 import * as THREE from 'three';
 import { LocalLoopbackTransport, NetworkTransport, TransportStats } from './NetworkTransport';
+import { WebSocketTransport } from './WebSocketTransport';
 import {
   PROTOCOL_VERSION,
   NetworkMessagePayload,
@@ -45,16 +46,38 @@ export class NetworkSession {
     return NetworkSession.instance;
   }
 
+  public setTransportMode(mode: 'loopback' | 'websocket', address?: string): void {
+    if (this.transport) {
+      this.transport.disconnect();
+    }
+    if (mode === 'websocket') {
+      this.transport = new WebSocketTransport();
+    } else {
+      this.transport = new LocalLoopbackTransport();
+    }
+  }
+
   public async startSession(
     scene: THREE.Scene,
     isMultiplayer = false,
-    playerName = 'Realm Explorer'
+    playerName = 'Realm Explorer',
+    useWebSocket = false,
+    serverAddress?: string
   ): Promise<boolean> {
     this.sceneRef = scene;
     this.isMultiplayerActive = isMultiplayer;
     this.localPlayerName = playerName;
 
-    await this.transport.connect();
+    if (useWebSocket) {
+      this.setTransportMode('websocket', serverAddress);
+    }
+
+    const connected = await this.transport.connect(serverAddress);
+    if (!connected && useWebSocket) {
+      console.warn('[NetworkSession] WebSocket failed, falling back to Local Loopback');
+      this.setTransportMode('loopback');
+      await this.transport.connect();
+    }
 
     this.transport.onMessage((msg) => this.handleIncomingMessage(msg));
 

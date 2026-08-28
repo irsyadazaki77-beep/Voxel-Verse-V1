@@ -278,7 +278,7 @@ export interface EntityState {
   maxHealth: number;
   damage: number;
   speed: number;
-  aiState: 'idle' | 'wander' | 'investigate' | 'chase' | 'attack' | 'flee' | 'sleep' | 'returnHome' | 'dead';
+  aiState: 'idle' | 'wander' | 'roam' | 'alert' | 'investigate' | 'chase' | 'attack' | 'flee' | 'sleep' | 'return' | 'returnHome' | 'dead';
   targetEntityId?: string;
   targetPos?: [number, number, number];
   faction?: 'player' | 'wildlife' | 'predator' | 'hostile' | 'villager' | 'ancient';

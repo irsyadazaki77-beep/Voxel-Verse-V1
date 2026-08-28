@@ -20,7 +20,20 @@ export interface TelemetryData {
   timeOfDay: number;
   weatherType: string;
   breakProgress: number;
-  profilerMetrics: { activeChunks: number; cachedChunks: number; queuedTasks: number; generatingTasks: number; dirtyChunks: number; meshUploadsPerFrame: number; };
+  profilerMetrics: { 
+    activeChunks: number; 
+    cachedChunks: number; 
+    queuedTasks: number; 
+    generatingTasks: number; 
+    dirtyChunks: number; 
+    meshUploadsPerFrame: number;
+    frameTimeMs: number;
+    simTimeMs: number;
+    renderTimeMs: number;
+    drawCalls: number;
+    triangles: number;
+    memoryEst: number;
+  };
 }
 
 type Listener = (data: TelemetryData) => void;
@@ -40,7 +53,7 @@ export class TelemetryStore {
     fps: 60, loadedChunks: 0,
     timeOfDay: 8.0, weatherType: 'clear',
     breakProgress: 0,
-    profilerMetrics: { activeChunks: 0, cachedChunks: 0, queuedTasks: 0, generatingTasks: 0, dirtyChunks: 0, meshUploadsPerFrame: 0 }
+    profilerMetrics: { activeChunks: 0, cachedChunks: 0, queuedTasks: 0, generatingTasks: 0, dirtyChunks: 0, meshUploadsPerFrame: 0, frameTimeMs: 0, simTimeMs: 0, renderTimeMs: 0, drawCalls: 0, triangles: 0, memoryEst: 0 }
   };
   
   public static subscribe(listener: Listener): () => void {

@@ -1,4 +1,6 @@
+const fs = require('fs');
 
+const content = `
 import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { VoxelMesher, TransferableMeshData } from './VoxelMesher';
 
@@ -84,7 +86,7 @@ if (typeof self !== 'undefined') {
         if (targetCx === cx && targetCz === cz) {
           return centerBlocks[targetLx + targetLz * 16 + ly * 256];
         } else {
-          const nKey = `${targetCx}_${targetCz}`;
+          const nKey = \`\${targetCx}_\${targetCz}\`;
           const nBuffer = neighbors[nKey];
           if (nBuffer) {
             return nBuffer[targetLx + targetLz * 16 + ly * 256];
@@ -118,3 +120,6 @@ if (typeof self !== 'undefined') {
     }
   };
 }
+`;
+
+fs.writeFileSync('src/engine/world/WorldWorker.ts', content);

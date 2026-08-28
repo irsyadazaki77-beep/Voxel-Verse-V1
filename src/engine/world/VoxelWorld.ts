@@ -7,6 +7,7 @@ import { Chunk, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z } from './Chunk';
 import { StructureGenerator } from './StructureGenerator';
 import { TextureAtlas } from './TextureAtlas';
 import { ChunkScheduler } from './ChunkScheduler';
+import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { SEA_LEVEL, WORLD_PRESETS, WorldPreset } from './WorldConfig';
 
 export { SEA_LEVEL };
@@ -26,6 +27,7 @@ export class VoxelWorld {
   public modifiedBlocks: Map<string, Map<string, BlockType>> = new Map(); // chunkKey -> localKey -> BlockType
   public worldGroup: THREE.Group;
   public biomeManager: BiomeManager;
+  private generatorCore: WorldGeneratorCore;
 
   // Noise Generators
   private terrainNoise: SimplexNoise;
@@ -48,6 +50,7 @@ export class VoxelWorld {
     this.preset = preset;
     this.worldGroup = new THREE.Group();
     this.biomeManager = new BiomeManager(seed);
+    this.generatorCore = new WorldGeneratorCore(seed);
     this.scheduler = new ChunkScheduler(this);
 
     this.terrainNoise = new SimplexNoise(seed);
@@ -184,146 +187,16 @@ export class VoxelWorld {
     const chunk = new Chunk(cx, cz);
     const cKey = this.getChunkKey(cx, cz);
 
-    // 1. Terrain & Bedrock Heightfield
-    for (let lx = 0; lx < CHUNK_SIZE_X; lx++) {
-      const wx = cx * CHUNK_SIZE_X + lx;
-      for (let lz = 0; lz < CHUNK_SIZE_Z; lz++) {
-        const wz = cz * CHUNK_SIZE_Z + lz;
-
-        const biome = this.biomeManager.getBiome(wx, wz);
-
-        // Multi-frequency Continental + Mountain Ridge noise
-        const nTerrain = this.terrainNoise.fbm2D(wx * 0.012, wz * 0.012, 4, 0.45);
-        const nMountain = Math.abs(this.mountainNoise.fbm2D(wx * 0.006, wz * 0.006, 4, 0.5));
-        const mountainRidge = Math.pow(nMountain, 1.8) * 22;
-
-        let height = Math.floor(biome.heightOffset + nTerrain * biome.heightScale + mountainRidge);
-        height = Math.max(3, Math.min(CHUNK_SIZE_Y - 4, height));
-
-        // Fill vertical voxel column
-        for (let y = 0; y <= height; y++) {
-          let block: BlockType = biome.deepStoneBlock;
-
-          if (y === height) {
-            // Surface Block (Grass, Sand, Snow, Basalt)
-            block = (height < SEA_LEVEL + 2 && biome.surfaceBlock === BlockType.GRASS) ? BlockType.SAND : biome.surfaceBlock;
-          } else if (y >= height - 3) {
-            // Subsurface Block (Dirt, Clay, Sand)
-            block = biome.subSurfaceBlock;
-          } else {
-            // Deep stone with Ore Vein Distributions
-            const oreVal = this.oreNoise.noise3D(wx * 0.12, y * 0.15, wz * 0.12);
-            if (oreVal > 0.65) {
-              if (y < 12) block = BlockType.MYTHRIL_ORE;
-              else if (y < 22) block = BlockType.GOLD_ORE;
-              else if (y < 32) block = BlockType.IRON_ORE;
-              else block = BlockType.COPPER_ORE;
-            } else if (oreVal < -0.68 && y < 45) {
-              block = BlockType.COAL_ORE;
-            } else if (y < 10 && oreVal > 0.58) {
-              block = BlockType.AETHER_CRYSTAL_ORE;
-            }
-          }
-
-          // 3D Swiss Cheese Cave Network
-          if (y > 2 && y < height - 1) {
-            const caveVal = this.caveNoise3D.fbm3D(wx * 0.04, y * 0.05, wz * 0.04, 3);
-            if (caveVal > 0.52) {
-              block = (y < 6) ? BlockType.LAVA : BlockType.AIR;
-            }
-          }
-
-          chunk.setBlock(lx, y, lz, block);
-        }
-
-        // Fill Water Bodies up to SEA_LEVEL
-        for (let y = height + 1; y <= SEA_LEVEL; y++) {
-          chunk.setBlock(lx, y, lz, BlockType.WATER);
-        }
-
-        // Surface Foliage (Flowers, Grass, Sun Orchids)
-        if (height >= SEA_LEVEL && chunk.getBlock(lx, height, lz) === BlockType.GRASS) {
-          const floraVal = this.terrainNoise.noise2D(wx * 0.2, wz * 0.2);
-          if (floraVal > 0.55) {
-            if (floraVal > 0.78) chunk.setBlock(lx, height + 1, lz, BlockType.BLUE_FLOWER);
-            else if (floraVal > 0.68) chunk.setBlock(lx, height + 1, lz, BlockType.RED_FLOWER);
-            else if (floraVal > 0.60) chunk.setBlock(lx, height + 1, lz, BlockType.SUN_ORCHID);
-            else chunk.setBlock(lx, height + 1, lz, BlockType.TALL_GRASS);
-          }
-        }
-      }
-    }
-
-    // 2. Procedural 3D Trees
-    for (let lx = 3; lx < CHUNK_SIZE_X - 3; lx += 4) {
-      for (let lz = 3; lz < CHUNK_SIZE_Z - 3; lz += 4) {
-        const wx = cx * CHUNK_SIZE_X + lx;
-        const wz = cz * CHUNK_SIZE_Z + lz;
-        const biome = this.biomeManager.getBiome(wx, wz);
-
-        const treeRand = Math.abs(this.terrainNoise.noise2D(wx * 0.45 + 13, wz * 0.45 + 71));
-        if (treeRand < biome.treeChance) {
-          // Find surface height
-          let surfaceY = -1;
-          for (let y = CHUNK_SIZE_Y - 3; y >= SEA_LEVEL; y--) {
-            const b = chunk.getBlock(lx, y, lz);
-            if (b === BlockType.GRASS || b === BlockType.SNOW || b === BlockType.DIRT) {
-              surfaceY = y;
-              break;
-            }
-          }
-
-          if (surfaceY > 0 && surfaceY + 8 < CHUNK_SIZE_Y) {
-            let treeBlocks: { dx: number; dy: number; dz: number; block: BlockType }[] = [];
-            if (biome.treeType === 'crystal') {
-              treeBlocks = StructureGenerator.generateCrystalTree(wx + wz);
-            } else if (biome.treeType === 'pine') {
-              treeBlocks = StructureGenerator.generatePineTree(wx + wz);
-            } else if (biome.treeType === 'oak') {
-              treeBlocks = StructureGenerator.generateOakTree(wx + wz);
-            }
-
-            for (const tb of treeBlocks) {
-              const tx = lx + tb.dx;
-              const ty = surfaceY + 1 + tb.dy;
-              const tz = lz + tb.dz;
-              if (tx >= 0 && tx < CHUNK_SIZE_X && ty < CHUNK_SIZE_Y && tz >= 0 && tz < CHUNK_SIZE_Z) {
-                chunk.setBlock(tx, ty, tz, tb.block);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // 3. Multi-Chunk Seamless Procedural Structures (Shrines, Cabins, Watchtowers)
-    const structPlacements = StructureGenerator.getStructureBlocksForChunk(cx, cz, this.seed);
-    for (const sp of structPlacements) {
-      if (sp.dx >= 0 && sp.dx < CHUNK_SIZE_X && sp.dz >= 0 && sp.dz < CHUNK_SIZE_Z) {
-        let surfY = 0;
-        for (let y = CHUNK_SIZE_Y - 4; y >= 5; y--) {
-          if (chunk.getBlock(sp.dx, y, sp.dz) !== BlockType.AIR && chunk.getBlock(sp.dx, y, sp.dz) !== BlockType.WATER) {
-            surfY = y;
-            break;
-          }
-        }
-        if (surfY >= SEA_LEVEL - 2) {
-          const sy = surfY + (sp.dy - 38);
-          if (sy >= 0 && sy < CHUNK_SIZE_Y) {
-            chunk.setBlock(sp.dx, sy, sp.dz, sp.block);
-          }
-        }
-      }
-    }
-
-    // 4. Apply Player Modifications (if any from previous saves)
+    const modifiedBlocks: Record<string, number> = {};
     if (this.modifiedBlocks.has(cKey)) {
       const deltas = this.modifiedBlocks.get(cKey)!;
       deltas.forEach((blockType, localKey) => {
-        const [lx, ly, lz] = localKey.split(',').map(Number);
-        chunk.setBlock(lx, ly, lz, blockType);
+        modifiedBlocks[localKey] = blockType;
       });
     }
+
+    const blocksData = this.generatorCore.generateChunkData(cx, cz, modifiedBlocks);
+    chunk.blocks = new Uint8Array(blocksData);
 
     return chunk;
   }

@@ -9,6 +9,7 @@ import { SubtitleManager, SubtitleEntry } from '../engine/ui/SubtitleManager';
 import { InputManager } from '../engine/input/InputManager';
 import { BookOpen, Map as MapIcon, Skull, Sparkles, MessageSquare } from 'lucide-react';
 import { TelemetryStore } from '../engine/ui/TelemetryStore';
+import { GameEventBus } from '../engine/events/GameEventBus';
 
 interface HUDProps {
   hotbar: (ItemStack | null)[];
@@ -25,6 +26,7 @@ interface HUDProps {
   onOpenMultiplayerLobby?: () => void;
   activeBoss?: BossCombatState | null;
   objectiveText?: string;
+  bowChargeRatio?: number; // 0..1
 }
 
 const HUDTelemetryOverlay = () => {
@@ -32,10 +34,28 @@ const HUDTelemetryOverlay = () => {
   const fpsRef = useRef<HTMLDivElement>(null);
   const armorRef = useRef<HTMLDivElement>(null);
 
+  const frameTimeRef = useRef<HTMLSpanElement>(null);
+  const simTimeRef = useRef<HTMLSpanElement>(null);
+  const renderTimeRef = useRef<HTMLSpanElement>(null);
+  const chunksRef = useRef<HTMLSpanElement>(null);
+  const drawCallsRef = useRef<HTMLSpanElement>(null);
+  const trisRef = useRef<HTMLSpanElement>(null);
+  const memRef = useRef<HTMLSpanElement>(null);
+
+
   useEffect(() => {
     return TelemetryStore.subscribe((stats) => {
       if (posRef.current) posRef.current.innerHTML = `<span class="text-sky-300 font-bold">${Math.round(stats.playerPos[0])}</span>, <span class="text-sky-300 font-bold">${Math.round(stats.playerPos[1])}</span>, <span class="text-sky-300 font-bold">${Math.round(stats.playerPos[2])}</span>`;
       if (fpsRef.current) fpsRef.current.innerText = stats.fps.toString();
+
+      if (frameTimeRef.current) frameTimeRef.current.innerText = stats.profilerMetrics.frameTimeMs.toFixed(1) + 'ms';
+      if (simTimeRef.current) simTimeRef.current.innerText = stats.profilerMetrics.simTimeMs.toFixed(1) + 'ms';
+      if (renderTimeRef.current) renderTimeRef.current.innerText = stats.profilerMetrics.renderTimeMs.toFixed(1) + 'ms';
+      if (chunksRef.current) chunksRef.current.innerText = stats.profilerMetrics.activeChunks.toString();
+      if (drawCallsRef.current) drawCallsRef.current.innerText = stats.profilerMetrics.drawCalls.toString();
+      if (trisRef.current) trisRef.current.innerText = stats.profilerMetrics.triangles.toString();
+      if (memRef.current) memRef.current.innerText = stats.profilerMetrics.memoryEst.toFixed(1) + 'MB';
+
       if (armorRef.current) armorRef.current.innerText = `🛡️ ${stats.defenseRating}`;
     });
   }, []);
@@ -154,10 +174,30 @@ export const HUD: React.FC<HUDProps> = ({
   onOpenContentDebug,
   activeBoss,
   objectiveText,
+  bowChargeRatio,
 }) => {
   const [settings, setSettings] = useState<GameSettings>(SettingsManager.get());
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
+  const [hitmarker, setHitmarker] = useState<'none' | 'hit' | 'crit' | 'blocked'>('none');
+  const [damageFlash, setDamageFlash] = useState(false);
+
+  useEffect(() => {
+    const unsubHit = GameEventBus.on('COMBAT_HIT', (payload) => {
+      setHitmarker(payload.hitType);
+      setTimeout(() => setHitmarker('none'), 180);
+    });
+
+    const unsubDmg = GameEventBus.on('PLAYER_DAMAGED', () => {
+      setDamageFlash(true);
+      setTimeout(() => setDamageFlash(false), 240);
+    });
+
+    return () => {
+      unsubHit();
+      unsubDmg();
+    };
+  }, []);
 
   useEffect(() => {
     return TelemetryStore.subscribe((stats) => {
@@ -194,6 +234,11 @@ export const HUD: React.FC<HUDProps> = ({
   return (
     <div id="game-hud" className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-10 select-none">
       
+      {/* Damage Flash Vignette */}
+      {damageFlash && (
+        <div className="absolute inset-0 pointer-events-none bg-radial from-transparent via-rose-900/30 to-rose-600/60 animate-pulse transition-opacity duration-75" />
+      )}
+
       {/* Top Section */}
       <div className="flex justify-between items-start w-full">
         {/* Left: Telemetry */}
@@ -233,11 +278,38 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       </div>
 
-      {/* Crosshair */}
+      {/* Crosshair & Combat Reticles */}
       <div id="hud-crosshair-center" className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        
+        {/* Bow Charge Focus Reticle */}
+        {typeof bowChargeRatio === 'number' && bowChargeRatio > 0 && (
+          <div className="relative flex items-center justify-center pointer-events-none mb-1">
+            <div 
+              className={`w-10 h-10 rounded-full border border-dashed transition-all duration-75 flex items-center justify-center ${
+                bowChargeRatio >= 0.95 ? 'border-amber-400 scale-75 shadow-[0_0_12px_rgba(251,191,36,0.8)]' : 'border-white/50 scale-125'
+              }`}
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-white/90" />
+            </div>
+          </div>
+        )}
+
         <div className={`w-5 h-5 relative flex items-center justify-center transition-all ${targetHit ? 'scale-125' : ''}`}>
           <div className={`absolute w-3.5 h-[2px] rounded-full shadow-[0_0_4px_rgba(0,0,0,0.8)] ${targetHit ? 'bg-sky-400' : 'bg-white/80'}`}></div>
           <div className={`absolute h-3.5 w-[2px] rounded-full shadow-[0_0_4px_rgba(0,0,0,0.8)] ${targetHit ? 'bg-sky-400' : 'bg-white/80'}`}></div>
+          
+          {/* Hitmarker Flash X */}
+          {hitmarker !== 'none' && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none scale-150 animate-ping">
+              <div className={`w-4 h-0.5 transform rotate-45 ${
+                hitmarker === 'crit' ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]' : hitmarker === 'blocked' ? 'bg-sky-400' : 'bg-white'
+              }`} />
+              <div className={`w-4 h-0.5 transform -rotate-45 ${
+                hitmarker === 'crit' ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]' : hitmarker === 'blocked' ? 'bg-sky-400' : 'bg-white'
+              }`} />
+            </div>
+          )}
+
           <svg className="absolute w-8 h-8 -top-1.5 -left-1.5 transform -rotate-90" style={{ display: 'none' }} id="crosshair-break-svg">
             <circle cx="16" cy="16" r="12" stroke="rgba(255,255,255,0.2)" strokeWidth="2.5" fill="none" />
             <circle

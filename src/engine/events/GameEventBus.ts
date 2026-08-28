@@ -16,7 +16,9 @@ export type GameEventType =
   | 'QUEST_COMPLETED'
   | 'DUNGEON_CLEARED'
   | 'WORLD_EVENT_TRIGGERED'
-  | 'SETTLEMENT_VISITED';
+  | 'SETTLEMENT_VISITED'
+  | 'COMBAT_HIT'
+  | 'PLAYER_DAMAGED';
 
 export interface GameEventPayloads {
   BLOCK_MINED: { blockType: number; pos: [number, number, number]; toolUsed?: string };
@@ -36,6 +38,8 @@ export interface GameEventPayloads {
   DUNGEON_CLEARED: { dungeonId: string; theme: string };
   WORLD_EVENT_TRIGGERED: { eventType: string; eventName: string; pos?: [number, number, number] };
   SETTLEMENT_VISITED: { settlementId: string; name: string; pos: [number, number, number] };
+  COMBAT_HIT: { hitType: 'hit' | 'crit' | 'blocked'; damage: number; targetPos?: [number, number, number] };
+  PLAYER_DAMAGED: { amount: number; source: string };
 }
 
 type EventCallback<T extends GameEventType> = (payload: GameEventPayloads[T]) => void;

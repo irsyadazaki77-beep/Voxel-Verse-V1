@@ -11,7 +11,20 @@ interface PathNode {
   parent: PathNode | null;
 }
 
+
+interface CachedPath {
+  path: [number, number, number][] | null;
+  timestamp: number;
+}
+
 export class Pathfinder {
+  private static pathCache: Map<string, CachedPath> = new Map();
+
+  private static getCacheKey(startX: number, startY: number, startZ: number, goalX: number, goalY: number, goalZ: number): string {
+    // Quantize coordinates to roughly 1 block size to increase cache hits
+    return `${Math.round(startX)},${Math.round(startY)},${Math.round(startZ)}_${Math.round(goalX)},${Math.round(goalY)},${Math.round(goalZ)}`;
+  }
+
   // A* implementation adapted for Voxel Terrain
   public static findPath(
     world: VoxelWorld,
@@ -26,6 +39,12 @@ export class Pathfinder {
     const goalX = Math.floor(goal.x);
     const goalY = Math.floor(goal.y);
     const goalZ = Math.floor(goal.z);
+
+    const cacheKey = this.getCacheKey(startX, startY, startZ, goalX, goalY, goalZ);
+    const cached = this.pathCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 2000) {
+      return cached.path;
+    }
 
     // Don't pathfind if too far
     if (start.distanceTo(goal) > maxDistance) return null;
@@ -63,7 +82,9 @@ export class Pathfinder {
       const current = openSet.splice(lowestIndex, 1)[0];
 
       if (current.x === goalX && Math.abs(current.y - goalY) <= 1 && current.z === goalZ) {
-        return this.reconstructPath(current);
+        const path = this.reconstructPath(current);
+        this.pathCache.set(cacheKey, { path, timestamp: Date.now() });
+        return path;
       }
 
       const key = `${current.x},${current.y},${current.z}`;
@@ -100,7 +121,18 @@ export class Pathfinder {
     }
 
     // No path found
+    this.pathCache.set(cacheKey, { path: null, timestamp: Date.now() });
     return null;
+  }
+
+  
+  public static cleanCache(): void {
+    const now = Date.now();
+    for (const [key, value] of this.pathCache.entries()) {
+      if (now - value.timestamp > 5000) {
+        this.pathCache.delete(key);
+      }
+    }
   }
 
   private static heuristic(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number): number {

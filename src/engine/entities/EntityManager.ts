@@ -41,6 +41,7 @@ export class EntityManager {
   public entityGroup: THREE.Group;
 
   private spawnTimer: number = 0;
+  private spatialGrid: Map<string, Set<string>> = new Map();
 
   constructor() {
     this.entityGroup = new THREE.Group();
@@ -85,6 +86,11 @@ export class EntityManager {
     mesh.position.set(...state.position);
     this.entityGroup.add(mesh);
     this.entities.set(state.id, { state, mesh });
+    const cx = Math.floor(state.position[0] / 16);
+    const cz = Math.floor(state.position[2] / 16);
+    const key = `${cx},${cz}`;
+    if (!this.spatialGrid.has(key)) this.spatialGrid.set(key, new Set());
+    this.spatialGrid.get(key)!.add(state.id);
   }
 
   public spawnInitialPopulation(world: VoxelWorld, playerPos: THREE.Vector3): void {
@@ -142,59 +148,136 @@ export class EntityManager {
     }
   }
 
-  private updateEntityAI(state: EntityState, ePos: THREE.Vector3, playerPos: THREE.Vector3, distToPlayer: number, world: VoxelWorld) {
+  private updateEntityAI(state: EntityState, ePos: THREE.Vector3, playerPos: THREE.Vector3, distToPlayer: number, world: VoxelWorld, isNight: boolean) {
     const now = Date.now();
     state.lastAttackTime = state.lastAttackTime || 0;
-    state.attackCooldown = state.attackCooldown || 1500;
-    state.attackRange = state.attackRange || 2.5;
+    state.attackCooldown = state.attackCooldown || 1400;
+    state.attackRange = state.attackRange || 2.4;
+    state.targetPos = state.targetPos || [ePos.x, ePos.y, ePos.z];
 
-    if (state.type === 'hostile') {
-      if (distToPlayer < state.attackRange) {
-        state.aiState = 'attack';
-        state.path = []; // stop moving
-        const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
-        state.rotation = Math.atan2(dir.x, dir.z);
-      } else if (distToPlayer < 24) {
-        state.aiState = 'chase';
-        if (distToPlayer > 3) {
-          const path = Pathfinder.findPath(world, ePos, playerPos, 24);
-          if (path && path.length > 0) {
-            state.path = path;
-          } else {
-             state.path = [];
-             const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
-             state.velocity[0] = dir.x * state.speed;
-             state.velocity[2] = dir.z * state.speed;
-             state.rotation = Math.atan2(dir.x, dir.z);
-          }
-        }
-      } else {
-        state.aiState = 'wander';
-        if (Math.random() < 0.2) {
-           const dx = (Math.random() - 0.5) * 10;
-           const dz = (Math.random() - 0.5) * 10;
-           const target = new THREE.Vector3(ePos.x + dx, ePos.y, ePos.z + dz);
-           const path = Pathfinder.findPath(world, ePos, target, 12);
-           if (path) state.path = path;
-        }
-      }
-    } else if (state.type === 'passive') {
-      if (state.health < state.maxHealth && distToPlayer < 16) {
+    // Origin home position tracking
+    if (!(state as any).homePos) {
+      (state as any).homePos = [ePos.x, ePos.y, ePos.z];
+    }
+    const homePos = new THREE.Vector3(...(state as any).homePos);
+    const distToHome = ePos.distanceTo(homePos);
+
+    // Hostile Entity AI State Machine
+    if (state.type === 'hostile' || state.type === 'boss') {
+      const isBoss = state.type === 'boss' || state.modelType.includes('boss');
+      const detectRange = isBoss ? 32 : (isNight ? 24 : 16);
+
+      // Low health flee for non-bosses
+      if (!isBoss && state.health < state.maxHealth * 0.22 && distToPlayer < 14) {
         state.aiState = 'flee';
         state.path = [];
-        const dir = new THREE.Vector3().subVectors(ePos, playerPos).normalize();
-        state.velocity[0] = dir.x * (state.speed * 1.6);
-        state.velocity[2] = dir.z * (state.speed * 1.6);
+        const fleeDir = new THREE.Vector3().subVectors(ePos, playerPos).normalize();
+        state.velocity[0] = fleeDir.x * (state.speed * 1.5);
+        state.velocity[2] = fleeDir.z * (state.speed * 1.5);
+        state.rotation = Math.atan2(fleeDir.x, fleeDir.z);
+        return;
+      }
+
+      // Daytime sleep / return to dark caves for nocturnal stalkers
+      if (!isBoss && !isNight && state.modelType === 'stalker' && distToPlayer > 18) {
+        state.aiState = 'sleep';
+        state.velocity[0] = 0;
+        state.velocity[2] = 0;
+        return;
+      }
+
+      // Proximity Combat Logic
+      if (distToPlayer <= state.attackRange) {
+        state.aiState = 'attack';
+        state.path = [];
+        const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
+        state.rotation = Math.atan2(dir.x, dir.z);
+      } else if (distToPlayer <= detectRange) {
+        // Transition from Alert -> Chase
+        if (state.aiState === 'idle' || state.aiState === 'wander' || state.aiState === 'roam') {
+          state.aiState = 'alert';
+          state.path = [];
+          const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
+          state.rotation = Math.atan2(dir.x, dir.z);
+        } else {
+          state.aiState = 'chase';
+          if (distToPlayer > 2.5) {
+            const path = Pathfinder.findPath(world, ePos, playerPos, 24);
+            if (path && path.length > 0) {
+              state.path = path;
+            } else {
+              state.path = [];
+              const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
+              state.velocity[0] = dir.x * state.speed;
+              state.velocity[2] = dir.z * state.speed;
+              state.rotation = Math.atan2(dir.x, dir.z);
+            }
+          }
+        }
+      } else if (distToHome > 35) {
+        // Too far from spawn origin, return home
+        state.aiState = 'return';
+        const path = Pathfinder.findPath(world, ePos, homePos, 20);
+        if (path && path.length > 0) {
+          state.path = path;
+        } else {
+          const dir = new THREE.Vector3().subVectors(homePos, ePos).normalize();
+          state.velocity[0] = dir.x * (state.speed * 0.8);
+          state.velocity[2] = dir.z * (state.speed * 0.8);
+          state.rotation = Math.atan2(dir.x, dir.z);
+        }
+      } else {
+        // Idle / Roam leisurely in territory
+        if (Math.random() < 0.15 && (!state.path || state.path.length === 0)) {
+          state.aiState = Math.random() < 0.4 ? 'idle' : 'roam';
+          if (state.aiState === 'roam') {
+            const dx = (Math.random() - 0.5) * 12;
+            const dz = (Math.random() - 0.5) * 12;
+            const roamTarget = new THREE.Vector3(homePos.x + dx, homePos.y, homePos.z + dz);
+            const path = Pathfinder.findPath(world, ePos, roamTarget, 12);
+            if (path) state.path = path;
+          }
+        }
+      }
+    } 
+    // Passive Wildlife (Deer, Stag, Boar)
+    else if (state.type === 'passive') {
+      if ((state.health < state.maxHealth && distToPlayer < 20) || distToPlayer < 5) {
+        state.aiState = 'flee';
+        state.path = [];
+        const fleeDir = new THREE.Vector3().subVectors(ePos, playerPos).normalize();
+        state.velocity[0] = fleeDir.x * (state.speed * 1.7);
+        state.velocity[2] = fleeDir.z * (state.speed * 1.7);
+        state.rotation = Math.atan2(fleeDir.x, fleeDir.z);
+      } else if (distToPlayer < 10) {
+        state.aiState = 'alert';
+        state.path = [];
+        const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
         state.rotation = Math.atan2(dir.x, dir.z);
       } else {
-        if (Math.random() < 0.1 && (!state.path || state.path.length === 0)) {
-           state.aiState = 'wander';
-           const dx = (Math.random() - 0.5) * 12;
-           const dz = (Math.random() - 0.5) * 12;
-           const target = new THREE.Vector3(ePos.x + dx, ePos.y, ePos.z + dz);
-           const path = Pathfinder.findPath(world, ePos, target, 12);
-           if (path) state.path = path;
+        if (Math.random() < 0.12 && (!state.path || state.path.length === 0)) {
+          state.aiState = Math.random() < 0.5 ? 'idle' : 'roam';
+          if (state.aiState === 'roam') {
+            const dx = (Math.random() - 0.5) * 14;
+            const dz = (Math.random() - 0.5) * 14;
+            const target = new THREE.Vector3(ePos.x + dx, ePos.y, ePos.z + dz);
+            const path = Pathfinder.findPath(world, ePos, target, 12);
+            if (path) state.path = path;
+          }
         }
+      }
+    }
+    // Friendly NPCs & Merchants
+    else if (state.type === 'npc') {
+      if (distToPlayer < 6) {
+        state.aiState = 'idle';
+        state.path = [];
+        const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
+        state.rotation = Math.atan2(dir.x, dir.z);
+      } else if (distToHome > 8) {
+        state.aiState = 'return';
+        const path = Pathfinder.findPath(world, ePos, homePos, 10);
+        if (path) state.path = path;
       }
     }
   }
@@ -203,6 +286,10 @@ export class EntityManager {
   public update(deltaTime: number, world: VoxelWorld, playerPos: THREE.Vector3, isNight: boolean, damagePlayer?: (dmg: number, src: string) => void): void {
     const dt = Math.min(deltaTime, 0.1);
     this.spawnTimer += dt;
+    
+    if (Math.random() < 0.05) { // Roughly every second
+        Pathfinder.cleanCache();
+    }
     const now = Date.now();
 
     // Periodic Nocturnal / Hostile Monster Spawning
@@ -301,6 +388,15 @@ export class EntityManager {
 
     // Update Entities
     for (const [id, { state, mesh }] of this.entities.entries()) {
+      const distToPlayerRaw = Math.abs(state.position[0] - playerPos.x) + Math.abs(state.position[2] - playerPos.z);
+      
+      // Entity Sleeping & Culling (Frustum & Distance based)
+      if (distToPlayerRaw > 64) {
+        mesh.visible = false;
+        continue; // Skip AI and physics for sleeping entities
+      }
+      mesh.visible = true;
+
       if (state.aiState === 'dead') continue;
 
       const ePos = new THREE.Vector3(...state.position);
@@ -312,7 +408,7 @@ export class EntityManager {
 
       if (now - lastUpdate > updateInterval) {
         state.pathUpdateCooldown = now;
-        this.updateEntityAI(state, ePos, playerPos, distToPlayer, world);
+        this.updateEntityAI(state, ePos, playerPos, distToPlayer, world, isNight);
       }
 
       if (state.aiState === 'attack' && state.type === 'hostile') {
@@ -376,7 +472,19 @@ export class EntityManager {
       }
 
       // Update 3D Mesh
+      const oldCx = Math.floor(ePos.x / 16);
+      const oldCz = Math.floor(ePos.z / 16);
+      
       mesh.position.set(state.position[0], state.position[1], state.position[2]);
+      
+      const newCx = Math.floor(state.position[0] / 16);
+      const newCz = Math.floor(state.position[2] / 16);
+      if (oldCx !== newCx || oldCz !== newCz) {
+        this.spatialGrid.get(`${oldCx},${oldCz}`)?.delete(id);
+        const key = `${newCx},${newCz}`;
+        if (!this.spatialGrid.has(key)) this.spatialGrid.set(key, new Set());
+        this.spatialGrid.get(key)!.add(id);
+      }
       mesh.rotation.y = state.rotation;
 
       // Idle / walking bobbing
@@ -389,6 +497,9 @@ export class EntityManager {
       if (distToPlayer > 80 && state.type !== 'npc') {
         this.entityGroup.remove(mesh);
         this.entities.delete(id);
+        const cx = Math.floor(state.position[0] / 16);
+        const cz = Math.floor(state.position[2] / 16);
+        this.spatialGrid.get(`${cx},${cz}`)?.delete(id);
       }
     }
 
@@ -423,37 +534,43 @@ export class EntityManager {
   public attackEntity(
     entityId: string,
     damage: number,
-    knockbackOrigin: THREE.Vector3
-  ): { damageDealt: number; killed: boolean; entityName: string } | null {
+    knockbackOrigin: THREE.Vector3,
+    isCritical: boolean = false,
+    comboIndex: number = 0,
+    knockbackScale: number = 1.0
+  ): { damageDealt: number; killed: boolean; entityName: string; isCritical: boolean } | null {
     const entry = this.entities.get(entityId);
     if (!entry) return null;
 
     const { state, mesh } = entry;
     state.health = Math.max(0, state.health - damage);
 
-    // Apply Knockback
+    // Apply Knockback with stagger scaling
     const knockDir = new THREE.Vector3(state.position[0], 0, state.position[2])
       .sub(new THREE.Vector3(knockbackOrigin.x, 0, knockbackOrigin.z))
       .normalize();
-    state.velocity[0] += knockDir.x * 6.0;
-    state.velocity[1] += 4.0;
-    state.velocity[2] += knockDir.z * 6.0;
+    const force = (isCritical ? 9.0 : 6.0) * knockbackScale;
+    state.velocity[0] += knockDir.x * force;
+    state.velocity[1] += isCritical ? 5.5 : 3.8;
+    state.velocity[2] += knockDir.z * force;
 
-    // Flash Red Hit Feedback
+    // Flash Red or Gold Hit Feedback
     mesh.traverse(child => {
       if (child instanceof THREE.Mesh && child.material) {
         const oldCol = (child.material as THREE.MeshLambertMaterial).color.clone();
-        (child.material as THREE.MeshLambertMaterial).color.setHex(0xff3333);
+        (child.material as THREE.MeshLambertMaterial).color.setHex(isCritical ? 0xfacc15 : 0xff3333);
         setTimeout(() => {
           if (child.material) {
             (child.material as THREE.MeshLambertMaterial).color.copy(oldCol);
           }
-        }, 150);
+        }, isCritical ? 220 : 150);
       }
     });
 
-    // Spawn Floating Damage Text
-    this.addFloatingText(`-${Math.round(damage)}`, new THREE.Vector3(...state.position).add(new THREE.Vector3(0, 1.8, 0)), '#ff4444');
+    // Spawn Floating Damage Text (Golden for Crits, Crimson for Normal)
+    const floatText = isCritical ? `CRIT! -${Math.round(damage)}` : `-${Math.round(damage)}`;
+    const floatColor = isCritical ? '#fbbf24' : '#ff4444';
+    this.addFloatingText(floatText, new THREE.Vector3(...state.position).add(new THREE.Vector3(0, 1.8, 0)), floatColor);
 
     const killed = state.health <= 0;
     if (killed) {
@@ -487,7 +604,7 @@ export class EntityManager {
       this.entities.delete(entityId);
     }
 
-    return { damageDealt: damage, killed, entityName: state.name };
+    return { damageDealt: damage, killed, entityName: state.name, isCritical };
   }
 
   // Get active boss in combat engagement range of the player
