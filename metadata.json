@@ -1,0 +1,6 @@
+{
+  "name": "VoxelVerse 3D Sandbox Survival",
+  "description": "An original 3D procedural voxel open-world sandbox survival game with dynamic biomes, mining, crafting, creature AI, day-night weather cycles, and advanced building.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
