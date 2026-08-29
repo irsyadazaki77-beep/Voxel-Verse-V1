@@ -2,6 +2,7 @@ import { WorkerTaskInput, WorkerTaskResult, GenerateTaskInput, MeshTaskInput, Ge
 import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { Logger } from '../ui/Logger';
 import { TransferableMeshData, VoxelMesher } from './VoxelMesher';
+import { WorldPreset } from './WorldConfig';
 
 export interface BaseTask {
   taskId: string;
@@ -15,15 +16,17 @@ export interface BaseTask {
 export interface GenerationTask extends BaseTask {
   type: 'generate';
   seed: number;
+  preset?: WorldPreset;
   modifiedBlocks?: Record<string, number>;
   onComplete: (buffer: ArrayBuffer) => void;
 }
 
 export interface MeshingTask extends BaseTask {
   type: 'mesh';
+  sourceRevision?: number;
   centerBuffer: ArrayBuffer;
   neighborBuffers: Record<string, ArrayBuffer>;
-  onComplete: (meshData: TransferableMeshData) => void;
+  onComplete: (meshData: TransferableMeshData, sourceRevision: number) => void;
 }
 
 export type WorkerTask = GenerationTask | MeshingTask;
@@ -91,8 +94,8 @@ export class ChunkWorkerPool {
   private executeSync(task: WorkerTask) {
     if (task.type === 'generate') {
       Logger.info('ChunkWorkerPool', `Generating chunk ${task.cx}, ${task.cz} synchronously`);
-      if (!this.cpuFallbackGenerator) {
-        this.cpuFallbackGenerator = new WorldGeneratorCore(task.seed);
+      if (!this.cpuFallbackGenerator || this.cpuFallbackGenerator.seed !== task.seed || this.cpuFallbackGenerator.preset !== (task.preset || 'standard')) {
+        this.cpuFallbackGenerator = new WorldGeneratorCore(task.seed, task.preset || 'standard');
       }
       try {
         const blocks = this.cpuFallbackGenerator.generateChunkData(task.cx, task.cz, task.modifiedBlocks);
@@ -135,7 +138,7 @@ export class ChunkWorkerPool {
 
         const meshData = VoxelMesher.buildChunkMeshData(getBlock, 16, 128, 16);
         if (task.sessionToken === this.currentSessionToken) {
-          task.onComplete(meshData);
+          task.onComplete(meshData, task.sourceRevision ?? 0);
         }
       } catch (e) {
         Logger.error('ChunkWorkerPool', `Sync meshing failed for ${task.cx}, ${task.cz}`, { error: e });
@@ -154,13 +157,17 @@ export class ChunkWorkerPool {
     const exists = this.taskQueue.some(t => t.cx === task.cx && t.cz === task.cz && t.sessionToken === task.sessionToken && t.type === task.type);
     if (exists) return;
 
-    if (this.taskQueue.length > 200) {
-      this.taskQueue.sort((a, b) => b.priority - a.priority);
+    this.taskQueue.push(task);
+    this.sortQueue();
+
+    // Priority convention: higher numeric priority = more important.
+    // Array is sorted descending (index 0 is highest priority).
+    // Pop lowest priority elements from the end if queue exceeds limit.
+    const maxQueueSize = 250;
+    while (this.taskQueue.length > maxQueueSize) {
       this.taskQueue.pop(); 
     }
 
-    this.taskQueue.push(task);
-    this.sortQueue();
     this.processQueue();
   }
 
@@ -174,11 +181,12 @@ export class ChunkWorkerPool {
 
   private sortQueue(): void {
     this.taskQueue.sort((a, b) => {
-      // Meshing should have higher priority generally if distances are equal
-      if (a.priority === b.priority) {
-        return a.type === 'mesh' ? -1 : 1;
+      // Convention: Higher numeric priority = more important -> Descending order
+      if (b.priority !== a.priority) {
+        return b.priority - a.priority;
       }
-      return a.priority - b.priority; 
+      // If priorities equal, prioritize meshing over generation
+      return a.type === 'mesh' ? -1 : (b.type === 'mesh' ? 1 : 0);
     });
   }
 
@@ -215,6 +223,7 @@ export class ChunkWorkerPool {
             cx: task.cx,
             cz: task.cz,
             seed: task.seed,
+            preset: task.preset,
             modifiedBlocks: task.modifiedBlocks,
           };
           worker.postMessage(input);
@@ -224,12 +233,11 @@ export class ChunkWorkerPool {
             taskId: task.taskId,
             cx: task.cx,
             cz: task.cz,
+            sourceRevision: task.sourceRevision ?? 0,
             centerBuffer: task.centerBuffer,
             neighborBuffers: task.neighborBuffers
           };
-          // We can't transfer the arraybuffers here because they are needed by the main thread (Chunk still needs its data).
-          // structuredClone takes care of sending copies. 
-          // If we want to transfer, we must send slice copies.
+          
           const transfers = [
             input.centerBuffer.slice(0)
           ];
@@ -276,7 +284,7 @@ export class ChunkWorkerPool {
       if (task.type === 'generate' && result.type === 'generate') {
         task.onComplete(result.buffer);
       } else if (task.type === 'mesh' && result.type === 'mesh') {
-        task.onComplete(result.meshData);
+        task.onComplete(result.meshData, result.sourceRevision ?? 0);
       }
     }
 

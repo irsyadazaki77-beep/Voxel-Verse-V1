@@ -364,60 +364,80 @@ export class StructureGenerator {
   }
 
   // Multi-Chunk World-Coordinate Region Placement Query
-  // Determines if a structure exists at world coordinate (wx, wz) and returns any block matching chunk bounds
+  // Determines if a structure exists in nearby regions and returns any blocks falling inside chunk (cx, cz)
   public static getStructureBlocksForChunk(
     cx: number,
     cz: number,
-    seed: number
+    seed: number,
+    structureDensity: number = 0.08,
+    getHeightAt?: (wx: number, wz: number) => number
   ): VoxelBlockPlacement[] {
     const placements: VoxelBlockPlacement[] = [];
 
-    // Check 3x3 neighbor regions to capture multi-chunk structures overflowing into this chunk
     const chunkMinX = cx * 16;
     const chunkMaxX = chunkMinX + 15;
     const chunkMinZ = cz * 16;
     const chunkMaxZ = chunkMinZ + 15;
 
-    const searchRadiusChunks = 2; // Search within 2 chunk radius
+    const regionSizeBlocks = 64; // 4x4 chunks per region grid
+    const maxStructureRadius = 14;
 
-    for (let ncx = cx - searchRadiusChunks; ncx <= cx + searchRadiusChunks; ncx++) {
-      for (let ncz = cz - searchRadiusChunks; ncz <= cz + searchRadiusChunks; ncz++) {
-        // Region Hash
-        const regionX = Math.floor(ncx / 4);
-        const regionZ = Math.floor(ncz / 4);
-        const hash = Math.abs(Math.sin(regionX * 12.9898 + regionZ * 78.233 + seed) * 43758.5453) % 1;
+    const minRegX = Math.floor((chunkMinX - maxStructureRadius) / regionSizeBlocks);
+    const maxRegX = Math.floor((chunkMaxX + maxStructureRadius) / regionSizeBlocks);
+    const minRegZ = Math.floor((chunkMinZ - maxStructureRadius) / regionSizeBlocks);
+    const maxRegZ = Math.floor((chunkMaxZ + maxStructureRadius) / regionSizeBlocks);
 
-        if (hash < 0.32) {
-          // Structure origin in world space
-          const originWX = regionX * 64 + 32 + Math.floor((hash * 100) % 16) - 8;
-          const originWZ = regionZ * 64 + 32 + Math.floor((hash * 500) % 16) - 8;
-          const originY = 38; // Adjusted to surface in worker
+    for (let rx = minRegX; rx <= maxRegX; rx++) {
+      for (let rz = minRegZ; rz <= maxRegZ; rz++) {
+        // Deterministic Region Hash
+        const hash = Math.abs(Math.sin(rx * 12.9898 + rz * 78.233 + seed * 0.001) * 43758.5453) % 1;
 
-          let structType = 'shrine';
-          if (hash < 0.06) structType = 'dungeon_entrance';
-          else if (hash < 0.12) structType = 'meteor_crater';
-          else if (hash < 0.18) structType = 'tower';
-          else if (hash < 0.25) structType = 'cabin';
+        // Compare against structureDensity
+        if (hash < structureDensity * 3.0) {
+          const offsetX = Math.floor(hash * 1000) % 24 - 12;
+          const offsetZ = Math.floor(hash * 3000) % 24 - 12;
+          const originWX = rx * regionSizeBlocks + 32 + offsetX;
+          const originWZ = rz * regionSizeBlocks + 32 + offsetZ;
 
+          let originY = 36;
+          if (getHeightAt) {
+            originY = getHeightAt(originWX, originWZ);
+          }
+
+          // Skip if in deep ocean or above world build limit
+          if (originY < 15 || originY > 105) continue;
+
+          const typeRand = (hash * 100) % 1;
           let blueprint: VoxelBlockPlacement[] = [];
-          if (structType === 'dungeon_entrance') blueprint = StructureGenerator.generateDungeonEntrance();
-          else if (structType === 'meteor_crater') blueprint = StructureGenerator.generateMeteorCrater();
-          else if (structType === 'tower') blueprint = StructureGenerator.generateWatchtower();
-          else if (structType === 'cabin') blueprint = StructureGenerator.generateExplorerCabin();
-          else blueprint = StructureGenerator.generateAncientShrine();
+          if (typeRand < 0.2) {
+            blueprint = StructureGenerator.generateDungeonEntrance();
+          } else if (typeRand < 0.4) {
+            blueprint = StructureGenerator.generateMeteorCrater();
+          } else if (typeRand < 0.6) {
+            blueprint = StructureGenerator.generateWatchtower();
+          } else if (typeRand < 0.8) {
+            blueprint = StructureGenerator.generateExplorerCabin();
+          } else {
+            blueprint = StructureGenerator.generateAncientShrine();
+          }
 
           for (const bp of blueprint) {
             const worldX = originWX + bp.dx;
+            const worldY = originY + bp.dy;
             const worldZ = originWZ + bp.dz;
 
-            // Check if within current chunk
-            if (worldX >= chunkMinX && worldX <= chunkMaxX && worldZ >= chunkMinZ && worldZ <= chunkMaxZ) {
-              const lx = worldX - chunkMinX;
-              const lz = worldZ - chunkMinZ;
+            if (
+              worldX >= chunkMinX &&
+              worldX <= chunkMaxX &&
+              worldZ >= chunkMinZ &&
+              worldZ <= chunkMaxZ &&
+              worldY >= 0 &&
+              worldY < CHUNK_SIZE_Y
+            ) {
               placements.push({
-                dx: lx,
-                dy: originY + bp.dy,
-                dz: lz,
+                dx: worldX - chunkMinX,
+                dy: worldY,
+                dz: worldZ - chunkMinZ,
                 block: bp.block,
               });
             }

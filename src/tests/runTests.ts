@@ -4,8 +4,12 @@ import { CRAFTING_RECIPES } from '../engine/items/CraftingSystem';
 import { SaveManager, CURRENT_SAVE_VERSION } from '../engine/storage/SaveManager';
 import { SimplexNoise } from '../engine/math/Noise';
 import { WorldGeneratorCore } from '../engine/world/WorldGeneratorCore';
-import { ChunkWorkerPool } from '../engine/world/ChunkWorkerPool';
+import { ChunkWorkerPool, WorkerTask } from '../engine/world/ChunkWorkerPool';
 import { VoxelWorld } from '../engine/world/VoxelWorld';
+import { GameStatsManager } from '../engine/player/GameStatsManager';
+import { GameEventBus } from '../engine/events/GameEventBus';
+import { VoxelMesher } from '../engine/world/VoxelMesher';
+import { BlockType } from '../types';
 
 interface TestResult {
   name: string;
@@ -164,20 +168,205 @@ try {
   assert(false, 'Block Persistence Exception', (e as Error).message);
 }
 
-// 7. Worker Resilience & Chunk Scheduler (Mock logic test)
-console.log('\n[TEST GROUP] Worker Resilience');
+// 7. Game Stats Wiring & Progression Verification
+console.log('\n[TEST GROUP] Game Stats Wiring');
+try {
+  const initialStats = {
+    blocksMined: 10,
+    blocksPlaced: 5,
+    monstersDefeated: 2,
+    distanceTraveled: 120.5,
+  };
+  const statsManager = new GameStatsManager(initialStats);
+  statsManager.initialize();
+
+  // Test event bus triggers
+  GameEventBus.emit('BLOCK_MINED', { blockType: BlockType.STONE, pos: [5, 60, 5] });
+  GameEventBus.emit('BLOCK_PLACED', { blockType: BlockType.WOOD_PLANKS, pos: [10, 64, 10] });
+  GameEventBus.emit('ENTITY_KILLED', { entityId: 'zombie_1', modelType: 'zombie', isBoss: false, pos: [10, 64, 10] });
+  statsManager.addDistance(35.5);
+
+  const updatedStats = statsManager.getStats();
+  assert(updatedStats.blocksMined === 11, 'BLOCK_MINED event increments blocksMined stat');
+  assert(updatedStats.blocksPlaced === 6, 'BLOCK_PLACED event increments blocksPlaced stat');
+  assert(updatedStats.monstersDefeated === 3, 'ENTITY_KILLED event increments monstersDefeated stat');
+  assert(Math.abs(updatedStats.distanceTraveled - 156.0) < 0.001, 'addDistance accurately accumulates distanceTraveled');
+
+  statsManager.dispose();
+} catch (e) {
+  assert(false, 'Game Stats Wiring Exception', (e as Error).message);
+}
+
+// 8. Worker Failure & Resilience Tests
+console.log('\n[TEST GROUP] Worker Resilience & Error Recovery');
 try {
   const pool = new ChunkWorkerPool();
-  assert(pool.getStats().totalWorkers > 0, 'ChunkWorkerPool initialized with workers');
-  
-  pool.setSessionToken(2);
-  assert(pool.currentSessionToken === 2, 'Session token updates properly');
-  
-  // Trigger cleanup
+  pool.setSessionToken(1);
+
+  // 8a. CPU Fallback Execution: Generation
+  let genResultBuffer: ArrayBuffer | null = null;
+  const genTask: WorkerTask = {
+    type: 'generate',
+    taskId: 'test_sync_gen_1',
+    cx: 2,
+    cz: 3,
+    priority: 100,
+    sessionToken: 1,
+    seed: 42819,
+    onComplete: (buf) => {
+      genResultBuffer = buf;
+    },
+  };
+  (pool as any).executeSync(genTask);
+  assert(genResultBuffer !== null, 'Synchronous CPU fallback generation produces result buffer');
+  const genArray = new Uint8Array(genResultBuffer!);
+  assert(genArray.length === 16 * 128 * 16, 'Fallback generation buffer has exact 32768-byte chunk size');
+
+  // 8b. CPU Fallback Execution: Meshing
+  let meshResultData: any = null;
+  const dummyCenter = new Uint8Array(16 * 128 * 16);
+  // Put a stone block in center
+  dummyCenter[8 + 8 * 16 + 60 * 256] = BlockType.STONE;
+  const meshTask: WorkerTask = {
+    type: 'mesh',
+    taskId: 'test_sync_mesh_1',
+    cx: 2,
+    cz: 3,
+    priority: 200,
+    sessionToken: 1,
+    centerBuffer: dummyCenter.buffer,
+    neighborBuffers: {},
+    onComplete: (meshData) => {
+      meshResultData = meshData;
+    },
+  };
+  (pool as any).executeSync(meshTask);
+  assert(meshResultData !== null && meshResultData.solidPositions.length > 0, 'Synchronous fallback meshing produces valid geometry for center block');
+
+  // 8c. Worker Error & Retry Recovery
+  let errorFallbackCompleted = false;
+  const errorTask: WorkerTask = {
+    type: 'generate',
+    taskId: 'test_retry_task_1',
+    cx: 0,
+    cz: 0,
+    priority: 50,
+    sessionToken: 1,
+    seed: 12345,
+    retries: 1, // Will exceed threshold (retries >= 2) on next error and executeSync
+    onComplete: () => {
+      errorFallbackCompleted = true;
+    },
+  };
+  // Simulate mock worker with current task
+  (pool as any).workers[0] = {
+    _currentTask: errorTask,
+    terminate: () => {},
+  };
+  (pool as any).handleWorkerError(0);
+  assert(errorFallbackCompleted, 'Worker error retry degradation executes sync fallback when retry limit reached');
+
+  // 8d. Queue Priority Order and Overflow Degradation
+  pool.setSessionToken(5);
+  // Enqueue 260 tasks with varying priorities
+  for (let i = 0; i < 260; i++) {
+    pool.enqueueTask({
+      type: 'generate',
+      taskId: `task_${i}`,
+      cx: i,
+      cz: 0,
+      priority: i, // Higher numeric priority for higher i
+      sessionToken: 5,
+      seed: 100,
+      onComplete: () => {},
+    });
+  }
+  const stats = pool.getStats();
+  // Worker busy / executeSync might consume some, but queue max is 250
+  assert(stats.queuedTasks <= 250, 'Queue overflow is capped at 250 tasks without memory leak');
+
   pool.dispose();
   assert(pool.getStats().totalWorkers === 0, 'Worker pool disposes correctly');
-} catch(e) {
+} catch (e) {
   assert(false, 'Worker Resilience Exception', (e as Error).message);
+}
+
+// 9. Chunk Edge & Boundary Meshing Tests
+console.log('\n[TEST GROUP] Chunk Edge & Boundary Face Culling');
+try {
+  // Test 9a: Face culling between adjacent solid blocks across chunk border
+  // Chunk A: block at lx=15, ly=60, lz=8 is STONE
+  // Chunk B (neighbor +X): block at lx=0, ly=60, lz=8 is STONE
+  const centerChunk = new Uint8Array(16 * 128 * 16);
+  centerChunk[15 + 8 * 16 + 60 * 256] = BlockType.STONE;
+
+  const neighborEast = new Uint8Array(16 * 128 * 16);
+  neighborEast[0 + 8 * 16 + 60 * 256] = BlockType.STONE;
+
+  const getBlockWithNeighbor = (lx: number, ly: number, lz: number): BlockType => {
+    if (ly < 0 || ly >= 128) return BlockType.AIR;
+    if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16) {
+      return centerChunk[lx + lz * 16 + ly * 256];
+    }
+    if (lx >= 16 && lx < 32 && lz >= 0 && lz < 16) {
+      return neighborEast[(lx - 16) + lz * 16 + ly * 256];
+    }
+    return BlockType.AIR;
+  };
+
+  const meshWithNeighbor = VoxelMesher.buildChunkMeshData(getBlockWithNeighbor, 16, 128, 16);
+  
+  // Inspect the generated solid quads. Right face normal is [1, 0, 0].
+  let hasRightFace = false;
+  for (let i = 0; i < meshWithNeighbor.solidNormals.length; i += 3) {
+    if (meshWithNeighbor.solidNormals[i] === 1 && meshWithNeighbor.solidNormals[i + 1] === 0 && meshWithNeighbor.solidNormals[i + 2] === 0) {
+      hasRightFace = true;
+      break;
+    }
+  }
+  assert(!hasRightFace, 'Face between adjacent solid blocks across chunk border is correctly culled');
+
+  // Test 9b: Transparent block (Water) meets solid stone in neighbor chunk
+  // Chunk A: block at lx=15, ly=60, lz=8 is WATER
+  // Neighbor East: block at lx=0, ly=60, lz=8 is STONE
+  const waterCenter = new Uint8Array(16 * 128 * 16);
+  waterCenter[15 + 8 * 16 + 60 * 256] = BlockType.WATER;
+
+  const getBlockWaterToStone = (lx: number, ly: number, lz: number): BlockType => {
+    if (ly < 0 || ly >= 128) return BlockType.AIR;
+    if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16) {
+      return waterCenter[lx + lz * 16 + ly * 256];
+    }
+    if (lx >= 16 && lx < 32 && lz >= 0 && lz < 16) {
+      return neighborEast[(lx - 16) + lz * 16 + ly * 256];
+    }
+    return BlockType.AIR;
+  };
+
+  const meshWaterToStone = VoxelMesher.buildChunkMeshData(getBlockWaterToStone, 16, 128, 16);
+  assert(meshWaterToStone.waterPositions.length > 0, 'Water at chunk boundary generates surface mesh');
+
+  // Test 9c: Unloaded neighbor (AIR fallback) does NOT create holes when neighbor is missing
+  const getBlockUnloadedNeighbor = (lx: number, ly: number, lz: number): BlockType => {
+    if (ly < 0 || ly >= 128) return BlockType.AIR;
+    if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16) {
+      return centerChunk[lx + lz * 16 + ly * 256];
+    }
+    return BlockType.AIR; // Missing neighbor treats boundary as air
+  };
+
+  const meshUnloadedNeighbor = VoxelMesher.buildChunkMeshData(getBlockUnloadedNeighbor, 16, 128, 16);
+  let hasBoundaryFace = false;
+  for (let i = 0; i < meshUnloadedNeighbor.solidNormals.length; i += 3) {
+    if (meshUnloadedNeighbor.solidNormals[i] === 1 && meshUnloadedNeighbor.solidNormals[i + 1] === 0 && meshUnloadedNeighbor.solidNormals[i + 2] === 0) {
+      hasBoundaryFace = true;
+      break;
+    }
+  }
+  assert(hasBoundaryFace, 'Unloaded neighbor chunk falls back to air boundary and generates outer face without missing wall holes');
+
+} catch (e) {
+  assert(false, 'Chunk Edge Exception', (e as Error).message);
 }
 
 // Summary

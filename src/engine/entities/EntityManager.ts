@@ -43,15 +43,48 @@ export class EntityManager {
   private spawnTimer: number = 0;
   private spatialGrid: Map<string, Set<string>> = new Map();
 
+  // Shared Geometries & Materials to avoid GC churn
+  private static projectileGeometry: THREE.BufferGeometry | null = null;
+  private static projectileMaterial: THREE.Material | null = null;
+  private static groundItemGeometry: THREE.BufferGeometry | null = null;
+  private projectilePool: THREE.Mesh[] = [];
+
   constructor() {
     this.entityGroup = new THREE.Group();
+
+    if (!EntityManager.projectileGeometry) {
+      const geo = new THREE.CylinderGeometry(0.02, 0.02, 0.6, 4);
+      geo.rotateX(Math.PI / 2);
+      EntityManager.projectileGeometry = geo;
+      EntityManager.projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc });
+    }
+
+    if (!EntityManager.groundItemGeometry) {
+      EntityManager.groundItemGeometry = new THREE.BoxGeometry(0.28, 0.28, 0.28);
+    }
+  }
+
+  private acquireProjectileMesh(): THREE.Mesh {
+    if (this.projectilePool.length > 0) {
+      const mesh = this.projectilePool.pop()!;
+      mesh.visible = true;
+      return mesh;
+    }
+    return new THREE.Mesh(EntityManager.projectileGeometry!, EntityManager.projectileMaterial!);
+  }
+
+  private releaseProjectileMesh(mesh: THREE.Mesh): void {
+    mesh.visible = false;
+    this.entityGroup.remove(mesh);
+    if (this.projectilePool.length < 30) {
+      this.projectilePool.push(mesh);
+    } else {
+      mesh.geometry?.dispose();
+    }
   }
 
   public spawnProjectile(pos: THREE.Vector3, vel: THREE.Vector3, damage: number, fromPlayer: boolean): void {
-    const geo = new THREE.CylinderGeometry(0.02, 0.02, 0.6, 4);
-    geo.rotateX(Math.PI / 2); // point along Z
-    const mat = new THREE.MeshBasicMaterial({ color: 0xcccccc });
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = this.acquireProjectileMesh();
     mesh.position.copy(pos);
     this.entityGroup.add(mesh);
     this.projectiles.push({
@@ -357,7 +390,7 @@ export class EntityManager {
       // Check collision with blocks
       const block = world.getBlock(Math.floor(p.position.x), Math.floor(p.position.y), Math.floor(p.position.z));
       if (block !== 0) {
-        this.entityGroup.remove(p.mesh);
+        this.releaseProjectileMesh(p.mesh);
         this.projectiles.splice(i, 1);
         continue;
       }
@@ -374,14 +407,14 @@ export class EntityManager {
           }
         }
         if (hit) {
-          this.entityGroup.remove(p.mesh);
+          this.releaseProjectileMesh(p.mesh);
           this.projectiles.splice(i, 1);
           continue;
         }
       }
 
       if (p.life <= 0) {
-        this.entityGroup.remove(p.mesh);
+        this.releaseProjectileMesh(p.mesh);
         this.projectiles.splice(i, 1);
       }
     }
@@ -690,7 +723,7 @@ export class EntityManager {
   }
 
   public spawnGroundItem(itemId: string, count: number, pos: THREE.Vector3): void {
-    const geo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const geo = EntityManager.groundItemGeometry || new THREE.BoxGeometry(0.28, 0.28, 0.28);
     const mat = new THREE.MeshLambertMaterial({ color: 0x59b3f2 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(pos);
@@ -715,7 +748,9 @@ export class EntityManager {
         if (remaining < gItem.item.count) {
           collectedNames.push(gItem.item.itemId);
           this.entityGroup.remove(gItem.mesh);
-          gItem.mesh.geometry.dispose();
+          if (gItem.mesh.material instanceof THREE.Material) {
+            gItem.mesh.material.dispose();
+          }
           this.groundItems.splice(i, 1);
         }
       }
@@ -731,7 +766,9 @@ export class EntityManager {
       if (gItem.position.distanceTo(playerPos) <= radius) {
         picked.push({ itemId: gItem.item.itemId, count: gItem.item.count });
         this.entityGroup.remove(gItem.mesh);
-        gItem.mesh.geometry.dispose();
+        if (gItem.mesh.material instanceof THREE.Material) {
+          gItem.mesh.material.dispose();
+        }
         this.groundItems.splice(i, 1);
       }
     }
@@ -772,13 +809,47 @@ export class EntityManager {
   public dispose(): void {
     for (const { mesh } of this.entities.values()) {
       this.entityGroup.remove(mesh);
+      mesh.traverse(child => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry?.dispose();
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else if (child.material) {
+            child.material.dispose();
+          }
+        }
+      });
     }
     this.entities.clear();
 
     for (const gItem of this.groundItems) {
       this.entityGroup.remove(gItem.mesh);
-      gItem.mesh.geometry.dispose();
+      if (gItem.mesh.material instanceof THREE.Material) {
+        gItem.mesh.material.dispose();
+      }
     }
     this.groundItems = [];
+
+    for (const p of this.projectiles) {
+      this.entityGroup.remove(p.mesh);
+    }
+    this.projectiles = [];
+
+    for (const poolMesh of this.projectilePool) {
+      poolMesh.geometry?.dispose();
+      if (poolMesh.material instanceof THREE.Material) {
+        poolMesh.material.dispose();
+      }
+    }
+    this.projectilePool = [];
+
+    if (EntityManager.projectileGeometry) {
+      EntityManager.projectileGeometry.dispose();
+      EntityManager.projectileGeometry = null;
+    }
+    if (EntityManager.groundItemGeometry) {
+      EntityManager.groundItemGeometry.dispose();
+      EntityManager.groundItemGeometry = null;
+    }
   }
 }

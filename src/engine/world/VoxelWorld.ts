@@ -1,7 +1,6 @@
 // Voxel World Engine: Procedural 3D Terrain, Texture Atlas, Streaming Chunks, Raycasting & World State
 import * as THREE from 'three';
 import { BlockType } from '../../types';
-import { SimplexNoise } from '../math/Noise';
 import { BiomeManager } from './BiomeManager';
 import { Chunk, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z } from './Chunk';
 import { StructureGenerator } from './StructureGenerator';
@@ -29,12 +28,6 @@ export class VoxelWorld {
   public biomeManager: BiomeManager;
   private generatorCore: WorldGeneratorCore;
 
-  // Noise Generators
-  private terrainNoise: SimplexNoise;
-  private mountainNoise: SimplexNoise;
-  private caveNoise3D: SimplexNoise;
-  private oreNoise: SimplexNoise;
-
   // Texture-mapped 3D Voxel Materials
   public solidMaterial: THREE.MeshStandardMaterial;
   public transMaterial: THREE.MeshStandardMaterial;
@@ -50,13 +43,8 @@ export class VoxelWorld {
     this.preset = preset;
     this.worldGroup = new THREE.Group();
     this.biomeManager = new BiomeManager(seed);
-    this.generatorCore = new WorldGeneratorCore(seed);
+    this.generatorCore = new WorldGeneratorCore(seed, preset);
     this.scheduler = new ChunkScheduler(this);
-
-    this.terrainNoise = new SimplexNoise(seed);
-    this.mountainNoise = new SimplexNoise(seed + 555);
-    this.caveNoise3D = new SimplexNoise(seed + 999);
-    this.oreNoise = new SimplexNoise(seed + 777);
 
     // Load procedural 16x16 pixel texture atlas
     const atlasTex = TextureAtlas.getAtlasTexture();
@@ -196,7 +184,7 @@ export class VoxelWorld {
     }
 
     const blocksData = this.generatorCore.generateChunkData(cx, cz, modifiedBlocks);
-    chunk.blocks = new Uint8Array(blocksData);
+    chunk.setBlocks(new Uint8Array(blocksData));
 
     return chunk;
   }

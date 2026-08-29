@@ -1,4 +1,4 @@
-// Remote Player Representation & Movement Interpolation System
+// Remote Player Representation & Snapshot Interpolation System (Phase 3 Hardening)
 import * as THREE from 'three';
 
 interface TransformBufferEntry {
@@ -17,9 +17,10 @@ export class RemotePlayer {
 
   private buffer: TransformBufferEntry[] = [];
   private currentPos: THREE.Vector3 = new THREE.Vector3();
-  private targetPos: THREE.Vector3 = new THREE.Vector3();
   private currentYaw = 0;
-  private targetYaw = 0;
+
+  // Configuration for interpolation delay
+  private readonly interpolationDelayMs = 100; // Standard 100ms render buffer
 
   constructor(id: string, name: string) {
     this.id = id;
@@ -78,21 +79,65 @@ export class RemotePlayer {
 
   public pushTransformSnapshot(pos: [number, number, number], rot: [number, number, number], timestamp: number): void {
     this.buffer.push({ position: pos, rotation: rot, timestamp });
-    if (this.buffer.length > 10) {
+    
+    // Sort buffer by timestamp to ensure monotonic timeline
+    this.buffer.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Cap buffer history
+    if (this.buffer.length > 30) {
       this.buffer.shift();
     }
-
-    this.targetPos.set(pos[0], pos[1], pos[2]);
-    this.targetYaw = rot[1];
   }
 
   public update(deltaTime: number): void {
-    // Smooth Interpolation towards target
-    const lerpFactor = Math.min(1.0, deltaTime * 12.0); // Smooth 12Hz lerp rate
-    this.currentPos.lerp(this.targetPos, lerpFactor);
+    if (this.buffer.length === 0) return;
 
-    // Lerp yaw rotation
-    this.currentYaw += (this.targetYaw - this.currentYaw) * lerpFactor;
+    const renderTime = Date.now() - this.interpolationDelayMs;
+
+    // Snapshot Interpolation Loop
+    if (this.buffer.length >= 2 && this.buffer[0].timestamp <= renderTime) {
+      let leftIndex = -1;
+
+      // Find the snapshots enclosing our target renderTime
+      for (let i = 0; i < this.buffer.length - 1; i++) {
+        if (this.buffer[i].timestamp <= renderTime && this.buffer[i + 1].timestamp >= renderTime) {
+          leftIndex = i;
+          break;
+        }
+      }
+
+      if (leftIndex !== -1) {
+        const snapA = this.buffer[leftIndex];
+        const snapB = this.buffer[leftIndex + 1];
+
+        // Linear interpolation factor between snapA and snapB
+        const duration = snapB.timestamp - snapA.timestamp;
+        const t = duration > 0 ? (renderTime - snapA.timestamp) / duration : 1;
+
+        // Vector3 lerp for position
+        this.currentPos.set(
+          snapA.position[0] + (snapB.position[0] - snapA.position[0]) * t,
+          snapA.position[1] + (snapB.position[1] - snapA.position[1]) * t,
+          snapA.position[2] + (snapB.position[2] - snapA.position[2]) * t
+        );
+
+        // Angle lerp for yaw rotation
+        const diffYaw = snapB.rotation[1] - snapA.rotation[1];
+        // Handle wrapping yaw angle (mod 2pi)
+        const shortestYaw = Math.atan2(Math.sin(diffYaw), Math.cos(diffYaw));
+        this.currentYaw = snapA.rotation[1] + shortestYaw * t;
+
+        this.group.position.copy(this.currentPos);
+        this.group.rotation.y = this.currentYaw;
+        return;
+      }
+    }
+
+    // Fallback: lerp smoothly to the latest received snapshot if buffer is starved
+    const latest = this.buffer[this.buffer.length - 1];
+    const lerpFactor = Math.min(1.0, deltaTime * 12.0);
+    this.currentPos.lerp(new THREE.Vector3(latest.position[0], latest.position[1], latest.position[2]), lerpFactor);
+    this.currentYaw += (latest.rotation[1] - this.currentYaw) * lerpFactor;
 
     this.group.position.copy(this.currentPos);
     this.group.rotation.y = this.currentYaw;

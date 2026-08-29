@@ -20,6 +20,7 @@ export interface TelemetryData {
   timeOfDay: number;
   weatherType: string;
   breakProgress: number;
+  bowChargeRatio: number;
   profilerMetrics: { 
     activeChunks: number; 
     cachedChunks: number; 
@@ -53,6 +54,7 @@ export class TelemetryStore {
     fps: 60, loadedChunks: 0,
     timeOfDay: 8.0, weatherType: 'clear',
     breakProgress: 0,
+    bowChargeRatio: 0,
     profilerMetrics: { activeChunks: 0, cachedChunks: 0, queuedTasks: 0, generatingTasks: 0, dirtyChunks: 0, meshUploadsPerFrame: 0, frameTimeMs: 0, simTimeMs: 0, renderTimeMs: 0, drawCalls: 0, triangles: 0, memoryEst: 0 }
   };
   

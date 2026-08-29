@@ -1,6 +1,7 @@
 
 import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { VoxelMesher, TransferableMeshData } from './VoxelMesher';
+import { WorldPreset } from './WorldConfig';
 
 export type WorkerTaskType = 'generate' | 'mesh';
 
@@ -10,6 +11,7 @@ export interface GenerateTaskInput {
   cx: number;
   cz: number;
   seed: number;
+  preset?: WorldPreset;
   modifiedBlocks?: Record<string, number>;
 }
 
@@ -18,6 +20,7 @@ export interface MeshTaskInput {
   taskId: string;
   cx: number;
   cz: number;
+  sourceRevision?: number;
   centerBuffer: ArrayBuffer;
   neighborBuffers: Record<string, ArrayBuffer>;
 }
@@ -37,6 +40,7 @@ export interface MeshTaskResult {
   taskId: string;
   cx: number;
   cz: number;
+  sourceRevision: number;
   meshData: TransferableMeshData;
 }
 
@@ -45,21 +49,24 @@ export type WorkerTaskResult = GenerateTaskResult | MeshTaskResult;
 if (typeof self !== 'undefined') {
   let generatorCore: WorldGeneratorCore | null = null;
   let currentSeed = -1;
+  let currentPreset: WorldPreset | null = null;
 
   self.onmessage = (e: MessageEvent<WorkerTaskInput>) => {
     const input = e.data;
 
     if (input.type === 'generate') {
-      if (!generatorCore || currentSeed !== input.seed) {
-        generatorCore = new WorldGeneratorCore(input.seed);
+      const preset = input.preset || 'standard';
+      if (!generatorCore || currentSeed !== input.seed || currentPreset !== preset) {
+        generatorCore = new WorldGeneratorCore(input.seed, preset);
         currentSeed = input.seed;
+        currentPreset = preset;
       }
       const blocks = generatorCore.generateChunkData(input.cx, input.cz, input.modifiedBlocks);
       const response: GenerateTaskResult = { type: 'generate', taskId: input.taskId, cx: input.cx, cz: input.cz, buffer: blocks.buffer };
       (self as unknown as { postMessage: (msg: any, transfer: any[]) => void }).postMessage(response, [blocks.buffer]);
     } 
     else if (input.type === 'mesh') {
-      const { cx, cz, centerBuffer, neighborBuffers } = input;
+      const { cx, cz, centerBuffer, neighborBuffers, sourceRevision = 0 } = input;
       
       const centerBlocks = new Uint8Array(centerBuffer);
       const neighbors: Record<string, Uint8Array> = {};
@@ -95,7 +102,7 @@ if (typeof self !== 'undefined') {
 
       const meshData = VoxelMesher.buildChunkMeshData(getBlock, 16, 128, 16);
       
-      const response: MeshTaskResult = { type: 'mesh', taskId: input.taskId, cx, cz, meshData };
+      const response: MeshTaskResult = { type: 'mesh', taskId: input.taskId, cx, cz, sourceRevision, meshData };
       const transfers: ArrayBuffer[] = [
         meshData.solidPositions.buffer,
         meshData.solidNormals.buffer,

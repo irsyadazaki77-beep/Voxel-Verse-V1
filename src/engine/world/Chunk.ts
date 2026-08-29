@@ -43,53 +43,13 @@ function createGeometryFromTransferable(data: TransferableMeshData): { solidMesh
 }
 
 export class Chunk {
-  public applyTransferableMesh(
-    meshData: TransferableMeshData,
-    solidMaterial: THREE.Material,
-    transMaterial: THREE.Material,
-    waterMaterial: THREE.Material
-  ): void {
-    if (this.solidMesh) {
-      this.group.remove(this.solidMesh);
-      this.solidMesh.geometry.dispose();
-      this.solidMesh = undefined;
-    }
-    if (this.transMesh) {
-      this.group.remove(this.transMesh);
-      this.transMesh.geometry.dispose();
-      this.transMesh = undefined;
-    }
-    if (this.waterMesh) {
-      this.group.remove(this.waterMesh);
-      this.waterMesh.geometry.dispose();
-      this.waterMesh = undefined;
-    }
-
-    const { solidMesh: sGeo, transMesh: tGeo, waterMesh: wGeo } = createGeometryFromTransferable(meshData);
-
-    if (sGeo.attributes.position && sGeo.attributes.position.count > 0) {
-      this.solidMesh = new THREE.Mesh(sGeo, solidMaterial);
-      this.solidMesh.castShadow = true;
-      this.solidMesh.receiveShadow = true;
-      this.group.add(this.solidMesh);
-    }
-    if (tGeo.attributes.position && tGeo.attributes.position.count > 0) {
-      this.transMesh = new THREE.Mesh(tGeo, transMaterial);
-      this.group.add(this.transMesh);
-    }
-    if (wGeo.attributes.position && wGeo.attributes.position.count > 0) {
-      this.waterMesh = new THREE.Mesh(wGeo, waterMaterial);
-      this.group.add(this.waterMesh);
-    }
-
-    this.isDirty = false;
-  }
-
   public cx: number;
   public cz: number;
   public state: ChunkState = ChunkState.UNLOADED;
   public blocks: Uint8Array;
   public isDirty: boolean = true;
+  public voxelRevision: number = 0;
+  public meshRevision: number = 0;
   public lastActiveTime: number = Date.now();
 
   // Three.js Render Meshes
@@ -113,6 +73,68 @@ export class Chunk {
     (this.group as any).boundingBox = bbox;
   }
 
+  public setBlocks(data: Uint8Array): void {
+    this.blocks = data;
+    this.voxelRevision++;
+    this.isDirty = true;
+    this.state = ChunkState.GENERATED;
+  }
+
+  public applyTransferableMesh(
+    meshData: TransferableMeshData,
+    solidMaterial: THREE.Material,
+    transMaterial: THREE.Material,
+    waterMaterial: THREE.Material,
+    sourceRevision?: number
+  ): boolean {
+    if (sourceRevision !== undefined && sourceRevision !== this.voxelRevision) {
+      // Stale mesh result: chunk voxels were modified while worker was meshing
+      return false;
+    }
+
+    if (this.solidMesh) {
+      this.group.remove(this.solidMesh);
+      this.solidMesh.geometry.dispose();
+      this.solidMesh = null;
+    }
+    if (this.transMesh) {
+      this.group.remove(this.transMesh);
+      this.transMesh.geometry.dispose();
+      this.transMesh = null;
+    }
+    if (this.waterMesh) {
+      this.group.remove(this.waterMesh);
+      this.waterMesh.geometry.dispose();
+      this.waterMesh = null;
+    }
+
+    const { solidMesh: sGeo, transMesh: tGeo, waterMesh: wGeo } = createGeometryFromTransferable(meshData);
+
+    if (sGeo.attributes.position && sGeo.attributes.position.count > 0) {
+      this.solidMesh = new THREE.Mesh(sGeo, solidMaterial);
+      this.solidMesh.castShadow = true;
+      this.solidMesh.receiveShadow = true;
+      this.group.add(this.solidMesh);
+    }
+    if (tGeo.attributes.position && tGeo.attributes.position.count > 0) {
+      this.transMesh = new THREE.Mesh(tGeo, transMaterial);
+      this.group.add(this.transMesh);
+    }
+    if (wGeo.attributes.position && wGeo.attributes.position.count > 0) {
+      this.waterMesh = new THREE.Mesh(wGeo, waterMaterial);
+      this.group.add(this.waterMesh);
+    }
+
+    if (sourceRevision !== undefined) {
+      this.meshRevision = sourceRevision;
+    } else {
+      this.meshRevision = this.voxelRevision;
+    }
+    this.isDirty = false;
+    this.state = ChunkState.READY;
+    return true;
+  }
+
   // Fast Linear Index Calculation: X + Z * 16 + Y * 256
   public static getIndex(lx: number, ly: number, lz: number): number {
     return lx + lz * CHUNK_SIZE_X + ly * (CHUNK_SIZE_X * CHUNK_SIZE_Z);
@@ -132,6 +154,7 @@ export class Chunk {
     const idx = Chunk.getIndex(lx, ly, lz);
     if (this.blocks[idx] !== type) {
       this.blocks[idx] = type;
+      this.voxelRevision++;
       this.isDirty = true;
       this.state = ChunkState.DIRTY;
       return true;
@@ -154,6 +177,7 @@ export class Chunk {
     waterMaterial: THREE.Material
   ): void {
     if (!this.isDirty) return;
+    const rev = this.voxelRevision;
 
     // Discard old geometries
     if (this.solidMesh) {
@@ -200,6 +224,7 @@ export class Chunk {
       this.group.add(this.waterMesh);
     }
 
+    this.meshRevision = rev;
     this.isDirty = false;
     this.state = ChunkState.READY;
   }

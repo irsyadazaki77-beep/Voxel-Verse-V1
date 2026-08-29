@@ -3,6 +3,7 @@
 
 export type GameMode = 'survival' | 'creative' | 'adventure' | 'hardcore';
 export type Difficulty = 'peaceful' | 'easy' | 'normal' | 'hard';
+export type WorldPreset = 'standard' | 'continental' | 'archipelago' | 'mountainous' | 'flattish';
 
 export enum BlockType {
   AIR = 0,
@@ -324,6 +325,7 @@ export interface WorldSaveData {
   seed: number;
   gameMode: GameMode;
   difficulty: Difficulty;
+  preset?: WorldPreset;
   createdAt: number;
   lastPlayed: number;
   gameTime: number; // seconds

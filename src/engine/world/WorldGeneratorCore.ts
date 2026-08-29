@@ -1,14 +1,16 @@
 import { BlockType } from '../../types';
 import { SimplexNoise } from '../math/Noise';
-import { SEA_LEVEL } from './WorldConfig';
-import { BiomeManager } from './BiomeManager';
+import { SEA_LEVEL, WORLD_PRESETS, WorldPreset, WorldGenParameters, CHUNK_SIZE_Y } from './WorldConfig';
+import { StructureGenerator } from './StructureGenerator';
 
 const CHUNK_SIZE_X = 16;
-const CHUNK_SIZE_Y = 128;
 const CHUNK_SIZE_Z = 16;
 
 export class WorldGeneratorCore {
-  private seed: number;
+  public seed: number;
+  public preset: WorldPreset;
+  public params: WorldGenParameters;
+
   private contNoise: SimplexNoise;
   private erosionNoise: SimplexNoise;
   private peaksNoise: SimplexNoise;
@@ -20,8 +22,12 @@ export class WorldGeneratorCore {
   private ravineNoise: SimplexNoise;
   private oreNoise: SimplexNoise;
 
-  constructor(seed: number = 42819) {
+  constructor(seed: number = 42819, preset: WorldPreset = 'standard', config?: Partial<WorldGenParameters>) {
     this.seed = seed;
+    this.preset = preset;
+    const basePreset = WORLD_PRESETS[preset] || WORLD_PRESETS.standard;
+    this.params = { ...basePreset, ...(config || {}) };
+
     this.contNoise = new SimplexNoise(seed);
     this.erosionNoise = new SimplexNoise(seed + 111);
     this.peaksNoise = new SimplexNoise(seed + 222);
@@ -34,10 +40,34 @@ export class WorldGeneratorCore {
     this.oreNoise = new SimplexNoise(seed + 999);
   }
 
+  public getTerrainHeight(wx: number, wz: number): number {
+    const p = this.params;
+    const cont = this.contNoise.fbm2D(wx * p.continentalnessScale, wz * p.continentalnessScale, 4, 0.45);
+    const erosion = this.erosionNoise.fbm2D(wx * p.erosionScale, wz * p.erosionScale, 3, 0.5);
+    const peaks = Math.abs(this.peaksNoise.fbm2D(wx * p.peaksScale, wz * p.peaksScale, 3, 0.5));
+    const detail = this.detailNoise.fbm2D(wx * 0.012, wz * 0.012, 2, 0.5);
+
+    let baseHeight = 30 + cont * 26 + (1.0 - Math.abs(erosion)) * 12 + detail * 5;
+    if (peaks > 0.48) {
+      baseHeight += Math.pow((peaks - 0.48) * 2.2, 1.8) * p.mountainHeightScale;
+    }
+
+    const rVal = Math.abs(this.riverNoise.fbm2D(wx * p.riverFrequency, wz * p.riverFrequency, 3, 0.5));
+    const isRiver = cont > -0.2 && rVal < 0.035;
+    if (isRiver) {
+      const riverDepth = Math.floor((0.035 - rVal) * 200);
+      baseHeight = Math.max(p.seaLevel - 3, baseHeight - riverDepth);
+    }
+
+    let height = Math.floor(baseHeight);
+    return Math.max(3, Math.min(CHUNK_SIZE_Y - 4, height));
+  }
+
   public generateChunkData(cx: number, cz: number, modifiedBlocks?: Record<string, number>): Uint8Array {
     const blocks = new Uint8Array(CHUNK_SIZE_X * CHUNK_SIZE_Y * CHUNK_SIZE_Z);
     const getIndex = (x: number, y: number, z: number) => x + z * CHUNK_SIZE_X + y * (CHUNK_SIZE_X * CHUNK_SIZE_Z);
     const heightMap = new Int16Array(CHUNK_SIZE_X * CHUNK_SIZE_Z);
+    const p = this.params;
 
     // 1. TERRAIN & BIOME COLUMN GENERATION
     for (let lx = 0; lx < CHUNK_SIZE_X; lx++) {
@@ -45,29 +75,15 @@ export class WorldGeneratorCore {
       for (let lz = 0; lz < CHUNK_SIZE_Z; lz++) {
         const wz = cz * CHUNK_SIZE_Z + lz;
 
-        const cont = this.contNoise.fbm2D(wx * 0.0007, wz * 0.0007, 4, 0.45);
-        const erosion = this.erosionNoise.fbm2D(wx * 0.0025, wz * 0.0025, 3, 0.5);
-        const peaks = Math.abs(this.peaksNoise.fbm2D(wx * 0.004, wz * 0.004, 3, 0.5));
-        const detail = this.detailNoise.fbm2D(wx * 0.012, wz * 0.012, 2, 0.5);
+        const cont = this.contNoise.fbm2D(wx * p.continentalnessScale, wz * p.continentalnessScale, 4, 0.45);
         const temp = this.tempNoise.fbm2D(wx * 0.0012, wz * 0.0012, 3, 0.5);
         const humid = (this.humidNoise.fbm2D(wx * 0.0012 + 1000, wz * 0.0012 + 1000, 3, 0.5) + 1) * 0.5;
 
-        let baseHeight = 30 + cont * 26 + (1.0 - Math.abs(erosion)) * 12 + detail * 5;
-        if (peaks > 0.48) {
-          baseHeight += Math.pow((peaks - 0.48) * 2.2, 1.8) * 40;
-        }
-
-        const rVal = Math.abs(this.riverNoise.fbm2D(wx * 0.005, wz * 0.005, 3, 0.5));
-        const isRiver = cont > -0.2 && rVal < 0.035;
-        let riverDepth = 0;
-        if (isRiver) {
-          riverDepth = Math.floor((0.035 - rVal) * 200);
-          baseHeight = Math.max(SEA_LEVEL - 3, baseHeight - riverDepth);
-        }
-
-        let height = Math.floor(baseHeight);
-        height = Math.max(3, Math.min(CHUNK_SIZE_Y - 4, height));
+        const height = this.getTerrainHeight(wx, wz);
         heightMap[lx + lz * CHUNK_SIZE_X] = height;
+
+        const rVal = Math.abs(this.riverNoise.fbm2D(wx * p.riverFrequency, wz * p.riverFrequency, 3, 0.5));
+        const isRiver = cont > -0.2 && rVal < 0.035;
 
         let surfaceBlock = 2; // GRASS
         let subBlock = 1;     // DIRT
@@ -76,7 +92,7 @@ export class WorldGeneratorCore {
         if (cont < -0.35) {
           surfaceBlock = 6;
           subBlock = 3;
-        } else if (height <= SEA_LEVEL + 2 && cont < -0.22) {
+        } else if (height <= p.seaLevel + 2 && cont < -0.22) {
           surfaceBlock = 5;
           subBlock = 5;
         } else if (temp > 0.5 && humid < 0.2) {
@@ -104,7 +120,7 @@ export class WorldGeneratorCore {
           } else if (y >= height - 3) {
             block = subBlock;
           } else {
-            const oreVal = this.oreNoise.noise3D(wx * 0.12, y * 0.15, wz * 0.12);
+            const oreVal = this.oreNoise.noise3D(wx * 0.12, y * 0.15, wz * 0.12) * p.oreAbundance;
             if (oreVal > 0.62) {
               if (y < 12) block = 25;
               else if (y < 22) block = 24;
@@ -122,7 +138,9 @@ export class WorldGeneratorCore {
             const ravVal = Math.abs(this.ravineNoise.noise2D(wx * 0.01, wz * 0.01));
             const isRavine = ravVal < 0.018 && y < height - 6 && y > 15;
 
-            if (caveVal > 0.58 || isRavine) {
+            // Scaled by caveDensity (standard density: ~0.035 -> threshold 0.58)
+            const caveThreshold = 0.62 - (p.caveDensity * 1.1);
+            if (caveVal > caveThreshold || isRavine) {
               block = (y < 6) ? 29 : 0;
             }
           }
@@ -130,7 +148,7 @@ export class WorldGeneratorCore {
           blocks[getIndex(lx, y, lz)] = block;
         }
 
-        for (let y = height + 1; y <= SEA_LEVEL; y++) {
+        for (let y = height + 1; y <= p.seaLevel; y++) {
           blocks[getIndex(lx, y, lz)] = 28;
         }
       }
@@ -272,6 +290,28 @@ export class WorldGeneratorCore {
             }
           }
         }
+      }
+    }
+
+    // 4. MULTI-CHUNK PROCEDURAL STRUCTURE BLUEPRINTS
+    const structures = StructureGenerator.getStructureBlocksForChunk(
+      cx,
+      cz,
+      this.seed,
+      p.structureDensity,
+      (wx, wz) => this.getTerrainHeight(wx, wz)
+    );
+
+    for (const place of structures) {
+      if (
+        place.dx >= 0 &&
+        place.dx < CHUNK_SIZE_X &&
+        place.dy >= 0 &&
+        place.dy < CHUNK_SIZE_Y &&
+        place.dz >= 0 &&
+        place.dz < CHUNK_SIZE_Z
+      ) {
+        blocks[getIndex(place.dx, place.dy, place.dz)] = place.block;
       }
     }
 

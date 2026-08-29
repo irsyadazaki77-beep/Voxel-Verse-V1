@@ -26,7 +26,6 @@ interface HUDProps {
   onOpenMultiplayerLobby?: () => void;
   activeBoss?: BossCombatState | null;
   objectiveText?: string;
-  bowChargeRatio?: number; // 0..1
 }
 
 const HUDTelemetryOverlay = () => {
@@ -174,7 +173,6 @@ export const HUD: React.FC<HUDProps> = ({
   onOpenContentDebug,
   activeBoss,
   objectiveText,
-  bowChargeRatio,
 }) => {
   const [settings, setSettings] = useState<GameSettings>(SettingsManager.get());
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
@@ -209,6 +207,21 @@ export const HUD: React.FC<HUDProps> = ({
           circle.style.strokeDashoffset = (75.4 * (1 - stats.breakProgress)).toString();
         } else {
           svg.style.display = 'none';
+        }
+      }
+
+      const bowReticle = document.getElementById('hud-bow-reticle');
+      const bowCircle = document.getElementById('hud-bow-circle');
+      if (bowReticle && bowCircle) {
+        if (stats.bowChargeRatio > 0) {
+          bowReticle.style.display = 'flex';
+          if (stats.bowChargeRatio >= 0.95) {
+            bowCircle.className = 'w-10 h-10 rounded-full border border-dashed transition-all duration-75 flex items-center justify-center border-amber-400 scale-75 shadow-[0_0_12px_rgba(251,191,36,0.8)]';
+          } else {
+            bowCircle.className = 'w-10 h-10 rounded-full border border-dashed transition-all duration-75 flex items-center justify-center border-white/50 scale-125';
+          }
+        } else {
+          bowReticle.style.display = 'none';
         }
       }
     });
@@ -282,17 +295,14 @@ export const HUD: React.FC<HUDProps> = ({
       <div id="hud-crosshair-center" className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         
         {/* Bow Charge Focus Reticle */}
-        {typeof bowChargeRatio === 'number' && bowChargeRatio > 0 && (
-          <div className="relative flex items-center justify-center pointer-events-none mb-1">
-            <div 
-              className={`w-10 h-10 rounded-full border border-dashed transition-all duration-75 flex items-center justify-center ${
-                bowChargeRatio >= 0.95 ? 'border-amber-400 scale-75 shadow-[0_0_12px_rgba(251,191,36,0.8)]' : 'border-white/50 scale-125'
-              }`}
-            >
-              <div className="w-1.5 h-1.5 rounded-full bg-white/90" />
-            </div>
+        <div id="hud-bow-reticle" style={{ display: 'none' }} className="relative flex items-center justify-center pointer-events-none mb-1">
+          <div 
+            id="hud-bow-circle"
+            className="w-10 h-10 rounded-full border border-dashed transition-all duration-75 flex items-center justify-center border-white/50 scale-125"
+          >
+            <div className="w-1.5 h-1.5 rounded-full bg-white/90" />
           </div>
-        )}
+        </div>
 
         <div className={`w-5 h-5 relative flex items-center justify-center transition-all ${targetHit ? 'scale-125' : ''}`}>
           <div className={`absolute w-3.5 h-[2px] rounded-full shadow-[0_0_4px_rgba(0,0,0,0.8)] ${targetHit ? 'bg-sky-400' : 'bg-white/80'}`}></div>

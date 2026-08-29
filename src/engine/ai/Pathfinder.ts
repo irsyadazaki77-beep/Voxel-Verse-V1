@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { VoxelWorld } from '../world/VoxelWorld';
+import { GameEventBus } from '../events/GameEventBus';
 
 interface PathNode {
   x: number;
@@ -11,7 +12,6 @@ interface PathNode {
   parent: PathNode | null;
 }
 
-
 interface CachedPath {
   path: [number, number, number][] | null;
   timestamp: number;
@@ -19,9 +19,28 @@ interface CachedPath {
 
 export class Pathfinder {
   private static pathCache: Map<string, CachedPath> = new Map();
+  private static readonly MAX_CACHE_ENTRIES = 200;
+  private static readonly CACHE_TTL_MS = 2500;
+  private static isInitialized = false;
+
+  public static initialize(): void {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    // Invalidate cache immediately when world blocks are placed or broken
+    GameEventBus.on('BLOCK_MINED', () => {
+      Pathfinder.clearCache();
+    });
+    GameEventBus.on('BLOCK_PLACED', () => {
+      Pathfinder.clearCache();
+    });
+  }
+
+  public static clearCache(): void {
+    this.pathCache.clear();
+  }
 
   private static getCacheKey(startX: number, startY: number, startZ: number, goalX: number, goalY: number, goalZ: number): string {
-    // Quantize coordinates to roughly 1 block size to increase cache hits
     return `${Math.round(startX)},${Math.round(startY)},${Math.round(startZ)}_${Math.round(goalX)},${Math.round(goalY)},${Math.round(goalZ)}`;
   }
 
@@ -32,6 +51,10 @@ export class Pathfinder {
     goal: THREE.Vector3,
     maxDistance: number = 24
   ): [number, number, number][] | null {
+    if (!this.isInitialized) {
+      this.initialize();
+    }
+
     const startX = Math.floor(start.x);
     const startY = Math.floor(start.y);
     const startZ = Math.floor(start.z);
@@ -42,7 +65,8 @@ export class Pathfinder {
 
     const cacheKey = this.getCacheKey(startX, startY, startZ, goalX, goalY, goalZ);
     const cached = this.pathCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < 2000) {
+    const now = Date.now();
+    if (cached && (now - cached.timestamp) < this.CACHE_TTL_MS) {
       return cached.path;
     }
 
@@ -83,7 +107,7 @@ export class Pathfinder {
 
       if (current.x === goalX && Math.abs(current.y - goalY) <= 1 && current.z === goalZ) {
         const path = this.reconstructPath(current);
-        this.pathCache.set(cacheKey, { path, timestamp: Date.now() });
+        this.setCached(cacheKey, path);
         return path;
       }
 
@@ -121,15 +145,26 @@ export class Pathfinder {
     }
 
     // No path found
-    this.pathCache.set(cacheKey, { path: null, timestamp: Date.now() });
+    this.setCached(cacheKey, null);
     return null;
   }
 
-  
+  private static setCached(key: string, path: [number, number, number][] | null): void {
+    if (this.pathCache.size >= this.MAX_CACHE_ENTRIES) {
+      this.cleanCache();
+      if (this.pathCache.size >= this.MAX_CACHE_ENTRIES) {
+        // Delete oldest entry
+        const firstKey = this.pathCache.keys().next().value;
+        if (firstKey) this.pathCache.delete(firstKey);
+      }
+    }
+    this.pathCache.set(key, { path, timestamp: Date.now() });
+  }
+
   public static cleanCache(): void {
     const now = Date.now();
     for (const [key, value] of this.pathCache.entries()) {
-      if (now - value.timestamp > 5000) {
+      if (now - value.timestamp > this.CACHE_TTL_MS) {
         this.pathCache.delete(key);
       }
     }

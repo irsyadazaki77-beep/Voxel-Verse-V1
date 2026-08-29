@@ -81,13 +81,14 @@ export class ChunkScheduler {
                 cx,
                 cz,
                 seed: this.world.seed,
+                preset: this.world.preset,
                 priority,
                 sessionToken: this.workerPool.currentSessionToken,
                 modifiedBlocks: modBlocksObj,
                 onComplete: (buffer) => {
                   const targetChunk = this.world.chunks.get(key);
                   if (targetChunk) {
-                    targetChunk.blocks = new Uint8Array(buffer);
+                    targetChunk.setBlocks(new Uint8Array(buffer));
                     targetChunk.state = ChunkState.GENERATED;
                     targetChunk.isDirty = true;
                     this.dirtyQueue.add(key);
@@ -169,26 +170,48 @@ export class ChunkScheduler {
         chunk.isDirty = false;
         this.dirtyQueue.delete(key);
 
+        const dx = cx - playerCX;
+        const dz = cz - playerCZ;
+        const distSq = dx * dx + dz * dz;
+        const dirX = dx === 0 && dz === 0 ? 0 : dx / Math.sqrt(distSq || 1);
+        const dirZ = dx === 0 && dz === 0 ? 0 : dz / Math.sqrt(distSq || 1);
+        const dot = dirX * cameraDir.x + dirZ * cameraDir.z;
+
+        let meshPriority = Math.max(10, 1200 - distSq * 20);
+        if (dot > 0) meshPriority += dot * 250;
+        if (dx === 0 && dz === 0) meshPriority += 2000;
+        meshPriority += 150; // Meshing boost so re-meshing always beats far generation
+
+        const chunkSourceRev = chunk.voxelRevision;
+
         this.workerPool.enqueueTask({
           type: 'mesh',
           taskId: `mesh_${key}_${Date.now()}`,
           cx,
           cz,
-          priority: 100, // Meshing gets high priority
+          sourceRevision: chunkSourceRev,
+          priority: meshPriority,
           sessionToken: this.workerPool.currentSessionToken,
           centerBuffer: chunk.blocks!.buffer,
           neighborBuffers,
-          onComplete: (meshData) => {
+          onComplete: (meshData, sourceRevision) => {
             const targetChunk = this.world.chunks.get(key);
             if (targetChunk) {
-              targetChunk.applyTransferableMesh(
+              const applied = targetChunk.applyTransferableMesh(
                 meshData, 
                 this.world.solidMaterial, 
                 this.world.transMaterial, 
-                this.world.waterMaterial
+                this.world.waterMaterial,
+                sourceRevision
               );
-              targetChunk.state = ChunkState.READY;
-              uploads++;
+              if (applied) {
+                targetChunk.state = ChunkState.READY;
+                uploads++;
+              } else {
+                // Chunk voxels changed while worker was meshing; mark dirty so it re-meshes with new revision
+                targetChunk.setDirty();
+                this.dirtyQueue.add(key);
+              }
             }
           }
         });
