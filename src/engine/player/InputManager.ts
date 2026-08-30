@@ -19,6 +19,7 @@ export type InputAction =
   | 'Map'
   | 'ContentDebug'
   | 'Pause'
+  | 'Dodge'
   | 'Hotbar1'
   | 'Hotbar2'
   | 'Hotbar3'
@@ -77,6 +78,9 @@ export const DEFAULT_KEY_BINDINGS: Record<string, InputAction> = {
   F7: 'ContentDebug',
   F5: 'Perspective',
   Escape: 'Pause',
+  KeyR: 'Dodge',
+  r: 'Dodge',
+  R: 'Dodge',
   Digit1: 'Hotbar1',
   Digit2: 'Hotbar2',
   Digit3: 'Hotbar3',

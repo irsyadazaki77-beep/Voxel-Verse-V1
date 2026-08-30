@@ -4,6 +4,7 @@ import { BLOCK_DEFS } from '../engine/world/BlockRegistry';
 import { ITEM_DEFS } from '../engine/items/ItemRegistry';
 import { RaycastHit } from '../engine/world/VoxelWorld';
 import { SettingsManager, GameSettings } from '../engine/ui/SettingsManager';
+import { QuestManager } from '../engine/progression/QuestManager';
 import { NotificationManager, GameNotification } from '../engine/ui/NotificationManager';
 import { SubtitleManager, SubtitleEntry } from '../engine/ui/SubtitleManager';
 import { 
@@ -23,6 +24,7 @@ import {
 } from 'lucide-react';
 import { TelemetryStore } from '../engine/ui/TelemetryStore';
 import { GameEventBus } from '../engine/events/GameEventBus';
+import { AetherAnomalyManager } from '../engine/anomaly/AetherAnomalyManager';
 
 interface HUDProps {
   hotbar: (ItemStack | null)[];
@@ -263,6 +265,26 @@ export const HUD: React.FC<HUDProps> = ({
   const [hitmarker, setHitmarker] = useState<'none' | 'hit' | 'crit' | 'blocked'>('none');
   const [damageFlash, setDamageFlash] = useState(false);
   const [activeItemBanner, setActiveItemBanner] = useState<string | null>(null);
+  const [activeQuests, setActiveQuests] = useState<{ def: any; progress: number[]; state: string }[]>([]);
+  const [anomalyStatus, setAnomalyStatus] = useState<'dormant' | 'warning' | 'active' | 'climax' | 'resolved'>('dormant');
+  const [anomalyIntensity, setAnomalyIntensity] = useState(0);
+
+  useEffect(() => {
+    setAnomalyStatus(AetherAnomalyManager.status);
+    setAnomalyIntensity(AetherAnomalyManager.activeIntensity);
+    
+    return AetherAnomalyManager.onAnomalyStateChange(() => {
+      setAnomalyStatus(AetherAnomalyManager.status);
+      setAnomalyIntensity(AetherAnomalyManager.activeIntensity);
+    });
+  }, []);
+
+  useEffect(() => {
+    setActiveQuests(QuestManager.getActiveQuests().filter(q => q.state === 'active'));
+    return QuestManager.onQuestChange(() => {
+      setActiveQuests(QuestManager.getActiveQuests().filter(q => q.state === 'active'));
+    });
+  }, []);
 
   // Subscribe to Combat Events
   useEffect(() => {
@@ -369,15 +391,52 @@ export const HUD: React.FC<HUDProps> = ({
         <div className="flex flex-col gap-2">
           {settings.gameplay.showFps && <HUDTelemetryOverlay />}
           
-          {/* Active Quest Objective Tracker */}
-          {objectiveText && (
+          {/* Active Quests HUD Panel */}
+          {activeQuests.length > 0 ? (
+            <div className="voxel-panel-subtle p-3 w-72 max-w-xs border-amber-500/20 text-xs animate-fade-in pointer-events-auto space-y-2 mt-2 bg-black/60">
+              <div className="flex items-center gap-1.5 border-b border-white/5 pb-1 text-amber-300 font-bold uppercase tracking-wider text-[10px]">
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                <span>Active Quests</span>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {activeQuests.map((q) => (
+                  <div key={q.def.id} className="space-y-1">
+                    <div className="font-bold text-zinc-200 text-[11px] leading-tight">
+                      {q.def.title}
+                    </div>
+                    <div className="space-y-1 pl-1.5 border-l border-amber-500/20">
+                      {q.def.objectives.map((obj: any, idx: number) => {
+                        const count = q.progress[idx] || 0;
+                        const isDone = count >= obj.requiredCount;
+                        return (
+                          <div 
+                            key={idx} 
+                            className={`flex items-start gap-1.5 text-[10px] leading-relaxed transition-colors ${
+                              isDone ? 'text-zinc-500 line-through' : 'text-zinc-400'
+                            }`}
+                          >
+                            <span className={isDone ? 'text-emerald-500' : 'text-amber-400 shrink-0 mt-0.5'}>
+                              {isDone ? '✓' : '•'}
+                            </span>
+                            <span>
+                              {obj.description} ({count}/{obj.requiredCount})
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : objectiveText ? (
             <div className="voxel-panel-subtle px-3 py-1.5 max-w-xs border-amber-500/30 flex items-center gap-2 animate-fade-in pointer-events-auto">
               <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <div className="text-[11px] text-zinc-200 truncate">
                 <strong className="text-amber-300">Objective:</strong> {objectiveText}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Boss Encounter Health Bar */}
           {activeBoss && (
@@ -394,6 +453,30 @@ export const HUD: React.FC<HUDProps> = ({
                 <div 
                   className="h-full bg-gradient-to-r from-rose-600 via-rose-500 to-amber-400 rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(244,63,94,0.8)]"
                   style={{ width: `${Math.max(0, Math.min(100, (activeBoss.health / activeBoss.maxHealth) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Center: Aether Anomaly & Environmental Warning Panel */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none z-10 top-4">
+          {anomalyStatus !== 'dormant' && (
+            <div className={`voxel-panel p-2.5 px-4 w-80 shadow-[0_0_20px_rgba(147,51,234,0.4)] animate-pulse border-purple-500/50 bg-purple-950/40 backdrop-blur-md text-center pointer-events-auto flex flex-col gap-1`}>
+              <div className="flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-purple-300">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-spin" />
+                <span>Aether Anomaly: {anomalyStatus.toUpperCase()}</span>
+              </div>
+              <div className="text-xs font-semibold text-purple-100">
+                {anomalyStatus === 'warning' && 'Leylines rupturing... Storm warning!'}
+                {anomalyStatus === 'active' && 'Aether Storm active! Wildlife mutated.'}
+                {anomalyStatus === 'climax' && 'PORTAL ACTIVE • Elite Anomaly Sentinel mutated!'}
+                {anomalyStatus === 'resolved' && 'Leylines stabilized. Pure energy dispersing...'}
+              </div>
+              <div className="h-1 bg-black/60 rounded-full border border-purple-500/20 overflow-hidden mt-1 p-[0.5px]">
+                <div 
+                  className="h-full bg-gradient-to-r from-purple-600 via-indigo-500 to-pink-500 rounded-full transition-all duration-300"
+                  style={{ width: `${anomalyIntensity * 100}%` }}
                 />
               </div>
             </div>

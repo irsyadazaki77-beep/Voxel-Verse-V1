@@ -68,6 +68,26 @@ export class VoxelWorld {
       side: THREE.DoubleSide,
     });
 
+    this.transMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = { value: 0 };
+      this.transMaterial.userData.shader = shader;
+      shader.vertexShader = `
+        uniform float uTime;
+        ${shader.vertexShader}
+      `.replace(
+        '#include <begin_vertex>',
+        `
+        #include <begin_vertex>
+        // Subtle GPU wind sway for cross vegetation foliage (top vertices)
+        if (position.y > 0.3) {
+          float wind = sin(transformed.x * 2.5 + transformed.z * 2.5 + uTime * 2.8) * 0.045;
+          transformed.x += wind;
+          transformed.z += wind * 0.5;
+        }
+        `
+      );
+    };
+
     this.waterMaterial = new THREE.MeshStandardMaterial({
       map: atlasTex,
       vertexColors: true,
@@ -89,7 +109,11 @@ export class VoxelWorld {
         '#include <begin_vertex>',
         `
         #include <begin_vertex>
-        transformed.y += sin(transformed.x * 1.8 + uTime * 2.2) * 0.035 + cos(transformed.z * 1.8 + uTime * 1.8) * 0.035;
+        // Water 3.0: Dual sinusoidal wave surface displacement
+        float wave1 = sin(transformed.x * 2.2 + uTime * 2.5) * 0.04;
+        float wave2 = cos(transformed.z * 2.2 + uTime * 2.0) * 0.04;
+        float wave3 = sin((transformed.x + transformed.z) * 1.5 + uTime * 3.0) * 0.025;
+        transformed.y += wave1 + wave2 + wave3;
         `
       );
     };
@@ -424,6 +448,9 @@ export class VoxelWorld {
     this.waterTime += deltaTime;
     if (this.waterMaterial.userData.shader) {
       this.waterMaterial.userData.shader.uniforms.uTime.value = this.waterTime;
+    }
+    if (this.transMaterial.userData.shader) {
+      this.transMaterial.userData.shader.uniforms.uTime.value = this.waterTime;
     }
   }
 

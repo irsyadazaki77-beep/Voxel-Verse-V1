@@ -14,7 +14,7 @@ export class EnvironmentSystem implements GameSystem {
     if (!sky || !player || !world) return;
 
     const biome = world.biomeManager.getBiome(player.position.x, player.position.z);
-    sky.update(deltaTime, player.position, biome);
+    sky.update(deltaTime, player.position, biome, player.isEyesInWater);
 
     if (weather) {
       weather.update(deltaTime, player.position, (biome?.temperature ?? 0) < 0);
@@ -23,6 +23,9 @@ export class EnvironmentSystem implements GameSystem {
       clouds.update(deltaTime, player.position, weather ? weather.weather : { type: 'clear', intensity: 0, windAngle: 0.5, windSpeed: 2.0, durationLeft: 0 });
     }
     if (particles) {
+      if (player.isEyesInWater) {
+        particles.spawnUnderwaterBubbles(player.position);
+      }
       particles.update(deltaTime);
     }
   }

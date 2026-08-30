@@ -470,4 +470,28 @@ export class SoundSynthesizer {
     osc.start(t);
     osc.stop(t + 0.45);
   }
+
+  // 17. Generic Tone Play
+  public playTone(freq: number, dur: number, type: OscillatorType = 'sine'): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+
+    const vol = this.masterVolume * this.sfxVolume * 0.25;
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + dur);
+  }
 }

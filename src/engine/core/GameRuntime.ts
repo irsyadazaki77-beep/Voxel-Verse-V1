@@ -12,7 +12,9 @@ import { SoundSynthesizer } from '../audio/SoundSynthesizer';
 import { SaveManager } from '../storage/SaveManager';
 import { GameMode, GameSettings, WorldSaveData, ItemStack, BlockType, PlayerEquipment, BossCombatState } from '../../types';
 import { DiscoverySystem } from '../progression/DiscoverySystem';
-import { QuestManager } from '../progression/QuestManager';
+import { QuestManager, QUEST_REGISTRY } from '../progression/QuestManager';
+import { SettlementManager } from '../settlement/SettlementManager';
+import { AetherAnomalyManager } from '../anomaly/AetherAnomalyManager';
 import { WorldEventManager } from '../events/WorldEventManager';
 import { MapManager } from '../map/MapManager';
 import { InventoryManager } from '../items/InventoryManager';
@@ -25,6 +27,8 @@ import { FirstPersonViewmodel } from '../player/FirstPersonViewmodel';
 import { CameraMotionSystem } from '../player/CameraMotionSystem';
 
 // Import Systems
+import { SettingsManager } from '../ui/SettingsManager';
+import { NotificationManager } from '../ui/NotificationManager';
 import { SimulationSystem } from '../systems/SimulationSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { InteractionSystem } from '../systems/InteractionSystem';
@@ -97,6 +101,8 @@ export class GameRuntime {
   private frameCount: number = 0;
   private lastFpsTime: number = 0;
 
+  private settingsUnsubscribe: (() => void) | null = null;
+  private networkBlockUnsubscribe: (() => void) | null = null;
   private callbacks: GameRuntimeCallbacks = {};
 
   constructor(
@@ -115,6 +121,18 @@ export class GameRuntime {
     this.gameMode = gameMode;
     this.settings = settings;
 
+    // Listen/Sync to SettingsManager for dynamically changing settings
+    this.settingsUnsubscribe = SettingsManager.subscribe((newSettings) => {
+      this.settings = newSettings as any;
+      if (this.camera) {
+        this.camera.fov = newSettings.graphics.fov;
+        this.camera.updateProjectionMatrix();
+      }
+      if (this.renderer) {
+        this.renderer.shadowMap.enabled = newSettings.graphics.shadows;
+      }
+    });
+
     // 1. Scene & Camera Setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x7eb1eb);
@@ -126,7 +144,7 @@ export class GameRuntime {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = settings.shadows;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
 
@@ -237,6 +255,7 @@ export class GameRuntime {
     // Progression
     DiscoverySystem.initialize(worldData?.discoveries);
     QuestManager.initialize(worldData?.quests);
+    SettlementManager.initialize(worldData?.settlementProgress);
     WorldEventManager.initialize(worldData?.activeEvents);
     MapManager.initialize(worldData?.exploredMapTiles, worldData?.waypoints);
 
@@ -287,6 +306,7 @@ export class GameRuntime {
     this.clouds = new CloudSystem(this.scene);
     this.particles = new ParticleManager(this.scene);
     this.cameraMotion = new CameraMotionSystem();
+    this.player.cameraMotion = this.cameraMotion;
     this.viewmodel = new FirstPersonViewmodel();
 
     this.camera.add(this.viewmodel.rootGroup);
@@ -303,11 +323,62 @@ export class GameRuntime {
     this.renderSystem = new RenderSystem(this);
 
     this.combatSystem.initialize();
+    AetherAnomalyManager.initialize();
 
     // Register player position correction callback from authoritative server
     NetworkSession.getInstance().onPlayerCorrected((pos, vel) => {
       this.player.position.set(pos[0], pos[1], pos[2]);
       this.player.velocity.set(vel[0], vel[1], vel[2]);
+    });
+
+    // Listen to QUEST_COMPLETED to deliver XP, items, and reputation rewards to the player!
+    GameEventBus.on('QUEST_COMPLETED', (p) => {
+      // 1. Award XP
+      const leveledUp = this.stats.addXP(p.xpReward);
+      if (leveledUp) {
+        this.audio.playTone(440, 0.2); // Level up sound!
+        NotificationManager.push({
+          title: 'LEVEL UP!',
+          message: `You are now Level ${this.stats.level}!`,
+          priority: 'HIGH',
+          icon: '👑',
+          durationMs: 6000
+        });
+      }
+
+      // 2. Deliver Item rewards
+      const qDef = QUEST_REGISTRY[p.questId];
+      if (qDef && qDef.rewards) {
+        if (qDef.rewards.items) {
+          for (const item of qDef.rewards.items) {
+            this.addItemToInventory(item.itemId, item.count);
+          }
+        }
+
+        // 3. Deliver Reputation rewards (if configured for the quest's giver settlement!)
+        let settlementId: string | null = null;
+        if (qDef.giverSettlement) {
+          const settlementNameLower = qDef.giverSettlement.toLowerCase();
+          if (settlementNameLower.includes('haven')) {
+            settlementId = 'haven_camp';
+          } else if (settlementNameLower.includes('suncrest')) {
+            settlementId = 'suncrest_hamlet';
+          } else if (settlementNameLower.includes('outpost') || settlementNameLower.includes('bastion') || settlementNameLower.includes('ferrite')) {
+            settlementId = 'ferrite_outpost';
+          }
+        }
+
+        if (settlementId) {
+          SettlementManager.addReputation(settlementId, 25);
+        }
+      }
+    });
+
+    // Register block change replication callback to sync other players' edits without triggering echo loops
+    this.networkBlockUnsubscribe = NetworkSession.getInstance().onBlockChange((event) => {
+      if (this.world) {
+        this.world.setBlock(event.x, event.y, event.z, event.newBlock, true);
+      }
     });
   }
 
@@ -388,6 +459,19 @@ export class GameRuntime {
 
   public stop(): void {
     cancelAnimationFrame(this.reqId);
+
+    // Unsubscribe from SettingsManager and NetworkSession
+    if (this.settingsUnsubscribe) {
+      this.settingsUnsubscribe();
+    }
+    if (this.networkBlockUnsubscribe) {
+      this.networkBlockUnsubscribe();
+    }
+    QuestManager.dispose();
+    if (this.viewmodel) {
+      this.viewmodel.dispose();
+    }
+
     this.inputManager.dispose();
     this.world.dispose();
     this.sky.dispose();
@@ -434,6 +518,7 @@ export class GameRuntime {
     FurnaceManager.update(deltaTime);
     FarmingManager.update(deltaTime, this.world);
     DiscoverySystem.update(deltaTime);
+    AetherAnomalyManager.update(deltaTime, this);
     WorldEventManager.update(
       deltaTime,
       Math.floor((this.sky.timeOfDay || 8) / 24) + 1,
@@ -453,6 +538,11 @@ export class GameRuntime {
 
     // 3. Entity System Update (Old-style Entity update maintained here or in system)
     this.entities.update(deltaTime, this.world, this.player.position, this.sky.isNight, (dmg: number, src: string) => {
+      if (this.player.isDodging) {
+        // Invulnerable dodge iframe!
+        this.audio.playTone(380, 0.08);
+        return;
+      }
       this.stats.takeDamage(dmg, src);
       this.player.applyDamageFeedback();
     });

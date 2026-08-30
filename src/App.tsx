@@ -19,6 +19,8 @@ export default function App() {
     name: string;
     preset?: WorldPreset;
     isMultiplayer?: boolean;
+    sessionToken?: string;
+    playerName?: string;
   } | null>(null);
 
   const handleStartGame = (
@@ -27,7 +29,9 @@ export default function App() {
     gameMode: GameMode,
     worldName: string,
     preset?: WorldPreset,
-    isMultiplayer?: boolean
+    isMultiplayer?: boolean,
+    sessionToken?: string,
+    playerName?: string
   ) => {
     setActiveWorld({
       id: worldId,
@@ -36,6 +40,8 @@ export default function App() {
       name: worldName,
       preset: preset || 'standard',
       isMultiplayer: isMultiplayer || false,
+      sessionToken,
+      playerName,
     });
     setGameState('playing');
   };
@@ -58,6 +64,8 @@ export default function App() {
             worldName={activeWorld.name}
             preset={activeWorld.preset}
             isMultiplayer={activeWorld.isMultiplayer}
+            sessionToken={activeWorld.sessionToken}
+            playerName={activeWorld.playerName}
             onExitToMenu={handleExitToMenu}
           />
         )}

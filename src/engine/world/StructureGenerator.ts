@@ -2,6 +2,7 @@
 // Multi-chunk world-coordinate blueprints for seamless chunk-boundary generation & region grid checks
 import { BlockType } from '../../types';
 import { STRUCTURE_REGION_SIZE, CHUNK_SIZE_Y } from './WorldConfig';
+import { DungeonGenerator } from '../dungeon/DungeonGenerator';
 
 export interface VoxelBlockPlacement {
   dx: number; // Offset relative to structure origin
@@ -379,6 +380,117 @@ export class StructureGenerator {
     const chunkMinZ = cz * 16;
     const chunkMaxZ = chunkMinZ + 15;
 
+    // 1. DYNAMIC SPECIAL SETTLEMENTS (DETERMINISTIC WORLD LOCATIONS)
+    const settlements = [
+      { id: 'haven_camp', x: 8, z: 8, height: 64, type: 'haven' },
+      { id: 'suncrest_hamlet', x: 320, z: 280, height: 68, type: 'suncrest' },
+      { id: 'ferrite_outpost', x: 650, z: -500, height: 75, type: 'ferrite' }
+    ];
+
+    for (const s of settlements) {
+      const dx = s.x - (chunkMinX + 8);
+      const dz = s.z - (chunkMinZ + 8);
+      if (Math.abs(dx) < 36 && Math.abs(dz) < 36) {
+        let bp: VoxelBlockPlacement[] = [];
+        if (s.type === 'haven') {
+          bp = StructureGenerator.generateHavenCampBlueprint();
+        } else if (s.type === 'suncrest') {
+          bp = StructureGenerator.generateSuncrestHamletBlueprint();
+        } else if (s.type === 'ferrite') {
+          bp = StructureGenerator.generateFerriteOutpostBlueprint();
+        }
+
+        for (const block of bp) {
+          const worldX = s.x + block.dx;
+          const worldY = s.height + block.dy;
+          const worldZ = s.z + block.dz;
+
+          if (
+            worldX >= chunkMinX &&
+            worldX <= chunkMaxX &&
+            worldZ >= chunkMinZ &&
+            worldZ <= chunkMaxZ &&
+            worldY >= 0 &&
+            worldY < CHUNK_SIZE_Y
+          ) {
+            placements.push({
+              dx: worldX - chunkMinX,
+              dy: worldY,
+              dz: worldZ - chunkMinZ,
+              block: block.block,
+            });
+          }
+        }
+      }
+    }
+
+    // 2. DYNAMIC SPECIAL DUNGEONS (DETERMINISTIC WORLD LOCATIONS)
+    const dungeons = [
+      { x: 200, z: 120, surfaceY: 65, depth: 14, theme: 'mine', tier: 1 },
+      { x: 480, z: 420, surfaceY: 70, depth: 14, theme: 'crypt', tier: 2 },
+      { x: 750, z: -320, surfaceY: 68, depth: 14, theme: 'crystal', tier: 3 },
+      { x: 1100, z: 600, surfaceY: 65, depth: 14, theme: 'corrupted', tier: 4 },
+      { x: 950, z: -750, surfaceY: 70, depth: 14, theme: 'volcanic', tier: 5 }
+    ];
+
+    for (const d of dungeons) {
+      // (a) Surface Entrance
+      const distS = Math.max(Math.abs(d.x - (chunkMinX + 8)), Math.abs(d.z - (chunkMinZ + 8)));
+      if (distS < 30) {
+        const bp = StructureGenerator.generateDungeonEntrance();
+        for (const block of bp) {
+          const worldX = d.x + block.dx;
+          const worldY = d.surfaceY + block.dy;
+          const worldZ = d.z + block.dz;
+
+          if (
+            worldX >= chunkMinX &&
+            worldX <= chunkMaxX &&
+            worldZ >= chunkMinZ &&
+            worldZ <= chunkMaxZ &&
+            worldY >= 0 &&
+            worldY < CHUNK_SIZE_Y
+          ) {
+            placements.push({
+              dx: worldX - chunkMinX,
+              dy: worldY,
+              dz: worldZ - chunkMinZ,
+              block: block.block,
+            });
+          }
+        }
+      }
+
+      // (b) Underground Rooms
+      const originY = d.surfaceY - d.depth;
+      const distD = Math.max(Math.abs(d.x - (chunkMinX + 8)), Math.abs(d.z + 15 - (chunkMinZ + 8)));
+      if (distD < 50) {
+        const result = DungeonGenerator.generateDungeon(d.x, originY, d.z, d.theme as any, d.tier as any, seed);
+        for (const voxel of result.blocks) {
+          const worldX = voxel.wx;
+          const worldY = voxel.wy;
+          const worldZ = voxel.wz;
+
+          if (
+            worldX >= chunkMinX &&
+            worldX <= chunkMaxX &&
+            worldZ >= chunkMinZ &&
+            worldZ <= chunkMaxZ &&
+            worldY >= 0 &&
+            worldY < CHUNK_SIZE_Y
+          ) {
+            placements.push({
+              dx: worldX - chunkMinX,
+              dy: worldY,
+              dz: worldZ - chunkMinZ,
+              block: voxel.block,
+            });
+          }
+        }
+      }
+    }
+
+    // 3. PROCEDURAL RANDOM STRUCTURE BLUEPRINTS (CRATERS, CABINS, ETC)
     const regionSizeBlocks = 64; // 4x4 chunks per region grid
     const maxStructureRadius = 14;
 
@@ -389,22 +501,29 @@ export class StructureGenerator {
 
     for (let rx = minRegX; rx <= maxRegX; rx++) {
       for (let rz = minRegZ; rz <= maxRegZ; rz++) {
-        // Deterministic Region Hash
         const hash = Math.abs(Math.sin(rx * 12.9898 + rz * 78.233 + seed * 0.001) * 43758.5453) % 1;
 
-        // Compare against structureDensity
         if (hash < structureDensity * 3.0) {
           const offsetX = Math.floor(hash * 1000) % 24 - 12;
           const offsetZ = Math.floor(hash * 3000) % 24 - 12;
           const originWX = rx * regionSizeBlocks + 32 + offsetX;
           const originWZ = rz * regionSizeBlocks + 32 + offsetZ;
 
+          // Avoid generating random structures directly on top of major settlements/dungeons
+          let tooClose = false;
+          for (const s of settlements) {
+            if (Math.abs(originWX - s.x) < 48 && Math.abs(originWZ - s.z) < 48) tooClose = true;
+          }
+          for (const d of dungeons) {
+            if (Math.abs(originWX - d.x) < 48 && Math.abs(originWZ - d.z) < 48) tooClose = true;
+          }
+          if (tooClose) continue;
+
           let originY = 36;
           if (getHeightAt) {
             originY = getHeightAt(originWX, originWZ);
           }
 
-          // Skip if in deep ocean or above world build limit
           if (originY < 15 || originY > 105) continue;
 
           const typeRand = (hash * 100) % 1;
@@ -447,5 +566,142 @@ export class StructureGenerator {
     }
 
     return placements;
+  }
+
+  // 4. SETTLEMENT BLUEPRINTS
+  public static generateHavenCampBlueprint(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Campfire at [0, 0, 0]
+    blocks.push({ dx: 0, dy: 0, dz: 0, block: BlockType.COBBLESTONE });
+    blocks.push({ dx: 0, dy: 1, dz: 0, block: BlockType.TORCH });
+    // Seats around campfire
+    blocks.push({ dx: -2, dy: 0, dz: 0, block: BlockType.OAK_LOG });
+    blocks.push({ dx: 2, dy: 0, dz: 0, block: BlockType.OAK_LOG });
+    blocks.push({ dx: 0, dy: 0, dz: -2, block: BlockType.OAK_LOG });
+    // Merchant Tent
+    for (let x = -6; x <= -2; x++) {
+      for (let z = -6; z <= -2; z++) {
+        blocks.push({ dx: x, dy: -1, dz: z, block: BlockType.WOOD_PLANKS });
+        const isWall = x === -6 || x === -2 || z === -6 || z === -2;
+        if (isWall) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.OAK_LOG });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.OAK_LOG });
+          blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.GLASS });
+        } else {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.AIR });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.AIR });
+        }
+        blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.WOOD_SLAB });
+      }
+    }
+    blocks.push({ dx: -4, dy: 0, dz: -5, block: BlockType.CRAFTING_BENCH });
+    blocks.push({ dx: -5, dy: 0, dz: -5, block: BlockType.CHEST });
+    blocks.push({ dx: -3, dy: 0, dz: -5, block: BlockType.FURNACE });
+
+    // Fences
+    for (let x = -8; x <= 8; x++) {
+      blocks.push({ dx: x, dy: 0, dz: -8, block: BlockType.FENCE_WOOD });
+      blocks.push({ dx: x, dy: 0, dz: 8, block: BlockType.FENCE_WOOD });
+    }
+    for (let z = -8; z <= 8; z++) {
+      blocks.push({ dx: -8, dy: 0, dz: z, block: BlockType.FENCE_WOOD });
+      blocks.push({ dx: 8, dy: 0, dz: z, block: BlockType.FENCE_WOOD });
+    }
+    return blocks;
+  }
+
+  public static generateSuncrestHamletBlueprint(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Water Well in center
+    for (let x = -1; x <= 1; x++) {
+      for (let z = -1; z <= 1; z++) {
+        const isCenter = x === 0 && z === 0;
+        blocks.push({ dx: x, dy: -1, dz: z, block: isCenter ? BlockType.WATER : BlockType.STONE_BRICKS });
+        if (!isCenter) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.COBBLESTONE });
+        }
+      }
+    }
+    blocks.push({ dx: -1, dy: 1, dz: -1, block: BlockType.FENCE_WOOD });
+    blocks.push({ dx: 1, dy: 1, dz: -1, block: BlockType.FENCE_WOOD });
+    blocks.push({ dx: -1, dy: 1, dz: 1, block: BlockType.FENCE_WOOD });
+    blocks.push({ dx: 1, dy: 1, dz: 1, block: BlockType.FENCE_WOOD });
+    blocks.push({ dx: 0, dy: 2, dz: 0, block: BlockType.WOOD_SLAB });
+
+    // Elder's Lodge (from -8, -8 to -3, -3)
+    for (let x = -8; x <= -3; x++) {
+      for (let z = -8; z <= -3; z++) {
+        blocks.push({ dx: x, dy: -1, dz: z, block: BlockType.WOOD_PLANKS });
+        const isWall = x === -8 || x === -3 || z === -8 || z === -3;
+        const isDoor = x === -5 && z === -3;
+        if (isWall && !isDoor) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.STONE_BRICKS });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.WOOD_PLANKS });
+          blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.GLASS });
+        } else {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.AIR });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.AIR });
+        }
+        blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.WOOD_SLAB });
+      }
+    }
+    // Chest, craft bench inside lodge
+    blocks.push({ dx: -7, dy: 0, dz: -7, block: BlockType.CHEST });
+    blocks.push({ dx: -4, dy: 0, dz: -7, block: BlockType.BOOKSHELF });
+    blocks.push({ dx: -7, dy: 1, dz: -7, block: BlockType.LANTERN });
+
+    // Farm Plots (from 3, -6 to 8, 6)
+    for (let x = 3; x <= 8; x++) {
+      for (let z = -6; z <= 6; z++) {
+        const isWaterRow = x === 5;
+        blocks.push({ dx: x, dy: -1, dz: z, block: isWaterRow ? BlockType.WATER : BlockType.FARMLAND });
+        if (!isWaterRow) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.CROP_WHEAT_3 });
+        }
+      }
+    }
+    return blocks;
+  }
+
+  public static generateFerriteOutpostBlueprint(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Blacksmith's Forge (from -9, -9 to -4, -4)
+    for (let x = -9; x <= -4; x++) {
+      for (let z = -9; z <= -4; z++) {
+        blocks.push({ dx: x, dy: -1, dz: z, block: BlockType.BASALT });
+        const isWall = x === -9 || x === -4 || z === -9 || z === -4;
+        if (isWall) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.STONE_BRICKS });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.BASALT });
+          blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.BASALT });
+        } else {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.AIR });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.AIR });
+        }
+        blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.STONE_SLAB });
+      }
+    }
+    // Anvil, Lava Basin & Forge
+    blocks.push({ dx: -7, dy: 0, dz: -7, block: BlockType.ANVIL_SMITHING });
+    blocks.push({ dx: -8, dy: 0, dz: -8, block: BlockType.FURNACE });
+    blocks.push({ dx: -5, dy: -1, dz: -5, block: BlockType.LAVA });
+    blocks.push({ dx: -5, dy: 0, dz: -5, block: BlockType.AIR });
+
+    // Watchtower at [5, 5]
+    for (let y = 0; y <= 5; y++) {
+      blocks.push({ dx: 4, dy: y, dz: 4, block: BlockType.STONE_BRICKS });
+      blocks.push({ dx: 6, dy: y, dz: 4, block: BlockType.STONE_BRICKS });
+      blocks.push({ dx: 4, dy: y, dz: 6, block: BlockType.STONE_BRICKS });
+      blocks.push({ dx: 6, dy: y, dz: 6, block: BlockType.STONE_BRICKS });
+      if (y === 5) {
+        for (let x = 3; x <= 7; x++) {
+          for (let z = 3; z <= 7; z++) {
+            blocks.push({ dx: x, dy: y, dz: z, block: BlockType.STONE_SLAB });
+          }
+        }
+        blocks.push({ dx: 5, dy: 6, dz: 5, block: BlockType.LANTERN });
+      }
+    }
+    return blocks;
   }
 }

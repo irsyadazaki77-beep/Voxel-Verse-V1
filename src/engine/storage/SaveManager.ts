@@ -201,6 +201,7 @@ export class SaveManager {
     const waypoints = Array.isArray(raw?.waypoints) ? raw.waypoints : [];
     const exploredMapTiles = Array.isArray(raw?.exploredMapTiles) ? raw.exploredMapTiles : [];
     const lootedChests = Array.isArray(raw?.lootedChests) ? raw.lootedChests : [];
+    const settlementProgress = typeof raw?.settlementProgress === 'object' && raw.settlementProgress ? raw.settlementProgress : {};
 
     return {
       version,
@@ -243,6 +244,7 @@ export class SaveManager {
       waypoints,
       exploredMapTiles,
       lootedChests,
+      settlementProgress,
     };
   }
 

@@ -30,6 +30,8 @@ interface GameCanvasProps {
   worldName: string;
   preset?: WorldPreset;
   isMultiplayer?: boolean;
+  sessionToken?: string;
+  playerName?: string;
   onExitToMenu: () => void;
 }
 
@@ -42,6 +44,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   worldName,
   preset = 'standard',
   isMultiplayer = false,
+  sessionToken,
+  playerName,
   onExitToMenu,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -189,10 +193,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const serverUrl = `${protocol}//${window.location.host}/ws`;
             console.log('[GameCanvas] Connecting to authoritative server:', serverUrl);
 
+            if (sessionToken) {
+              NetworkSession.getInstance().sessionToken = sessionToken;
+            }
+
+            const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
+
             const sessionStarted = await NetworkSession.getInstance().startSession(
               runtime.scene,
               true,
-              'Explorer_' + Math.random().toString(36).substring(2, 6),
+              nameToUse,
               true,
               serverUrl
             );

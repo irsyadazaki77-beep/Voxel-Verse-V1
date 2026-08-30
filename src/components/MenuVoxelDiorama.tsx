@@ -28,7 +28,7 @@ export const MenuVoxelDiorama: React.FC = () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
 
     // 2. Scene & Fog (Atmospheric Dark Navy matching UI background)
     const scene = new THREE.Scene();
@@ -369,12 +369,15 @@ export const MenuVoxelDiorama: React.FC = () => {
 
     // 7. Render Loop with Smooth Cinematic Orbit & Parallax
     let animId: number;
-    const clock = new THREE.Clock();
+    let lastTime = performance.now();
+    let elapsed = 0;
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      const delta = clock.getDelta();
-      const elapsed = clock.getElapsedTime();
+      const now = performance.now();
+      const delta = Math.min(0.1, (now - lastTime) / 1000);
+      lastTime = now;
+      elapsed += delta;
 
       // Slow cinematic orbit sway (±4-7 degrees)
       const orbitAngle = framing.baseOrbitAngle + Math.sin(elapsed * framing.orbitSpeed) * framing.orbitAmplitude;

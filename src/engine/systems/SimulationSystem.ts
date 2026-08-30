@@ -9,6 +9,7 @@ export class SimulationSystem implements GameSystem {
   public readonly name = 'SimulationSystem';
   private runtime: GameRuntime;
   private accumulator: number = 0;
+  private lastBiomeId: string = '';
   public readonly fixedDt: number = 1 / 60; // 60Hz fixed simulation timestep
   public readonly maxCatchUpSteps: number = 5;
 
@@ -40,6 +41,10 @@ export class SimulationSystem implements GameSystem {
 
     // 1. Update Player Movement Physics & Voxel Collisions
     player.update(dt, world, gameMode, settings.viewBobbing, stats.stamina);
+    if ((player as any).pendingStaminaDeduction > 0) {
+      stats.stamina = Math.max(0, stats.stamina - (player as any).pendingStaminaDeduction);
+      (player as any).pendingStaminaDeduction = 0;
+    }
 
     // 2. Underwater & Submerged Checks
     const eyePos = player.getEyePosition ? player.getEyePosition() : player.getCameraPosition();
@@ -86,12 +91,16 @@ export class SimulationSystem implements GameSystem {
 
     // 4. Update Game Event / Discovery triggers for Biome change
     const biome = world.biomeManager.getBiome(player.position.x, player.position.z);
-    GameEventBus.emit('BIOME_DISCOVERED', {
-      biomeId: biome.name.toLowerCase().replace(/\s+/g, '_'),
-      biomeName: biome.name,
-      pos: [player.position.x, player.position.y, player.position.z],
-    });
-    QuestManager.advanceObjective('visit', biome.name, 1);
+    const biomeId = biome.name.toLowerCase().replace(/\s+/g, '_');
+    if (biomeId !== this.lastBiomeId) {
+      this.lastBiomeId = biomeId;
+      GameEventBus.emit('BIOME_DISCOVERED', {
+        biomeId: biomeId,
+        biomeName: biome.name,
+        pos: [player.position.x, player.position.y, player.position.z],
+      });
+      QuestManager.advanceObjective('visit', biome.name, 1);
+    }
   }
 
   public dispose(): void {

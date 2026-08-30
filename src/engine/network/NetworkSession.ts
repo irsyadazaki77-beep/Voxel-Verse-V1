@@ -37,6 +37,8 @@ export class NetworkSession {
   // Callback for player position corrections from authoritative server
   private onPlayerCorrectedCallback: ((pos: [number, number, number], vel: [number, number, number]) => void) | null = null;
 
+  public sessionToken: string | null = null;
+
   constructor() {
     this.localSessionId = `player_${Math.random().toString(36).substring(2, 8)}`;
     this.transport = new LocalLoopbackTransport();
@@ -79,13 +81,19 @@ export class NetworkSession {
     this.isMultiplayerActive = isMultiplayer;
     this.localPlayerName = playerName;
 
+    let finalAddress = serverAddress;
+    if (useWebSocket && this.sessionToken && serverAddress) {
+      const joiner = serverAddress.includes('?') ? '&' : '?';
+      finalAddress = `${serverAddress}${joiner}token=${encodeURIComponent(this.sessionToken)}`;
+    }
+
     if (useWebSocket) {
-      this.setTransportMode('websocket', serverAddress);
+      this.setTransportMode('websocket', finalAddress);
     } else {
       this.setTransportMode('loopback');
     }
 
-    const connected = await this.transport.connect(serverAddress);
+    const connected = await this.transport.connect(finalAddress);
     if (!connected && useWebSocket) {
       console.error('[NetworkSession] WebSocket server connection failed. Denying automatic loopback fallback.');
       this.isMultiplayerActive = false;

@@ -4,6 +4,7 @@ import { SaveManager, CURRENT_SAVE_VERSION } from '../storage/SaveManager';
 import { WorldSaveData } from '../../types';
 import { DiscoverySystem } from '../progression/DiscoverySystem';
 import { QuestManager } from '../progression/QuestManager';
+import { SettlementManager } from '../settlement/SettlementManager';
 import { WorldEventManager } from '../events/WorldEventManager';
 import { MapManager } from '../map/MapManager';
 import { BlockPlacementEngine } from '../world/BlockPlacementEngine';
@@ -68,6 +69,7 @@ export class PersistenceSystem implements GameSystem {
       farmingPlots: FarmingManager.serialize(),
       discoveries: DiscoverySystem.serialize(),
       quests: QuestManager.serialize(),
+      settlementProgress: SettlementManager.serialize(),
       activeEvents: WorldEventManager.serialize(),
       waypoints: MapManager.serializeWaypoints(),
       exploredMapTiles: MapManager.serializeExplored(),

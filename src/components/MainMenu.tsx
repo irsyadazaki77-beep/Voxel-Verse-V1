@@ -15,7 +15,9 @@ interface MainMenuProps {
     gameMode: GameMode,
     worldName: string,
     preset?: WorldPreset,
-    isMultiplayer?: boolean
+    isMultiplayer?: boolean,
+    sessionToken?: string,
+    playerName?: string
   ) => void;
 }
 
@@ -41,11 +43,111 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   const [newGameMode, setNewGameMode] = useState<GameMode>('survival');
   const [newWorldPreset, setNewWorldPreset] = useState<WorldPreset>('standard');
 
+  // Multiplayer Persistent Realms State
+  const [mpRealms, setMpRealms] = useState<any[]>([]);
+  const [mpPlayerName, setMpPlayerName] = useState<string>('');
+  const [newMpRealmName, setNewMpRealmName] = useState<string>('Aether Realm');
+  const [newMpRealmPreset, setNewMpRealmPreset] = useState<WorldPreset>('standard');
+  const [newMpRealmSeed, setNewMpRealmSeed] = useState<string>('');
+  const [isCreatingMpRealm, setIsCreatingMpRealm] = useState<boolean>(false);
+  const [mpLoading, setMpLoading] = useState<boolean>(false);
+
   // Settings & Modals
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // File Import Input Ref
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setMpPlayerName('Explorer_' + Math.floor(Math.random() * 900 + 100));
+  }, []);
+
+  const fetchMpRealms = async () => {
+    setMpLoading(true);
+    try {
+      const res = await fetch('/api/realms');
+      if (res.ok) {
+        const data = await res.json();
+        setMpRealms(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch multiplayer realms:', e);
+    } finally {
+      setMpLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewState === 'multiplayer') {
+      fetchMpRealms();
+    }
+  }, [viewState]);
+
+  const handleCreateMpRealmSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMpRealmName.trim()) return;
+    try {
+      const res = await fetch('/api/realms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          realmName: newMpRealmName,
+          worldPreset: newMpRealmPreset,
+          worldSeed: newMpRealmSeed.trim() ? parseInt(newMpRealmSeed, 10) : undefined,
+        }),
+      });
+      if (res.ok) {
+        setNewMpRealmName('Aether Realm');
+        setNewMpRealmSeed('');
+        setIsCreatingMpRealm(false);
+        fetchMpRealms();
+      }
+    } catch (e) {
+      console.error('Failed to create multiplayer realm:', e);
+    }
+  };
+
+  const handleDeleteMpRealm = async (realmId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`/api/realms/${realmId}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchMpRealms();
+      }
+    } catch (e) {
+      console.error('Failed to delete realm:', e);
+    }
+  };
+
+  const handleJoinMpRealm = async (realmId: string) => {
+    try {
+      const res = await fetch('/api/session/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          realmId,
+          playerName: mpPlayerName.trim() || 'Realm Explorer',
+        }),
+      });
+      if (res.ok) {
+        const session = await res.json();
+        onStartGame(
+          session.realmId,
+          session.worldSeed,
+          'survival',
+          session.realmName,
+          session.worldPreset as WorldPreset,
+          true,
+          session.sessionToken,
+          session.playerName
+        );
+      } else {
+        alert('Could not join selected realm. Please try again.');
+      }
+    } catch (e) {
+      console.error('Failed to join realm:', e);
+    }
+  };
 
   useEffect(() => {
     const list = SaveManager.getWorlds();
@@ -534,27 +636,149 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
             {/* Multiplayer View */}
             {viewState === 'multiplayer' && (
-              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-emerald-500/30 p-6 shadow-2xl space-y-4 animate-fade-in text-center">
-                <h3 className="text-xl font-black uppercase tracking-wider text-emerald-300">Multiplayer Realms</h3>
-                <p className="text-xs text-white/70 leading-relaxed">
-                  VoxelVerse features a high-performance authoritative network architecture. Launch a synchronized multiplayer session to explore worlds with real-time player interpolation, synced block modifications, and in-game chat.
-                </p>
-
-                <div className="pt-2 flex gap-3">
+              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-emerald-500/20 p-6 shadow-2xl space-y-4 animate-fade-in text-left">
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <h3 className="text-base font-black uppercase tracking-wider text-emerald-400">Multiplayer Realms</h3>
                   <button
                     onClick={() => setViewState('main')}
-                    className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-2xl font-bold text-xs cursor-pointer"
+                    className="px-3 py-1.5 bg-white/5 hover:bg-white/15 text-xs font-mono rounded-xl cursor-pointer text-white"
                   >
-                    Back to Menu
+                    ← Back
                   </button>
+                </div>
+
+                {/* Identity Panel */}
+                <div className="bg-emerald-950/10 border border-emerald-500/15 p-3 rounded-2xl space-y-1.5">
+                  <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest font-mono">Explorer Display Name (Account Session Identity)</label>
+                  <input
+                    type="text"
+                    value={mpPlayerName}
+                    onChange={(e) => setMpPlayerName(e.target.value)}
+                    placeholder="Enter nickname..."
+                    className="w-full bg-black/60 p-2.5 rounded-xl border border-white/10 text-xs text-white focus:outline-none focus:border-emerald-400 font-sans font-semibold"
+                  />
+                </div>
+
+                {isCreatingMpRealm ? (
+                  /* Create Mp Realm Form */
+                  <form onSubmit={handleCreateMpRealmSubmit} className="space-y-3 p-3 bg-white/5 rounded-2xl border border-white/5 animate-fade-in text-xs">
+                    <div className="font-bold text-white/90 text-xs pb-1 border-b border-white/5">Configure New Realm</div>
+                    <div className="space-y-1">
+                      <label className="text-white/60 font-bold">Realm Name</label>
+                      <input
+                        type="text"
+                        value={newMpRealmName}
+                        onChange={(e) => setNewMpRealmName(e.target.value)}
+                        className="w-full bg-black/40 p-2.5 rounded-xl border border-white/10 text-white"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-white/60 font-bold">Preset</label>
+                        <select
+                          value={newMpRealmPreset}
+                          onChange={(e) => setNewMpRealmPreset(e.target.value as WorldPreset)}
+                          className="w-full bg-black/40 p-2 rounded-xl border border-white/10 text-white"
+                        >
+                          <option value="standard">Standard</option>
+                          <option value="mountainous">Mountainous</option>
+                          <option value="continental">Continental</option>
+                          <option value="archipelago">Archipelago</option>
+                          <option value="flattish">Flatland</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-white/60 font-bold">Seed (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="Random"
+                          value={newMpRealmSeed}
+                          onChange={(e) => setNewMpRealmSeed(e.target.value)}
+                          className="w-full bg-black/40 p-2 rounded-xl border border-white/10 text-white font-mono"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingMpRealm(false)}
+                        className="flex-1 py-2 bg-white/5 hover:bg-white/10 rounded-xl font-bold cursor-pointer text-white"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl cursor-pointer"
+                      >
+                        Create Realm
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  /* Realms List */
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] uppercase font-bold text-white/50 tracking-wider">Online Realms List</span>
+                      <button
+                        onClick={() => setIsCreatingMpRealm(true)}
+                        className="px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-xl text-[10px] font-bold border border-emerald-500/20 cursor-pointer"
+                      >
+                        + Create Realm
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {mpLoading ? (
+                        <div className="p-6 text-center text-xs text-white/30 italic">Querying realms...</div>
+                      ) : mpRealms.length === 0 ? (
+                        <div className="p-6 text-center bg-white/5 rounded-2xl border border-white/5 text-xs text-white/30 italic">
+                          No multiplayer realms currently active.
+                        </div>
+                      ) : (
+                        mpRealms.map((r) => (
+                          <div
+                            key={r.realmId}
+                            onClick={() => handleJoinMpRealm(r.realmId)}
+                            className="p-3 bg-white/5 border border-white/10 hover:border-emerald-500/40 rounded-xl hover:bg-emerald-950/10 cursor-pointer transition-all flex items-center justify-between"
+                          >
+                            <div>
+                              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                <span>{r.realmName}</span>
+                              </div>
+                              <div className="text-[9px] text-white/40 font-mono mt-0.5 capitalize">
+                                Seed: {r.worldSeed} • Preset: {r.worldPreset}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                              <button
+                                onClick={() => handleJoinMpRealm(r.realmId)}
+                                className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-lg text-[10px] cursor-pointer"
+                              >
+                                Join
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteMpRealm(r.realmId, e)}
+                                className="w-6 h-6 bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 rounded-lg flex items-center justify-center text-[10px] cursor-pointer"
+                                title="Delete Realm"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 flex justify-between border-t border-white/5">
+                  <span className="text-[9px] text-emerald-400/50 font-mono">Real-time Authoritative Replication Grid</span>
                   <button
-                    onClick={() => {
-                      const seed = Math.floor(Math.random() * 9999999);
-                      onStartGame(`world_mp_${Date.now()}`, seed, 'survival', 'Multiplayer Realm', 'standard', true);
-                    }}
-                    className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-bold text-xs shadow-lg cursor-pointer"
+                    onClick={() => setViewState('main')}
+                    className="text-[10px] font-bold text-white/60 hover:text-white cursor-pointer"
                   >
-                    Launch Multiplayer Realm
+                    Main Menu
                   </button>
                 </div>
               </div>

@@ -115,6 +115,9 @@ export class FirstPersonViewmodel {
   }
 
   public triggerSwing(type: 'mine' | 'slash' | 'place' | 'eat' = 'mine'): void {
+    if (this.isSwinging && this.swingType === type && type === 'mine') {
+      return;
+    }
     this.isSwinging = true;
     this.swingType = type;
     this.swingProgress = 0;
@@ -217,5 +220,39 @@ export class FirstPersonViewmodel {
     this.rootGroup.rotation.x += (this.targetRotation.x - this.rootGroup.rotation.x) * dt * 18.0;
     this.rootGroup.rotation.y += (this.targetRotation.y - this.rootGroup.rotation.y) * dt * 18.0;
     this.rootGroup.rotation.z += (this.targetRotation.z - this.rootGroup.rotation.z) * dt * 18.0;
+  }
+
+  public dispose(): void {
+    // 1. Dispose arm geometry and material
+    if (this.armMesh) {
+      if (this.armMesh.geometry) this.armMesh.geometry.dispose();
+      if (Array.isArray(this.armMesh.material)) {
+        this.armMesh.material.forEach(mat => mat.dispose());
+      } else if (this.armMesh.material) {
+        this.armMesh.material.dispose();
+      }
+    }
+
+    // 2. Helper function to recursively dispose meshes and their geometries/materials
+    const disposeNode = (node: THREE.Object3D) => {
+      if (node instanceof THREE.Mesh) {
+        if (node.geometry) node.geometry.dispose();
+        if (Array.isArray(node.material)) {
+          node.material.forEach(mat => mat.dispose());
+        } else if (node.material) {
+          node.material.dispose();
+        }
+      }
+      node.children.forEach(disposeNode);
+    };
+
+    // 3. Dispose held item mesh resources recursively
+    if (this.currentItemMesh) {
+      disposeNode(this.currentItemMesh);
+    }
+
+    // 4. Clear references
+    this.currentItemMesh = null;
+    this.rootGroup.clear();
   }
 }

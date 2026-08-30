@@ -374,6 +374,12 @@ export interface WorldSaveData {
   waypoints?: Waypoint[];
   exploredMapTiles?: string[]; // "chunkX,chunkZ" for fog-of-war
   lootedChests?: string[]; // posKey for one-time chests
+  settlementProgress?: {
+    [settlementId: string]: {
+      level: number;
+      reputation: number;
+    }
+  };
 }
 
 // ==========================================

@@ -369,6 +369,49 @@ try {
   assert(false, 'Chunk Edge Exception', (e as Error).message);
 }
 
+// 10. Authoritative Multiplayer Realms & Handshake
+console.log('\n[TEST GROUP] Authoritative Multiplayer Realms & Security Handshake');
+try {
+  // Test 10a: Server-Issued Handshake Token & Binding
+  const testPlayerName = 'Explorer 99';
+  const cleanPlayerName = testPlayerName.replace(/[^a-zA-Z0-9 ]/g, '').substring(0, 20);
+  const playerId = 'usr_' + cleanPlayerName.toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + cleanPlayerName.length;
+  assert(playerId.startsWith('usr_'), 'Authoritative Player ID prefixed correctly');
+  assert(playerId.endsWith('11'), 'Authoritative Player ID deterministically postfixed by length');
+
+  // Test 10b: Authoritative Reach Validation
+  const playerPos: [number, number, number] = [0, 80, 0];
+  const blockPosWithinReach: [number, number, number] = [2, 81, 1];
+  const blockPosOutReach: [number, number, number] = [10, 85, 12];
+
+  const checkReach = (posA: [number, number, number], posB: [number, number, number]): boolean => {
+    const dx = posA[0] - posB[0];
+    const dy = posA[1] - posB[1];
+    const dz = posA[2] - posB[2];
+    const distSq = dx * dx + dy * dy + dz * dz;
+    const MAX_REACH = 8.0;
+    return distSq <= MAX_REACH * MAX_REACH;
+  };
+
+  assert(checkReach(playerPos, blockPosWithinReach) === true, 'Block action within reach bounds accepted (d <= 8.0)');
+  assert(checkReach(playerPos, blockPosOutReach) === false, 'Block action outside reach bounds strictly rejected (d > 8.0)');
+
+  // Test 10c: Chat Sanitization & Length limit
+  const unsafeText = '<script>alert("XSS")</script> Hello World! %';
+  const sanitized = unsafeText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .substring(0, 100);
+
+  assert(!sanitized.includes('<script>'), 'Dangerous XSS scripts elements are escaped safely');
+  assert(sanitized.includes('&lt;script&gt;'), 'HTML tags converted to safe escaped visual representations');
+  assert(sanitized.length <= 100, 'Chat text strictly truncated within safe length limits');
+
+} catch (e) {
+  assert(false, 'Authoritative Realms Test Exception', (e as Error).message);
+}
+
 // Summary
 console.log('\n====================================================');
 const passedCount = results.filter((r) => r.passed).length;

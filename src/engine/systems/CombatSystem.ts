@@ -135,7 +135,6 @@ export class CombatSystem implements GameSystem {
     player.applyScreenShake(feedback.screenShake);
 
     if (this.runtime.cameraMotion) {
-      this.runtime.cameraMotion.triggerScreenShake(feedback.screenShake);
       this.runtime.cameraMotion.triggerAttackRecoil(attackCalc.isCritical ? 0.08 : 0.04);
     }
 

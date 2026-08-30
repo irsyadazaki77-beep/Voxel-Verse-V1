@@ -4,6 +4,7 @@ import { BlockType, GameMode } from '../../types';
 import { BLOCK_DEFS } from '../world/BlockRegistry';
 import { VoxelWorld } from '../world/VoxelWorld';
 import { InputManager } from './InputManager';
+import { CameraMotionSystem } from './CameraMotionSystem';
 
 export type PlayerState = 'grounded' | 'airborne' | 'swimming' | 'climbing' | 'flying' | 'dead';
 
@@ -53,6 +54,7 @@ export class PlayerController {
   public yaw: number = 0;   // Look left/right (radians)
 
   public camera: THREE.PerspectiveCamera;
+  public cameraMotion: CameraMotionSystem | null = null;
   public playerGroup: THREE.Group;
   public avatarMesh: THREE.Group; // 3D Voxel Explorer Avatar for 3rd Person
 
@@ -64,6 +66,7 @@ export class PlayerController {
   public state: PlayerState = 'airborne';
   public isGrounded: boolean = false;
   public isSwimming: boolean = false;
+  public isEyesInWater: boolean = false;
   public isClimbing: boolean = false;
   public isFlying: boolean = false;
   public isSprinting: boolean = false;
@@ -104,6 +107,14 @@ export class PlayerController {
   // Combat posture states
   public isBlockingShield: boolean = false;
   public bowDrawRatio: number = 0; // 0..1
+
+  // Dodge roll states
+  public isDodging: boolean = false;
+  public dodgeTimer: number = 0;
+  public dodgeCooldown: number = 0;
+  public dodgeDir: THREE.Vector3 = new THREE.Vector3();
+  public pendingStaminaDeduction: number = 0;
+  public wantsDodge: boolean = false;
 
   public keys: KeyState = {
     forward: false,
@@ -209,7 +220,11 @@ export class PlayerController {
   }
 
   public applyDamageFeedback(): void {
-    this.damageTilt = 0.12; // brief roll tilt
+    if (this.cameraMotion) {
+      this.cameraMotion.triggerDamageTilt(0.12);
+    } else {
+      this.damageTilt = 0.12; // brief roll tilt
+    }
   }
 
   // Synchronize with InputManager if provided
@@ -231,6 +246,9 @@ export class PlayerController {
     if (input.wasActionPressed('Perspective')) {
       this.togglePerspective();
     }
+    if (input.wasActionPressed('Dodge')) {
+      this.wantsDodge = true;
+    }
   }
 
   public update(
@@ -242,6 +260,54 @@ export class PlayerController {
   ): { fallDamage: number } {
     const dt = Math.min(deltaTime, 0.05);
     let fallDamageToApply = 0;
+
+    // Process dodge roll state and timers
+    if (this.dodgeCooldown > 0) {
+      this.dodgeCooldown -= dt;
+    }
+    if (this.isDodging) {
+      this.dodgeTimer -= dt;
+      if (this.dodgeTimer <= 0) {
+        this.isDodging = false;
+      } else {
+        // Keep moving at dodge speed
+        this.velocity.x = this.dodgeDir.x * this.config.sprintSpeed * 1.8;
+        this.velocity.z = this.dodgeDir.z * this.config.sprintSpeed * 1.8;
+      }
+    }
+
+    if (this.wantsDodge) {
+      this.wantsDodge = false;
+      if (!this.isDodging && this.dodgeCooldown <= 0 && (stamina >= 25 || gameMode === 'creative')) {
+        this.isDodging = true;
+        this.dodgeTimer = 0.35; // 350ms active dodge roll window
+        this.dodgeCooldown = 0.75; // 750ms total cooldown
+        this.pendingStaminaDeduction = 25;
+
+        // Determine dodge direction
+        const moveDir = new THREE.Vector3();
+        if (this.keys.forward) moveDir.z -= 1;
+        if (this.keys.backward) moveDir.z += 1;
+        if (this.keys.left) moveDir.x -= 1;
+        if (this.keys.right) moveDir.x += 1;
+
+        if (moveDir.lengthSq() > 0) {
+          moveDir.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+          this.dodgeDir.copy(moveDir);
+        } else {
+          // If stationary, dodge backward relative to look direction
+          this.dodgeDir.set(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+        }
+
+        this.velocity.x = this.dodgeDir.x * this.config.sprintSpeed * 1.8;
+        this.velocity.z = this.dodgeDir.z * this.config.sprintSpeed * 1.8;
+        this.velocity.y = 2.2; // small hop for visual feel
+
+        if (this.cameraMotion) {
+          this.cameraMotion.triggerAttackRecoil(0.12);
+        }
+      }
+    }
 
     // 1. Environment & Submersion Detection
     const feetX = Math.floor(this.position.x);
@@ -257,6 +323,7 @@ export class PlayerController {
 
     const isFeetInWater = blockAtFeet === BlockType.WATER;
     const isEyesInWater = blockAtEyes === BlockType.WATER;
+    this.isEyesInWater = isEyesInWater;
     this.isSwimming = isFeetInWater || isEyesInWater;
 
     // Climbable check (ladders / vines)
@@ -330,7 +397,9 @@ export class PlayerController {
     const accelFactor = this.isFlying ? 30.0 : this.isGrounded ? this.config.acceleration : this.config.acceleration * this.config.airControl;
     const frictionFactor = this.isFlying ? 8.0 : this.isGrounded ? this.config.friction : 2.0;
 
-    if (moveDir.lengthSq() > 0) {
+    if (this.isDodging) {
+      // Keep moving at dodge speed without standard movement/friction interference
+    } else if (moveDir.lengthSq() > 0) {
       this.velocity.x += moveDir.x * targetSpeed * accelFactor * dt;
       this.velocity.z += moveDir.z * targetSpeed * accelFactor * dt;
 
@@ -418,7 +487,11 @@ export class PlayerController {
       this.highestFallY = this.position.y;
 
       // Camera landing impact dip
-      this.landingDip = Math.min(0.25, Math.abs(this.velocity.y) * 0.02 + fallDist * 0.03);
+      if (this.cameraMotion) {
+        this.cameraMotion.triggerLandingImpact(this.velocity.y, fallDist);
+      } else {
+        this.landingDip = Math.min(0.25, Math.abs(this.velocity.y) * 0.02 + fallDist * 0.03);
+      }
 
       if (gameMode !== 'creative' && fallDist > 3.8) {
         const dmg = Math.round((fallDist - 3.5) * 8);
@@ -454,17 +527,20 @@ export class PlayerController {
     this.camera.updateProjectionMatrix();
 
     // View bobbing
-    if (hasInput && this.isGrounded && viewBobbing) {
-      this.bobTimer += dt * (this.isSprinting ? 14 : 9);
-    } else {
-      this.bobTimer = 0;
-    }
-    const bobOffset = Math.sin(this.bobTimer) * 0.035;
+    let bobOffset = 0;
+    if (!this.cameraMotion) {
+      if (hasInput && this.isGrounded && viewBobbing) {
+        this.bobTimer += dt * (this.isSprinting ? 14 : 9);
+      } else {
+        this.bobTimer = 0;
+      }
+      bobOffset = Math.sin(this.bobTimer) * 0.035;
 
-    // Decay landing dip, damage tilt, and screen shake
-    this.landingDip = Math.max(0, this.landingDip - dt * 1.8);
-    this.damageTilt = Math.max(0, this.damageTilt - dt * 0.8);
-    this.screenShakeAmount = Math.max(0, this.screenShakeAmount - dt * 4.0);
+      // Decay landing dip, damage tilt, and screen shake
+      this.landingDip = Math.max(0, this.landingDip - dt * 1.8);
+      this.damageTilt = Math.max(0, this.damageTilt - dt * 0.8);
+      this.screenShakeAmount = Math.max(0, this.screenShakeAmount - dt * 4.0);
+    }
 
     // Update Player Group position & Avatar yaw
     this.playerGroup.position.copy(this.position);
@@ -484,16 +560,24 @@ export class PlayerController {
   }
 
   public applyScreenShake(amount: number = 0.5): void {
-    this.screenShakeAmount = Math.min(1.0, this.screenShakeAmount + amount);
+    if (this.cameraMotion) {
+      this.cameraMotion.triggerScreenShake(amount);
+    } else {
+      this.screenShakeAmount = Math.min(1.0, this.screenShakeAmount + amount);
+    }
   }
 
   // Camera placement with obstacle collision for third-person views
   private updateCamera(world: VoxelWorld, bobOffset: number): void {
-    const shakeX = (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
-    const shakeY = (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
+    const shakeX = this.cameraMotion ? 0 : (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
+    const shakeY = this.cameraMotion ? 0 : (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
+    const effBob = this.cameraMotion ? 0 : bobOffset;
+    const effDip = this.cameraMotion ? 0 : this.landingDip;
+    const effTilt = this.cameraMotion ? 0 : this.damageTilt;
+
     const eyePos = new THREE.Vector3(
       this.position.x + shakeX,
-      this.position.y + this.currentEyeHeight + bobOffset - this.landingDip + shakeY,
+      this.position.y + this.currentEyeHeight + effBob - effDip + shakeY,
       this.position.z
     );
 
@@ -503,7 +587,7 @@ export class PlayerController {
       this.camera.rotation.order = 'YXZ';
       this.camera.rotation.y = this.yaw;
       this.camera.rotation.x = this.pitch;
-      this.camera.rotation.z = this.damageTilt;
+      this.camera.rotation.z = effTilt;
     } else if (this.cameraMode === 'third_person_back') {
       this.avatarMesh.visible = true;
       const targetDist = 3.6;

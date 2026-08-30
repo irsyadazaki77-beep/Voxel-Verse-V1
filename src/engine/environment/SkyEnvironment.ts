@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { BiomeDef } from '../../types';
 import { EnvironmentAtmosphereEngine, VisualProfile } from './EnvironmentVisualProfile';
+import { AetherAnomalyManager } from '../anomaly/AetherAnomalyManager';
 
 export class SkyEnvironment {
   public scene: THREE.Scene;
@@ -140,7 +141,7 @@ export class SkyEnvironment {
     this.sunLight.shadow.camera.updateProjectionMatrix();
   }
 
-  public update(deltaTime: number, playerPos: THREE.Vector3, currentBiome?: BiomeDef): void {
+  public update(deltaTime: number, playerPos: THREE.Vector3, currentBiome?: BiomeDef, isEyesInWater: boolean = false): void {
     // Advance time
     this.timeOfDay = (this.timeOfDay + deltaTime * this.timeScale) % 24;
     const profile = EnvironmentAtmosphereEngine.getProfile(currentBiome?.id);
@@ -253,6 +254,32 @@ export class SkyEnvironment {
       fogColor.lerp(new THREE.Color(0x05070d), caveFactor);
     }
 
+    // Blend with Aether Anomaly violet profile if active
+    const anomalyIntensity = (AetherAnomalyManager && AetherAnomalyManager.activeIntensity) ? AetherAnomalyManager.activeIntensity : 0;
+    if (anomalyIntensity > 0) {
+      const anomalyViolet = new THREE.Color(0x3e185e); // Beautiful violet/indigo tone
+      skyColor.lerp(anomalyViolet, anomalyIntensity);
+      fogColor.lerp(new THREE.Color(0x180829), anomalyIntensity);
+      
+      // Drains daylight intensity and increases dark atmospheric light
+      sunIntensity *= (1 - anomalyIntensity * 0.65);
+      ambientIntensity = THREE.MathUtils.lerp(ambientIntensity, 0.12, anomalyIntensity);
+      hemiIntensity = THREE.MathUtils.lerp(hemiIntensity, 0.08, anomalyIntensity);
+    }
+
+    // Water 3.0: Underwater Atmosphere Override when player eyes are submerged
+    if (isEyesInWater) {
+      const underwaterAqua = new THREE.Color(0x0b4f6c);
+      const underwaterSky = new THREE.Color(0x073347);
+      skyColor.copy(underwaterSky);
+      fogColor.copy(underwaterAqua);
+      sunIntensity *= 0.35;
+      ambientIntensity = 0.55;
+      hemiIntensity = 0.35;
+      starOpacity = 0.0;
+      auroraOpacity = 0.0;
+    }
+
     // Apply colors to scene & materials
     (this.skyDomeMesh.material as THREE.MeshBasicMaterial).color.copy(skyColor);
     (this.starsParticles.material as THREE.PointsMaterial).opacity = starOpacity;
@@ -265,9 +292,13 @@ export class SkyEnvironment {
     if (this.scene.fog) {
       this.scene.fog.color.copy(fogColor);
       if (this.scene.fog instanceof THREE.FogExp2) {
-        const baseDensity = profile.fogDensity || 0.010;
-        const caveMultiplier = playerPos.y < 32 ? (1.0 + (32 - playerPos.y) * 0.07) : 1.0;
-        this.scene.fog.density = baseDensity * caveMultiplier;
+        if (isEyesInWater) {
+          this.scene.fog.density = 0.045;
+        } else {
+          const baseDensity = profile.fogDensity || 0.010;
+          const caveMultiplier = playerPos.y < 32 ? (1.0 + (32 - playerPos.y) * 0.07) : 1.0;
+          this.scene.fog.density = baseDensity * caveMultiplier;
+        }
       }
     }
   }

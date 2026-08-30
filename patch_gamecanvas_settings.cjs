@@ -19,7 +19,7 @@ if (content.match(subRegex)) {
          } else if (newSettings.shadowQuality === 'medium') {
             rendererRef.current.shadowMap.type = THREE.PCFShadowMap;
          } else {
-            rendererRef.current.shadowMap.type = THREE.PCFSoftShadowMap;
+            rendererRef.current.shadowMap.type = THREE.PCFShadowMap;
          }
          
          const maxPixel = newSettings.graphicsPreset === 'ultra' ? 2 : (newSettings.graphicsPreset === 'low' ? 1 : 1.5);

@@ -92,6 +92,7 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
 export class QuestManager {
   private static questStates: Map<string, { state: QuestState; progress: number[] }> = new Map();
   private static onQuestChangeCallbacks: (() => void)[] = [];
+  private static eventUnsubscribes: (() => void)[] = [];
 
   public static initialize(savedQuests?: { [questId: string]: { state: QuestState; progress: { [idx: number]: number } } }): void {
     this.questStates.clear();
@@ -135,39 +136,54 @@ export class QuestManager {
   }
 
   private static setupEventListeners(): void {
-    // 1. Entity Killed (Hostiles / Bosses / Mini-bosses)
-    GameEventBus.on('ENTITY_KILLED', (data) => {
-      this.advanceObjective('kill', data.modelType, 1);
-      if (data.isBoss) {
-        this.advanceObjective('boss', data.entityId, 1);
-        this.advanceObjective('boss', data.modelType, 1);
-      }
-    });
+    // Unsubscribe from any previous listeners to avoid duplicates
+    this.dispose();
 
-    // 2. Boss Defeated
-    GameEventBus.on('BOSS_DEFEATED', (data) => {
-      this.advanceObjective('boss', data.bossId, 1);
-    });
+    this.eventUnsubscribes.push(
+      GameEventBus.on('ENTITY_KILLED', (data) => {
+        this.advanceObjective('kill', data.modelType, 1);
+        if (data.isBoss) {
+          this.advanceObjective('boss', data.entityId, 1);
+          this.advanceObjective('boss', data.modelType, 1);
+        }
+      })
+    );
 
-    // 3. Item Crafted
-    GameEventBus.on('ITEM_CRAFTED', (data) => {
-      this.advanceObjective('craft', data.itemId, data.count);
-    });
+    this.eventUnsubscribes.push(
+      GameEventBus.on('BOSS_DEFEATED', (data) => {
+        this.advanceObjective('boss', data.bossId, 1);
+      })
+    );
 
-    // 4. Item Collected
-    GameEventBus.on('ITEM_COLLECTED', (data) => {
-      this.advanceObjective('collect', data.itemId, data.count);
-    });
+    this.eventUnsubscribes.push(
+      GameEventBus.on('ITEM_CRAFTED', (data) => {
+        this.advanceObjective('craft', data.itemId, data.count);
+      })
+    );
 
-    // 5. Structure / Landmark Discovered
-    GameEventBus.on('STRUCTURE_DISCOVERED', (data) => {
-      this.advanceObjective('discover', data.structureId, 1);
-      this.advanceObjective('discover', 'structure', 1);
-    });
+    this.eventUnsubscribes.push(
+      GameEventBus.on('ITEM_COLLECTED', (data) => {
+        this.advanceObjective('collect', data.itemId, data.count);
+      })
+    );
 
-    GameEventBus.on('LANDMARK_DISCOVERED', (data) => {
-      this.advanceObjective('discover', data.landmarkId, 1);
-    });
+    this.eventUnsubscribes.push(
+      GameEventBus.on('STRUCTURE_DISCOVERED', (data) => {
+        this.advanceObjective('discover', data.structureId, 1);
+        this.advanceObjective('discover', 'structure', 1);
+      })
+    );
+
+    this.eventUnsubscribes.push(
+      GameEventBus.on('LANDMARK_DISCOVERED', (data) => {
+        this.advanceObjective('discover', data.landmarkId, 1);
+      })
+    );
+  }
+
+  public static dispose(): void {
+    this.eventUnsubscribes.forEach((unsub) => unsub());
+    this.eventUnsubscribes = [];
   }
 
   public static advanceObjective(type: string, targetId: string, amount: number = 1): void {
