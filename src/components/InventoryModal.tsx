@@ -88,7 +88,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
         if (def && (def.category === 'armor' || def.category === 'accessory') && def.armorSlot === slotType) {
           const oldEquip = equipment[slotType];
           const newInv = [...inventory];
-          newInv[selectedSlot] = oldEquip;
+          newInv[selectedSlot] = oldEquip || null;
           setInventory(newInv);
           setEquipment(prev => ({ ...prev, [slotType]: item }));
           setSelectedSlot(null);

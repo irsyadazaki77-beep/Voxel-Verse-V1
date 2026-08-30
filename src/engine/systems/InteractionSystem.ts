@@ -71,6 +71,10 @@ export class InteractionSystem implements GameSystem {
         }
 
         hasAttackedEntity = this.runtime.combatSystem.handleMeleeAttack(targetedEntityId);
+        if (hasAttackedEntity) {
+          this.runtime.viewmodel?.triggerSwing('slash');
+          this.runtime.cameraMotion?.triggerAttackRecoil(0.04);
+        }
       }
 
       // If didn't attack an entity, and we are targeting a block, perform progressive mining
@@ -86,6 +90,7 @@ export class InteractionSystem implements GameSystem {
         this.miningState.active = true;
         this.miningState.progress += deltaTime / this.miningState.breakTime;
         player.triggerSwing();
+        this.runtime.viewmodel?.triggerSwing('mine');
 
         if (Math.random() < 0.12) {
           audio.playBlockHit(BLOCK_DEFS[hit.blockType]?.soundType || 'stone');
@@ -247,6 +252,7 @@ export class InteractionSystem implements GameSystem {
             if (consumed) {
               audio.playUIClick();
               player.triggerSwing();
+              this.runtime.viewmodel?.triggerSwing('eat');
               this.runtime.emitInventoryUpdated();
               return;
             }
@@ -270,6 +276,8 @@ export class InteractionSystem implements GameSystem {
               placeEval.placePos[2],
               placeEval.blockTypeToPlace
             );
+
+            this.runtime.viewmodel?.triggerSwing('place');
 
             NetworkSession.getInstance().sendBlockChange(
               placeEval.placePos[0],

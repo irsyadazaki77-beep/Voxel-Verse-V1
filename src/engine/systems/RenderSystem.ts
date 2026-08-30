@@ -1,6 +1,7 @@
 import { GameSystem } from './GameSystem';
 import type { GameRuntime } from '../core/GameRuntime';
 import { ITEM_DEFS } from '../items/ItemRegistry';
+import { MiningVisualEngine } from '../world/MiningVisualEngine';
 
 export class RenderSystem implements GameSystem {
   public readonly name = 'RenderSystem';
@@ -11,23 +12,63 @@ export class RenderSystem implements GameSystem {
   }
 
   public update(deltaTime: number): void {
-    const { renderer, scene, camera, player, inventory, activeHotbarIndex, combatSystem } = this.runtime;
+    const { renderer, scene, camera, player, inventory, activeHotbarIndex, combatSystem, viewmodel, cameraMotion } = this.runtime;
     if (!renderer || !scene || !camera || !player) return;
 
-    // Apply combat-related player visual feedback
+    // 1. Apply combat-related player visual feedback
+    let isBlocking = false;
+    let bowDrawRatio = 0;
     if (combatSystem) {
-      player.bowDrawRatio = combatSystem.combatMachine.bowDrawProgress;
-      player.isBlockingShield = combatSystem.combatMachine.isBlocking;
+      bowDrawRatio = combatSystem.combatMachine.bowDrawProgress;
+      isBlocking = combatSystem.combatMachine.isBlocking;
+      player.bowDrawRatio = bowDrawRatio;
+      player.isBlockingShield = isBlocking;
     }
 
-    // Hand/weapon mesh sync and update
-    const activeItem = inventory[activeHotbarIndex];
+    // 2. Camera Dynamic Motion & Physics (Bob, Landing Dip, Damage Tilt, Shake)
+    const isMoving = !!(player.keys.forward || player.keys.backward || player.keys.left || player.keys.right || Math.abs(player.velocity.x) > 0.1 || Math.abs(player.velocity.z) > 0.1);
+    const isGrounded = player.isGrounded;
+    const isSprinting = player.isSprinting;
+
+    if (cameraMotion) {
+      const motion = cameraMotion.update(deltaTime, isMoving, isGrounded, isSprinting);
+
+      camera.position.y += motion.bobOffset - motion.landingDip;
+      camera.rotation.z += motion.bobRoll + motion.damageTilt;
+      camera.rotation.x -= motion.recoilPitch;
+      camera.position.x += motion.shakeOffsetX;
+      camera.position.y += motion.shakeOffsetY;
+    }
+
+    // 3. Viewmodel sync & animation
+    const activeItem = inventory[activeHotbarIndex] || null;
     const placeBlock = activeItem ? ITEM_DEFS[activeItem.itemId]?.blockType : undefined;
     
+    if (viewmodel) {
+      viewmodel.setHeldItem(activeItem);
+      viewmodel.update(
+        deltaTime,
+        isMoving,
+        isGrounded,
+        isSprinting,
+        isBlocking,
+        bowDrawRatio
+      );
+    }
+
+    // 4. World raycast & Progressive 3D Mining Crack sync
     if (this.runtime.world) {
-      // Raycast highlight
       const hit = this.runtime.interactionSystem?.currentHit || null;
       this.runtime.world.updateTargetHighlight(hit, placeBlock);
+
+      const miningState = this.runtime.interactionSystem?.miningState;
+      const isMining = !!miningState?.active;
+      const miningProgress = isMining ? (miningState?.progress || 0) : 0;
+
+      MiningVisualEngine.updateCrack(
+        isMining && hit ? hit.blockPos : null,
+        miningProgress
+      );
     }
 
     const renderStart = performance.now();

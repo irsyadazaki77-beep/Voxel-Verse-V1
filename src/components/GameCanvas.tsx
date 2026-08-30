@@ -21,6 +21,7 @@ import { JournalModal } from './JournalModal';
 import { MapModal } from './MapModal';
 import { ContentDebugModal } from './ContentDebugModal';
 import { NetworkSession } from '../engine/network/NetworkSession';
+import { QuestManager } from '../engine/progression/QuestManager';
 
 interface GameCanvasProps {
   worldId: string;
@@ -67,6 +68,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [activeFurnacePos, setActiveFurnacePos] = useState<[number, number, number] | null>(null);
   const [activeAnvilPos, setActiveAnvilPos] = useState<[number, number, number] | null>(null);
   const [activeDialogueEntity, setActiveDialogueEntity] = useState<EntityState | null>(null);
+  const [activeObjective, setActiveObjective] = useState<string>('');
+
+  // Quest objective tracker
+  useEffect(() => {
+    const updateObjective = () => {
+      const activeQuests = QuestManager.getActiveQuests().filter(q => q.state === 'active');
+      const current = activeQuests[0];
+      if (current) {
+        const nextObjIdx = current.def.objectives.findIndex((obj, idx) => (current.progress[idx] || 0) < obj.requiredCount);
+        if (nextObjIdx !== -1) {
+          const obj = current.def.objectives[nextObjIdx];
+          const curr = current.progress[nextObjIdx] || 0;
+          setActiveObjective(`${obj.description} (${curr}/${obj.requiredCount})`);
+          return;
+        }
+      }
+      setActiveObjective('');
+    };
+
+    updateObjective();
+    const unsub = QuestManager.onQuestChange(updateObjective);
+    return () => {
+      unsub();
+    };
+  }, []);
 
   // Global default client settings for quality presets
   const settingsRef = useRef<GameSettings>({
@@ -341,10 +367,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             }
           }}
           onOpenPause={() => setModal('pause')}
-          onToggleDebugMap={() => setShowDebugMap(prev => !prev)}
+          onToggleDebugMap={() => setModal('map')}
           onOpenJournal={() => setModal('journal')}
           onOpenContentDebug={() => setModal('contentDebug')}
           activeBoss={activeBossState}
+          objectiveText={activeObjective}
         />
       )}
 

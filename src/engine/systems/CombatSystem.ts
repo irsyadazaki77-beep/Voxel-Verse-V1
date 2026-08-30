@@ -134,6 +134,19 @@ export class CombatSystem implements GameSystem {
     );
     player.applyScreenShake(feedback.screenShake);
 
+    if (this.runtime.cameraMotion) {
+      this.runtime.cameraMotion.triggerScreenShake(feedback.screenShake);
+      this.runtime.cameraMotion.triggerAttackRecoil(attackCalc.isCritical ? 0.08 : 0.04);
+    }
+
+    const targetEntity = entities.entities.get(targetEntityId);
+    if (targetEntity && this.runtime.particles) {
+      this.runtime.particles.spawnCombatSparks(
+        targetEntity.mesh.position.clone().add(new THREE.Vector3(0, 0.8, 0)),
+        attackCalc.isCritical
+      );
+    }
+
     GameEventBus.emit('COMBAT_HIT', {
       hitType: attackCalc.isCritical ? 'crit' : 'hit',
       damage: attackCalc.damage,

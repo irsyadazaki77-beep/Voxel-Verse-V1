@@ -44,7 +44,7 @@ export class FurnaceManager {
   }
 
   // Find furnace recipe for input item
-  public static getSmeltingRecipe(inputStack: ItemStack | null) {
+  public static getSmeltingRecipe(inputStack: ItemStack | null | undefined) {
     if (!inputStack) return null;
     return CRAFTING_RECIPES.find(
       r => r.station === 'furnace' && r.inputs[0]?.itemId === inputStack.itemId
@@ -59,7 +59,7 @@ export class FurnaceManager {
       furnace.lastUpdateTimestamp = now;
 
       const recipe = this.getSmeltingRecipe(furnace.inputSlot);
-      const canSmeltRecipe = recipe !== null && this.canAcceptOutput(furnace.outputSlot, recipe.output.itemId, recipe.output.count);
+      const canSmeltRecipe = recipe !== null && this.canAcceptOutput(furnace.outputSlot || null, recipe.output.itemId, recipe.output.count);
 
       // 1. If currently burning, deplete burn time
       if (furnace.burnTimeRemaining > 0) {
@@ -86,8 +86,9 @@ export class FurnaceManager {
       // 3. Progress cooking if furnace is actively burning and recipe is valid
       if (furnace.isLit && canSmeltRecipe && recipe) {
         furnace.cookProgress += deltaTime;
+        const maxProgress = furnace.maxCookProgress || 8;
 
-        if (furnace.cookProgress >= furnace.maxCookProgress) {
+        if (furnace.cookProgress >= maxProgress) {
           // Completed 1 smelting cycle!
           furnace.cookProgress = 0;
 
@@ -140,7 +141,7 @@ export class FurnaceManager {
 
   private static updateSingle(furnace: FurnaceState, deltaTime: number): void {
     const recipe = this.getSmeltingRecipe(furnace.inputSlot);
-    const canSmelt = recipe !== null && this.canAcceptOutput(furnace.outputSlot, recipe.output.itemId, recipe.output.count);
+    const canSmelt = recipe !== null && this.canAcceptOutput(furnace.outputSlot || null, recipe.output.itemId, recipe.output.count);
 
     if (furnace.burnTimeRemaining > 0) {
       furnace.burnTimeRemaining = Math.max(0, furnace.burnTimeRemaining - deltaTime);
@@ -162,7 +163,8 @@ export class FurnaceManager {
 
     if (furnace.isLit && canSmelt && recipe) {
       furnace.cookProgress += deltaTime;
-      if (furnace.cookProgress >= furnace.maxCookProgress) {
+      const maxProgress = furnace.maxCookProgress || 8;
+      if (furnace.cookProgress >= maxProgress) {
         furnace.cookProgress = 0;
         if (furnace.inputSlot) {
           furnace.inputSlot.count -= recipe.inputs[0].count;
@@ -178,7 +180,7 @@ export class FurnaceManager {
   }
 
   // Check if output slot can accept the smelted item
-  public static canAcceptOutput(outputSlot: ItemStack | null, outputItemId: string, outputCount: number): boolean {
+  public static canAcceptOutput(outputSlot: ItemStack | null | undefined, outputItemId: string, outputCount: number): boolean {
     if (!outputSlot) return true;
     if (outputSlot.itemId !== outputItemId) return false;
     const def = ITEM_DEFS[outputItemId];

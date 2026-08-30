@@ -8,6 +8,7 @@ import { TextureAtlas } from './TextureAtlas';
 import { ChunkScheduler } from './ChunkScheduler';
 import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { SEA_LEVEL, WORLD_PRESETS, WorldPreset } from './WorldConfig';
+import { MiningVisualEngine } from './MiningVisualEngine';
 
 export { SEA_LEVEL };
 
@@ -110,6 +111,10 @@ export class VoxelWorld {
     );
     this.previewMesh.visible = false;
     this.worldGroup.add(this.previewMesh);
+
+    // 3D Progressive Mining Crack Overlay Mesh
+    const crackMesh = MiningVisualEngine.getCrackMesh();
+    this.worldGroup.add(crackMesh);
   }
 
   public getChunkKey(cx: number, cz: number): string {

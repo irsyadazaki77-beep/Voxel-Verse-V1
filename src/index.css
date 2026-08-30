@@ -1,1 +1,149 @@
 @import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-display: 'Cinzel', serif;
+
+    --panel-bg: rgba(13, 16, 23, 0.92);
+    --panel-bg-subtle: rgba(20, 25, 36, 0.85);
+    --panel-border: rgba(255, 255, 255, 0.12);
+    --panel-border-glow: rgba(56, 189, 248, 0.35);
+
+    --slot-bg: rgba(7, 9, 14, 0.7);
+    --slot-bg-hover: rgba(255, 255, 255, 0.1);
+    --slot-border: rgba(255, 255, 255, 0.12);
+    --slot-selected: #38bdf8;
+
+    --color-health: #ef4444;
+    --color-hunger: #f59e0b;
+    --color-thirst: #0284c7;
+    --color-stamina: #10b981;
+    --color-mana: #8b5cf6;
+    --color-temp: #06b6d4;
+    --color-xp: #a855f7;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #08090d;
+    color: #f1f5f9;
+    user-select: none;
+    -webkit-user-select: none;
+    overflow: hidden;
+  }
+}
+
+/* Custom Sleek Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.5);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes floatGentle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.8; filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.6)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.9)); }
+}
+
+@keyframes damageShake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 3px); }
+  40% { transform: translate(4px, -2px); }
+  60% { transform: translate(-3px, -3px); }
+  80% { transform: translate(2px, 1px); }
+}
+
+@keyframes hitFlashRed {
+  0% { background-color: rgba(239, 68, 68, 0.35); }
+  100% { background-color: transparent; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-float {
+  animation: floatGentle 3s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.animate-damage-shake {
+  animation: damageShake 0.25s ease-in-out;
+}
+
+.animate-hit-flash {
+  animation: hitFlashRed 0.3s ease-out forwards;
+}
+
+/* Stylized Voxel UI Panel Utilities */
+.voxel-panel {
+  background: var(--panel-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border-radius: 1.25rem;
+}
+
+.voxel-panel-subtle {
+  background: var(--panel-bg-subtle);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+}
+
+.voxel-slot {
+  background: var(--slot-bg);
+  border: 1px solid var(--slot-border);
+  border-radius: 0.75rem;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.voxel-slot:hover {
+  background: var(--slot-bg-hover);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.voxel-slot.selected {
+  border-color: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.4), inset 0 0 8px rgba(56, 189, 248, 0.2);
+}
+
+/* Item Rarity Text & Borders */
+.rarity-common { color: #cbd5e1; }
+.rarity-uncommon { color: #4ade80; }
+.rarity-rare { color: #38bdf8; }
+.rarity-epic { color: #c084fc; }
+.rarity-legendary { color: #fbbf24; text-shadow: 0 0 8px rgba(251, 191, 36, 0.4); }
+.rarity-mythic { color: #f43f5e; text-shadow: 0 0 8px rgba(244, 63, 94, 0.5); }
+.rarity-relic { color: #2dd4bf; text-shadow: 0 0 8px rgba(45, 212, 191, 0.5); }
+

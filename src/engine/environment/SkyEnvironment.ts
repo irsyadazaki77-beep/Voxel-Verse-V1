@@ -1,11 +1,12 @@
 // Dynamic Day/Night Celestial Dome, Sun/Moon Orbit, Aurora & Atmospheric Cave Lighting
 import * as THREE from 'three';
 import { BiomeDef } from '../../types';
+import { EnvironmentAtmosphereEngine, VisualProfile } from './EnvironmentVisualProfile';
 
 export class SkyEnvironment {
   public scene: THREE.Scene;
-  public timeOfDay: number = 6.0; // 0 to 24 hours (e.g. 6.0 = dawn, 12.0 = noon, 18.0 = dusk, 24.0 = midnight)
-  public timeScale: number = 0.05; // 1 real sec = 0.05 game hours (approx 8 min full day cycle)
+  public timeOfDay: number = 6.0; // 0 to 24 hours
+  public timeScale: number = 0.05; // 1 real sec = 0.05 game hours
 
   public sunLight: THREE.DirectionalLight;
   public ambientLight: THREE.AmbientLight;
@@ -18,18 +19,19 @@ export class SkyEnvironment {
 
   public isNight: boolean = false;
   private currentShadowQuality: string = 'medium';
+  private currentProfile: VisualProfile = EnvironmentAtmosphereEngine.getProfile('plains');
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
 
-    // 1. Directional Sun / Moon Light with Configurable Soft Shadows
-    this.sunLight = new THREE.DirectionalLight(0xfff8e7, 1.15);
+    // 1. Directional Sun / Moon Light with Soft Shadows
+    this.sunLight = new THREE.DirectionalLight(0xfff8e7, 1.25);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.width = 1024;
     this.sunLight.shadow.mapSize.height = 1024;
     this.sunLight.shadow.camera.near = 1.0;
-    this.sunLight.shadow.camera.far = 160;
-    const d = 35;
+    this.sunLight.shadow.camera.far = 180;
+    const d = 38;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
@@ -38,57 +40,57 @@ export class SkyEnvironment {
     this.sunLight.shadow.normalBias = 0.035;
     this.scene.add(this.sunLight);
 
-    // 2. Ambient & Hemisphere Light Fill (Prevents pitch-black shadows)
-    this.ambientLight = new THREE.AmbientLight(0xddeeff, 0.35);
+    // 2. Ambient & Hemisphere Light Fill
+    this.ambientLight = new THREE.AmbientLight(0xddeeff, 0.40);
     this.scene.add(this.ambientLight);
 
-    this.hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x554433, 0.45);
+    this.hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x554433, 0.48);
     this.scene.add(this.hemiLight);
 
     // 3. Sun Orb (Voxel Stylized Diamond Box)
-    const sunGeo = new THREE.BoxGeometry(7, 7, 7);
-    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfff099 });
+    const sunGeo = new THREE.BoxGeometry(8, 8, 8);
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfff3aa });
     this.sunMesh = new THREE.Mesh(sunGeo, sunMat);
     this.scene.add(this.sunMesh);
 
     // 4. Moon Orb
-    const moonGeo = new THREE.BoxGeometry(6, 6, 6);
+    const moonGeo = new THREE.BoxGeometry(6.5, 6.5, 6.5);
     const moonMat = new THREE.MeshBasicMaterial({ color: 0xddeeff });
     this.moonMesh = new THREE.Mesh(moonGeo, moonMat);
     this.scene.add(this.moonMesh);
 
     // 5. Starfield Dome
-    const starCount = 700;
+    const starCount = 850;
     const starPositions = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount * 3; i += 3) {
       const u = Math.random();
       const v = Math.random();
       const theta = u * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * v - 1.0);
-      const r = 250;
+      const r = 260;
       starPositions[i] = r * Math.sin(phi) * Math.cos(theta);
       starPositions[i + 1] = Math.abs(r * Math.cos(phi));
       starPositions[i + 2] = r * Math.sin(phi) * Math.sin(theta);
     }
     const starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, transparent: true, opacity: 0 });
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, transparent: true, opacity: 0 });
     this.starsParticles = new THREE.Points(starGeo, starMat);
     this.scene.add(this.starsParticles);
 
     // 6. Aurora Borealis Particles (Cold region night feature)
-    const auroraCount = 200;
+    const auroraCount = 240;
     const auroraPositions = new Float32Array(auroraCount * 3);
     for (let i = 0; i < auroraCount * 3; i += 3) {
-      auroraPositions[i] = (Math.random() - 0.5) * 300;
-      auroraPositions[i + 1] = 160 + Math.random() * 40;
-      auroraPositions[i + 2] = (Math.random() - 0.5) * 300;
+      auroraPositions[i] = (Math.random() - 0.5) * 320;
+      auroraPositions[i + 1] = 160 + Math.random() * 45;
+      auroraPositions[i + 2] = (Math.random() - 0.5) * 320;
     }
     const auroraGeo = new THREE.BufferGeometry();
     auroraGeo.setAttribute('position', new THREE.BufferAttribute(auroraPositions, 3));
     const auroraMat = new THREE.PointsMaterial({
       color: 0x38bdf8,
-      size: 14.0,
+      size: 16.0,
       transparent: true,
       opacity: 0,
     });
@@ -96,7 +98,7 @@ export class SkyEnvironment {
     this.scene.add(this.auroraParticles);
 
     // 7. Sky Dome Mesh for gradient background
-    const skyGeo = new THREE.SphereGeometry(300, 16, 16);
+    const skyGeo = new THREE.SphereGeometry(320, 20, 20);
     const skyMat = new THREE.MeshBasicMaterial({ color: 0x66aaff, side: THREE.BackSide });
     this.skyDomeMesh = new THREE.Mesh(skyGeo, skyMat);
     this.scene.add(this.skyDomeMesh);
@@ -113,20 +115,20 @@ export class SkyEnvironment {
 
     this.sunLight.castShadow = true;
     let mapSize = 1024;
-    let bounds = 35;
+    let bounds = 38;
 
     if (quality === 'low') {
       mapSize = 512;
       bounds = 25;
     } else if (quality === 'medium') {
       mapSize = 1024;
-      bounds = 35;
+      bounds = 38;
     } else if (quality === 'high') {
       mapSize = 2048;
-      bounds = 50;
+      bounds = 52;
     } else if (quality === 'ultra') {
       mapSize = 4096;
-      bounds = 70;
+      bounds = 75;
     }
 
     this.sunLight.shadow.mapSize.width = mapSize;
@@ -141,13 +143,15 @@ export class SkyEnvironment {
   public update(deltaTime: number, playerPos: THREE.Vector3, currentBiome?: BiomeDef): void {
     // Advance time
     this.timeOfDay = (this.timeOfDay + deltaTime * this.timeScale) % 24;
+    const profile = EnvironmentAtmosphereEngine.getProfile(currentBiome?.id);
+    this.currentProfile = profile;
 
     // Calculate solar angle (-PI to +PI)
     const sunAngle = ((this.timeOfDay - 6) / 24) * Math.PI * 2;
-    this.isNight = this.timeOfDay < 5.5 || this.timeOfDay > 18.5;
+    this.isNight = this.timeOfDay < 5.2 || this.timeOfDay > 18.8;
 
     // Celestial Orbit Positions
-    const dist = 220;
+    const dist = 240;
     const sunX = playerPos.x + Math.cos(sunAngle) * dist;
     const sunY = playerPos.y + Math.sin(sunAngle) * dist;
     const sunZ = playerPos.z + Math.sin(sunAngle * 0.5) * 40;
@@ -159,7 +163,7 @@ export class SkyEnvironment {
       playerPos.z - Math.sin(sunAngle * 0.5) * 40
     );
 
-    this.sunLight.position.set(sunX, Math.max(10, sunY), sunZ);
+    this.sunLight.position.set(sunX, Math.max(12, sunY), sunZ);
     this.sunLight.target.position.copy(playerPos);
     this.sunLight.target.updateMatrixWorld();
 
@@ -167,72 +171,86 @@ export class SkyEnvironment {
     this.auroraParticles.position.copy(playerPos);
     this.skyDomeMesh.position.copy(playerPos);
 
-    // Sky & Fog Colors Transition (Dawn -> Noon -> Sunset -> Midnight)
-    let skyColor = new THREE.Color(0x66aaff);
-    let fogColor = new THREE.Color(0xaaccff);
-    let sunIntensity = 1.15;
-    let ambientIntensity = 0.35;
-    let hemiIntensity = 0.45;
+    // Dynamic Atmosphere interpolation
+    let skyColor = new THREE.Color();
+    let fogColor = new THREE.Color();
+    let sunIntensity = profile.sunIntensity;
+    let ambientIntensity = profile.ambientIntensity;
+    let hemiIntensity = 0.48;
     let starOpacity = 0.0;
     let auroraOpacity = 0.0;
 
     if (this.timeOfDay >= 5.0 && this.timeOfDay < 7.5) {
-      // Dawn / Sunrise (Golden pink)
+      // Dawn / Sunrise
       const t = (this.timeOfDay - 5.0) / 2.5;
-      skyColor.setRGB(0.95, 0.55 + t * 0.25, 0.45 + t * 0.4);
-      fogColor.setRGB(0.98, 0.75, 0.65);
-      sunIntensity = 0.4 + t * 0.75;
-      ambientIntensity = 0.25 + t * 0.15;
-      hemiIntensity = 0.30 + t * 0.15;
+      const c1 = new THREE.Color(...profile.skyColorSunset);
+      const c2 = new THREE.Color(...profile.skyColorDay);
+      skyColor.copy(c1).lerp(c2, t);
+
+      const f1 = new THREE.Color(...profile.fogColorSunset);
+      const f2 = new THREE.Color(...profile.fogColorDay);
+      fogColor.copy(f1).lerp(f2, t);
+
+      sunIntensity = 0.4 + t * 0.85;
+      ambientIntensity = profile.ambientIntensity * (0.6 + t * 0.4);
+      hemiIntensity = 0.35 + t * 0.15;
       starOpacity = (1.0 - t) * 0.7;
-      this.hemiLight.color.setHex(0xffaa88);
+      this.sunLight.color.setHex(0xffaa77);
+      this.hemiLight.color.setHex(0xffbb99);
       this.hemiLight.groundColor.setHex(0x553322);
     } else if (this.timeOfDay >= 7.5 && this.timeOfDay < 16.5) {
       // Daytime
-      const [br, bg, bb] = currentBiome ? currentBiome.skyColor : [0.45, 0.70, 0.98];
-      const [fr, fg, fb] = currentBiome ? currentBiome.fogColor : [0.75, 0.88, 0.98];
-      skyColor.setRGB(br, bg, bb);
-      fogColor.setRGB(fr, fg, fb);
-      sunIntensity = 1.25;
-      ambientIntensity = 0.40;
+      skyColor.setRGB(...profile.skyColorDay);
+      fogColor.setRGB(...profile.fogColorDay);
+      sunIntensity = profile.sunIntensity;
+      ambientIntensity = profile.ambientIntensity;
       hemiIntensity = 0.50;
       starOpacity = 0.0;
-      this.hemiLight.color.setRGB(br * 1.1, bg * 1.1, bb * 1.1);
-      this.hemiLight.groundColor.setHex(0x554433);
+      this.sunLight.color.setHex(profile.sunColor);
+      this.hemiLight.color.setHex(profile.hemiColor);
+      this.hemiLight.groundColor.setHex(profile.hemiGroundColor);
     } else if (this.timeOfDay >= 16.5 && this.timeOfDay < 19.0) {
-      // Sunset / Twilight (Crimson violet)
+      // Golden Hour & Sunset
       const t = (this.timeOfDay - 16.5) / 2.5;
-      skyColor.setRGB(0.85 - t * 0.7, 0.45 - t * 0.35, 0.35 + t * 0.2);
-      fogColor.setRGB(0.90 - t * 0.7, 0.55 - t * 0.45, 0.50 - t * 0.3);
-      sunIntensity = 1.15 - t * 0.95;
-      ambientIntensity = 0.40 - t * 0.25;
-      hemiIntensity = 0.45 - t * 0.30;
+      const c1 = new THREE.Color(...profile.skyColorDay);
+      const c2 = new THREE.Color(...profile.skyColorSunset);
+      skyColor.copy(c1).lerp(c2, t);
+
+      const f1 = new THREE.Color(...profile.fogColorDay);
+      const f2 = new THREE.Color(...profile.fogColorSunset);
+      fogColor.copy(f1).lerp(f2, t);
+
+      sunIntensity = profile.sunIntensity * (1.0 - t * 0.8);
+      ambientIntensity = profile.ambientIntensity * (1.0 - t * 0.5);
+      hemiIntensity = 0.48 - t * 0.28;
       starOpacity = t * 0.9;
-      this.hemiLight.color.setHex(0xcc66aa);
+      this.sunLight.color.setHex(0xff7744);
+      this.hemiLight.color.setHex(0xdd6699);
       this.hemiLight.groundColor.setHex(0x332244);
     } else {
       // Starry Night
-      skyColor.setRGB(0.04, 0.04, 0.12);
-      fogColor.setRGB(0.06, 0.06, 0.15);
-      sunIntensity = 0.18; // Moon glow
-      ambientIntensity = 0.18;
-      hemiIntensity = 0.15;
+      skyColor.setRGB(...profile.skyColorNight);
+      fogColor.setRGB(...profile.fogColorNight);
+      sunIntensity = 0.20; // Soft Moonlight
+      ambientIntensity = profile.ambientIntensity * 0.45;
+      hemiIntensity = 0.18;
       starOpacity = 1.0;
+      this.sunLight.color.setHex(0x99bbff);
       this.hemiLight.color.setHex(0x223366);
       this.hemiLight.groundColor.setHex(0x050510);
 
-      if (currentBiome && currentBiome.temperature < -0.3) {
-        auroraOpacity = 0.6;
+      if (currentBiome && currentBiome.temperature < -0.2) {
+        auroraOpacity = 0.75;
       }
     }
 
-    // Underground Cave Atmosphere Adjustment
-    if (playerPos.y < 28) {
-      const caveFactor = Math.min(1.0, (28 - playerPos.y) / 16.0);
-      ambientIntensity = THREE.MathUtils.lerp(ambientIntensity, 0.12, caveFactor);
-      hemiIntensity = THREE.MathUtils.lerp(hemiIntensity, 0.08, caveFactor);
-      sunIntensity = THREE.MathUtils.lerp(sunIntensity, 0.05, caveFactor);
-      fogColor.lerp(new THREE.Color(0x06070e), caveFactor);
+    // Underground Deep Cave Atmosphere (Y < 32)
+    if (playerPos.y < 32) {
+      const caveFactor = Math.min(1.0, (32 - playerPos.y) / 18.0);
+      ambientIntensity = THREE.MathUtils.lerp(ambientIntensity, 0.10, caveFactor);
+      hemiIntensity = THREE.MathUtils.lerp(hemiIntensity, 0.06, caveFactor);
+      sunIntensity = THREE.MathUtils.lerp(sunIntensity, 0.02, caveFactor);
+      fogColor.lerp(new THREE.Color(0x05070d), caveFactor);
     }
 
     // Apply colors to scene & materials
@@ -247,8 +265,8 @@ export class SkyEnvironment {
     if (this.scene.fog) {
       this.scene.fog.color.copy(fogColor);
       if (this.scene.fog instanceof THREE.FogExp2) {
-        const baseDensity = 0.010;
-        const caveMultiplier = playerPos.y < 28 ? (1.0 + (28 - playerPos.y) * 0.06) : 1.0;
+        const baseDensity = profile.fogDensity || 0.010;
+        const caveMultiplier = playerPos.y < 32 ? (1.0 + (32 - playerPos.y) * 0.07) : 1.0;
         this.scene.fog.density = baseDensity * caveMultiplier;
       }
     }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { VoxelWorld, RaycastHit } from '../world/VoxelWorld';
 import { PlayerController } from '../player/PlayerController';
-import { InputManager } from '../player/InputManager';
+import { InputManager, InputAction } from '../player/InputManager';
 import { PlayerStats } from '../player/PlayerStats';
 import { EntityManager } from '../entities/EntityManager';
 import { SkyEnvironment } from '../environment/SkyEnvironment';
@@ -21,6 +21,8 @@ import { FurnaceManager } from '../world/FurnaceManager';
 import { FarmingManager } from '../world/FarmingManager';
 import { GameStatsManager } from '../player/GameStatsManager';
 import { WorldPreset } from '../world/WorldConfig';
+import { FirstPersonViewmodel } from '../player/FirstPersonViewmodel';
+import { CameraMotionSystem } from '../player/CameraMotionSystem';
 
 // Import Systems
 import { SimulationSystem } from '../systems/SimulationSystem';
@@ -61,6 +63,8 @@ export class GameRuntime {
   public particles: ParticleManager;
   public audio: SoundSynthesizer;
   public gameStats: GameStatsManager;
+  public cameraMotion: CameraMotionSystem;
+  public viewmodel: FirstPersonViewmodel;
 
   public settings: GameSettings;
   public gameMode: GameMode;
@@ -137,6 +141,88 @@ export class GameRuntime {
       }
     });
 
+    // Register Input Actions for Modals & Quick Controls
+    this.inputManager.onAction('Inventory', () => {
+      // 1. Check if aiming at an NPC
+      const eyePos = this.player.getCameraPosition();
+      const forwardDir = this.player.getForwardVector();
+      const targetedEntityId = this.entities.getEntityRaycastHit(eyePos, forwardDir, 4.5);
+      if (targetedEntityId) {
+        const targetEntity = this.entities.entities.get(targetedEntityId);
+        if (targetEntity && targetEntity.state.type === 'npc' && targetEntity.state.dialogue && targetEntity.state.dialogue.length > 0) {
+          this.openModal('dialogue', targetEntity.state);
+          return;
+        }
+      }
+
+      // 2. Check if aiming at an interactive workstation block
+      const hit = this.interactionSystem.currentHit;
+      if (hit) {
+        const hitBlock = hit.blockType;
+        if (hitBlock === BlockType.CHEST) {
+          this.openModal('chest', hit.blockPos);
+          return;
+        }
+        if (hitBlock === BlockType.FURNACE) {
+          this.openModal('furnace', hit.blockPos);
+          return;
+        }
+        if (hitBlock === BlockType.ANVIL_SMITHING) {
+          this.openModal('anvil', hit.blockPos);
+          return;
+        }
+        if (hitBlock === BlockType.CRAFTING_BENCH) {
+          this.openModal('crafting');
+          return;
+        }
+      }
+
+      // 3. Fallback: Open personal inventory
+      this.openModal('inventory');
+    });
+    this.inputManager.onAction('Crafting', () => {
+      this.openModal('crafting');
+    });
+    this.inputManager.onAction('Journal', () => {
+      this.openModal('journal');
+    });
+    this.inputManager.onAction('Map', () => {
+      this.openModal('map');
+    });
+    this.inputManager.onAction('ContentDebug', () => {
+      this.openModal('contentDebug');
+    });
+    this.inputManager.onAction('Pause', () => {
+      this.openModal('pause');
+    });
+    this.inputManager.onAction('Perspective', () => {
+      this.player.togglePerspective();
+    });
+
+    // Drop active item
+    this.inputManager.onAction('Drop', () => {
+      const active = this.getActiveHotbarItem();
+      if (active && active.count > 0) {
+        if (active.count === 1) {
+          this.setHotbarItem(this.activeHotbarIndex, null);
+        } else {
+          this.setHotbarItem(this.activeHotbarIndex, { ...active, count: active.count - 1 });
+        }
+        this.audio.playItemCollect();
+      }
+    });
+
+    // Hotbar Direct Number Slot Select (1 - 9)
+    for (let i = 1; i <= 9; i++) {
+      const actionName = `Hotbar${i}` as InputAction;
+      this.inputManager.onAction(actionName, () => {
+        this.activeHotbarIndex = i - 1;
+        if (this.callbacks.onActiveHotbarIndexChanged) {
+          this.callbacks.onActiveHotbarIndexChanged(this.activeHotbarIndex);
+        }
+      });
+    }
+
     this.world = new VoxelWorld(seed, preset);
     this.scene.add(this.world.worldGroup);
 
@@ -200,10 +286,10 @@ export class GameRuntime {
     this.weather = new WeatherSystem(this.scene);
     this.clouds = new CloudSystem(this.scene);
     this.particles = new ParticleManager(this.scene);
+    this.cameraMotion = new CameraMotionSystem();
+    this.viewmodel = new FirstPersonViewmodel();
 
-    const handGroup = new THREE.Group();
-    handGroup.position.set(0.35, -0.3, -0.6);
-    this.camera.add(handGroup);
+    this.camera.add(this.viewmodel.rootGroup);
     this.scene.add(this.camera);
 
     // 3. Instantiate Systems in strict ordering
@@ -371,7 +457,7 @@ export class GameRuntime {
       this.player.applyDamageFeedback();
     });
 
-    // 4. Input Mouse Pitch/Yaw Sync
+    // 4. Input Mouse Pitch/Yaw Sync & Hotbar Wheel Cycling
     if (this.inputManager.isPointerLocked) {
       this.player.handleMouseMove(
         this.inputManager.mouseDeltaX,
@@ -379,6 +465,14 @@ export class GameRuntime {
         this.settings.mouseSensitivity,
         this.settings.invertMouse
       );
+
+      if (this.inputManager.mouseWheelDelta !== 0) {
+        const delta = Math.sign(this.inputManager.mouseWheelDelta);
+        this.activeHotbarIndex = (this.activeHotbarIndex + delta + 9) % 9;
+        if (this.callbacks.onActiveHotbarIndexChanged) {
+          this.callbacks.onActiveHotbarIndexChanged(this.activeHotbarIndex);
+        }
+      }
     }
     this.player.syncInputs(this.inputManager, this.gameMode);
 

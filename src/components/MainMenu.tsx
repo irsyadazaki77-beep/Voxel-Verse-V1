@@ -1,12 +1,12 @@
-// Overhauled Game Main Menu & World Browser (Phase 10 Production Release Candidate)
+// Overhauled Game Main Menu & World Browser (Asymmetrical Hero Layout & Production Polish)
 import React, { useState, useEffect, useRef } from 'react';
-import * as THREE from 'three';
 import { GameMode, WorldSaveData } from '../types';
 import { SaveManager, WorldSummary } from '../engine/storage/SaveManager';
 import { WorldPreset } from '../engine/world/WorldConfig';
 import { SettingsModal } from './SettingsModal';
 import { ErrorBoundary } from './ErrorBoundary';
-import { Download, Upload, RefreshCw, Trash2, Edit3, Copy, Play } from 'lucide-react';
+import { MenuVoxelDiorama } from './MenuVoxelDiorama';
+import { Download, Upload, RefreshCw, Trash2, Edit3, Copy, Play, Compass, Globe, Settings as SettingsIcon, Scroll } from 'lucide-react';
 
 interface MainMenuProps {
   onStartGame: (
@@ -47,9 +47,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   // File Import Input Ref
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Background WebGL Canvas Ref
-  const bgCanvasRef = useRef<HTMLCanvasElement | null>(null);
-
   useEffect(() => {
     const list = SaveManager.getWorlds();
     setWorlds(list);
@@ -62,59 +59,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     if (recovery) {
       setCrashRecoveryData(recovery);
     }
-  }, []);
-
-  // Background WebGL Scene Animation
-  useEffect(() => {
-    if (!bgCanvasRef.current) return;
-    const canvas = bgCanvasRef.current;
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x0a0c14, 0.03);
-
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-    camera.position.set(0, 5, 12);
-    camera.lookAt(0, 0, 0);
-
-    const ambLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambLight);
-
-    const dirLight = new THREE.DirectionalLight(0x38bdf8, 1.2);
-    dirLight.position.set(10, 20, 10);
-    scene.add(dirLight);
-
-    const group = new THREE.Group();
-    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-    const matA = new THREE.MeshLambertMaterial({ color: 0x1e293b });
-    const matB = new THREE.MeshLambertMaterial({ color: 0x38bdf8 });
-
-    for (let i = 0; i < 40; i++) {
-      const mesh = new THREE.Mesh(boxGeo, Math.random() > 0.3 ? matA : matB);
-      mesh.position.set(
-        (Math.random() - 0.5) * 20,
-        (Math.random() - 0.5) * 10,
-        (Math.random() - 0.5) * 20
-      );
-      mesh.rotation.set(Math.random(), Math.random(), 0);
-      group.add(mesh);
-    }
-    scene.add(group);
-
-    let animId: number;
-    const animate = () => {
-      animId = requestAnimationFrame(animate);
-      group.rotation.y += 0.003;
-      renderer.render(scene, camera);
-    };
-    animate();
-
-    return () => {
-      cancelAnimationFrame(animId);
-      renderer.dispose();
-    };
   }, []);
 
   const handleContinue = () => {
@@ -164,23 +108,26 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
   const handleDuplicateWorld = (worldId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const created = SaveManager.duplicateWorld(worldId);
-    if (created) {
+    const duplicated = SaveManager.duplicateWorld(worldId);
+    if (duplicated) {
       const updated = SaveManager.getWorlds();
       setWorlds(updated);
-      setSelectedWorldId(created.id);
+      setSelectedWorldId(duplicated.id);
     }
   };
 
   const handleExportWorld = (worldId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const json = SaveManager.exportWorldJSON(worldId);
-    if (!json) return;
-    const blob = new Blob([json], { type: 'application/json' });
+    const jsonStr = SaveManager.exportWorldJSON(worldId);
+    if (!jsonStr) return;
+
+    const targetWorld = worlds.find((w) => w.id === worldId);
+    const filename = `${(targetWorld?.name || 'voxelverse_realm').replace(/\s+/g, '_')}_backup.json`;
+    const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `voxelverse-realm-${worldId}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -192,15 +139,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
-      if (content) {
-        const imported = SaveManager.importWorldJSON(content);
-        if (imported) {
-          const updated = SaveManager.getWorlds();
-          setWorlds(updated);
-          setSelectedWorldId(imported.id);
-        } else {
-          alert('Failed to import world file. Unsupported or corrupted save format.');
-        }
+      if (!content) return;
+
+      const imported = SaveManager.importWorldJSON(content);
+      if (imported) {
+        const updated = SaveManager.getWorlds();
+        setWorlds(updated);
+        setSelectedWorldId(imported.id);
+        setViewState('worlds');
       }
     };
     reader.readAsText(file);
@@ -226,22 +172,28 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
   return (
     <ErrorBoundary>
-      <div className="relative w-full h-screen bg-[#07090e] text-white overflow-hidden flex flex-col justify-between p-6 select-none font-sans">
-        {/* WebGL Animated Background Canvas */}
-        <canvas ref={bgCanvasRef} className="absolute inset-0 z-0 pointer-events-none opacity-40" />
+      <div className="relative w-full h-screen bg-[#05070e] text-white overflow-hidden flex flex-col justify-between select-none font-sans">
+        {/* Realtime Stylized Voxel Diorama Background */}
+        <MenuVoxelDiorama />
 
-        {/* Top Branding & Version Tag */}
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400 font-bold text-sm">
+        {/* Ambient Dark Gradient on Left for Pristine UI Contrast */}
+        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-r from-[#04060c]/95 via-[#060812]/85 lg:via-[#060812]/70 to-transparent w-full lg:w-[52%] h-full" />
+
+        {/* Top Header Branding & Version Tag */}
+        <div className="relative z-10 flex items-center justify-between px-6 lg:px-12 pt-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-sky-500/10 border border-sky-400/20 flex items-center justify-center text-sky-400 font-black text-lg shadow-lg shadow-sky-500/10 backdrop-blur-md">
               V
             </div>
-            <span className="font-black tracking-widest text-sm text-white/90">VOXELVERSE</span>
+            <div>
+              <span className="font-black tracking-widest text-base text-transparent bg-clip-text bg-gradient-to-br from-white via-sky-50 to-sky-300 block leading-none">VOXELVERSE</span>
+              <span className="text-[10px] text-sky-200/50 font-mono tracking-wider">STYLIZED SURVIVAL</span>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-mono px-2.5 py-1 bg-sky-500/10 text-sky-300 border border-sky-500/20 rounded-full font-bold">
-              v0.9.0-RC1 Production Candidate
+            <span className="text-[9px] font-mono px-2 py-0.5 text-white/40 border border-white/10 rounded-full font-bold">
+              v1.0 Edition
             </span>
           </div>
         </div>
@@ -255,359 +207,379 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
           onChange={handleImportFileChange}
         />
 
-        {/* Main Interface Cards Container */}
-        <div className="relative z-10 max-w-lg mx-auto w-full space-y-4 my-auto">
-          {/* Crash Recovery Prompt Banner */}
-          {crashRecoveryData && (
-            <div className="bg-amber-500/20 border border-amber-500/50 p-4 rounded-3xl backdrop-blur-md shadow-xl text-center space-y-2 animate-fade-in">
-              <div className="flex items-center justify-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider">
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Unsaved Recovery Session Detected
-              </div>
-              <p className="text-[11px] text-white/80">
-                A previous session ('{crashRecoveryData.name}') was closed unexpectedly. Would you like to recover your progress?
-              </p>
-              <div className="flex gap-2 pt-1 justify-center">
-                <button
-                  onClick={handleRecoverSession}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black rounded-xl font-bold text-xs cursor-pointer shadow-md"
-                >
-                  Recover Progress
-                </button>
-                <button
-                  onClick={handleDiscardRecovery}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs cursor-pointer"
-                >
-                  Discard
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Main Navigation View */}
-          {viewState === 'main' && (
-            <div className="bg-[#0c0e14]/85 backdrop-blur-2xl rounded-3xl border border-white/15 p-8 shadow-2xl text-center space-y-6 animate-fade-in">
-              <div className="space-y-1.5">
-                <h2 className="text-3xl font-black tracking-tight text-white">VOXELVERSE</h2>
-                <p className="text-xs text-white/50">Procedural 3D Voxel Sandbox • Survival • Crafting • Desktop Ready</p>
-              </div>
-
-              <div className="space-y-2.5 max-w-md mx-auto pt-2">
-                <button
-                  onClick={handleContinue}
-                  className="w-full py-3.5 bg-sky-500 hover:bg-sky-400 text-white rounded-2xl font-black text-sm uppercase tracking-wider shadow-xl shadow-sky-500/20 transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Play className="w-4 h-4 fill-white" />
-                  Continue Game
-                </button>
-
-                <button
-                  onClick={() => setViewState('worlds')}
-                  className="w-full py-3.5 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-bold text-sm border border-white/10 transition-all cursor-pointer"
-                >
-                  Singleplayer Realms
-                </button>
-
-                <button
-                  onClick={() => setViewState('multiplayer')}
-                  className="w-full py-3.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 rounded-2xl font-bold text-sm border border-emerald-500/30 transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <span>🌐 Multiplayer Test Harness</span>
-                </button>
-
-                <div className="grid grid-cols-2 gap-2.5 pt-1">
+        {/* Main Content Area: Left Asymmetrical UI Panel with Right Hero Stage */}
+        <div className="relative z-10 flex-1 flex flex-col lg:flex-row items-center px-6 lg:px-12 py-4 max-w-7xl w-full mx-auto">
+          {/* Left Column: UI Panels (max-width 460-480px, constrained safe-zone) */}
+          <div className="w-full max-w-[460px] lg:max-w-[480px] space-y-4 my-auto">
+            {/* Crash Recovery Prompt Banner */}
+            {crashRecoveryData && (
+              <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-3xl backdrop-blur-2xl shadow-xl text-center space-y-2 animate-fade-in">
+                <div className="flex items-center justify-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Unsaved Recovery Session Detected
+                </div>
+                <p className="text-[11px] text-white/70">
+                  A previous session ('{crashRecoveryData.name}') was closed unexpectedly. Would you like to recover your progress?
+                </p>
+                <div className="flex gap-2 pt-1 justify-center">
                   <button
-                    onClick={() => setShowSettingsModal(true)}
-                    className="py-3 bg-white/5 hover:bg-white/15 text-white/80 hover:text-white rounded-2xl font-bold text-xs border border-white/5 transition-all cursor-pointer"
+                    onClick={handleRecoverSession}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black rounded-xl font-bold text-xs cursor-pointer shadow-md transition-all active:scale-[0.98] hover:-translate-y-0.5"
                   >
-                    ⚙ Settings
+                    Recover Progress
                   </button>
                   <button
-                    onClick={() => setViewState('credits')}
-                    className="py-3 bg-white/5 hover:bg-white/15 text-white/80 hover:text-white rounded-2xl font-bold text-xs border border-white/5 transition-all cursor-pointer"
+                    onClick={handleDiscardRecovery}
+                    className="px-4 py-2 bg-white/5 hover:bg-white/15 text-white/80 rounded-xl font-bold text-xs cursor-pointer transition-all active:scale-[0.98] hover:-translate-y-0.5"
                   >
-                    📜 Credits
+                    Discard
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* World Browser View */}
-          {viewState === 'worlds' && (
-            <div className="bg-[#0c0e14]/90 backdrop-blur-2xl rounded-3xl border border-white/15 p-6 shadow-2xl space-y-5 animate-fade-in">
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <h3 className="text-base font-black uppercase tracking-wider">World Browser</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer"
-                    title="Import World Save File"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    Import Realm
-                  </button>
-
-                  <button
-                    onClick={() => setViewState('main')}
-                    className="px-3 py-1.5 bg-white/5 hover:bg-white/15 text-xs font-mono rounded-xl cursor-pointer"
-                  >
-                    ← Back
-                  </button>
+            {/* Main Navigation Card */}
+            {viewState === 'main' && (
+              <div className="bg-[#070a12]/70 backdrop-blur-3xl rounded-3xl border border-white/5 p-7 shadow-2xl space-y-5 animate-fade-in relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-sky-500/5 to-transparent pointer-events-none" />
+                
+                <div className="space-y-1.5 text-left relative z-10">
+                  <h2 className="text-3xl lg:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-sky-100 to-sky-400">
+                    VOXELVERSE
+                  </h2>
+                  <p className="text-xs text-white/50 tracking-wide font-medium">Procedural 3D Voxel Survival • Living Atmosphere</p>
                 </div>
-              </div>
 
-              {/* Worlds List */}
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {worlds.length === 0 ? (
-                  <div className="p-8 text-center bg-white/5 rounded-2xl border border-white/5 text-xs text-white/40 space-y-3">
-                    <p>No saved realms discovered.</p>
+                <div className="space-y-2.5 pt-1 relative z-10">
+                  {/* Primary Continue / Play Button */}
+                  <button
+                    onClick={handleContinue}
+                    className="group relative w-full py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white rounded-2xl font-black text-sm uppercase tracking-wider shadow-xl shadow-sky-500/20 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98] hover:-translate-y-1 hover:shadow-sky-500/40 overflow-hidden"
+                  >
+                    <Play className="w-4 h-4 fill-white transition-transform group-hover:scale-110 group-hover:translate-x-0.5" />
+                    <span>Continue Game</span>
+                    {/* Subtle Sweep Effect */}
+                    <div className="absolute inset-0 -translate-x-[150%] group-hover:translate-x-[150%] transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12" />
+                  </button>
+
+                  {/* Singleplayer Realms */}
+                  <button
+                    onClick={() => setViewState('worlds')}
+                    className="group w-full py-3.5 bg-white/5 hover:bg-white/10 text-white/90 hover:text-white rounded-2xl font-bold text-sm border border-white/10 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] hover:-translate-y-0.5 shadow-lg shadow-black/20"
+                  >
+                    <Compass className="w-4 h-4 text-sky-400 transition-transform group-hover:rotate-45" />
+                    <span>Singleplayer Realms</span>
+                  </button>
+
+                  {/* Multiplayer */}
+                  <button
+                    onClick={() => setViewState('multiplayer')}
+                    className="group w-full py-3.5 bg-emerald-950/30 hover:bg-emerald-900/50 text-emerald-300 rounded-2xl font-bold text-sm border border-emerald-500/20 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] hover:-translate-y-0.5 shadow-lg shadow-black/20"
+                  >
+                    <Globe className="w-4 h-4 text-emerald-400 transition-transform group-hover:rotate-12" />
+                    <span>Multiplayer</span>
+                  </button>
+
+                  {/* Settings & Credits */}
+                  <div className="grid grid-cols-2 gap-2.5 pt-1">
                     <button
-                      onClick={() => setViewState('create')}
-                      className="px-5 py-2.5 bg-sky-500 hover:bg-sky-400 text-white rounded-xl font-bold shadow-lg cursor-pointer"
+                      onClick={() => setShowSettingsModal(true)}
+                      className="group py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-2xl font-bold text-xs border border-white/5 transition-all duration-300 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] hover:-translate-y-0.5"
                     >
-                      + Create New Realm
+                      <SettingsIcon className="w-3.5 h-3.5 transition-transform group-hover:rotate-90" />
+                      <span>Settings</span>
+                    </button>
+                    <button
+                      onClick={() => setViewState('credits')}
+                      className="group py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-2xl font-bold text-xs border border-white/5 transition-all duration-300 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] hover:-translate-y-0.5"
+                    >
+                      <Scroll className="w-3.5 h-3.5 transition-transform group-hover:-translate-y-0.5" />
+                      <span>Credits</span>
                     </button>
                   </div>
-                ) : (
-                  worlds.map((w) => {
-                    const isSelected = selectedWorldId === w.id;
-                    return (
-                      <div
-                        key={w.id}
-                        onClick={() => setSelectedWorldId(w.id)}
-                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-sky-500/20 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
-                            : 'bg-white/5 border-white/10 hover:bg-white/10'
-                        }`}
+                </div>
+              </div>
+            )}
+
+            {/* World Browser View */}
+            {viewState === 'worlds' && (
+              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-white/15 p-6 shadow-2xl space-y-5 animate-fade-in">
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <h3 className="text-base font-black uppercase tracking-wider">World Browser</h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer"
+                      title="Import World Save File"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      Import Realm
+                    </button>
+
+                    <button
+                      onClick={() => setViewState('main')}
+                      className="px-3 py-1.5 bg-white/5 hover:bg-white/15 text-xs font-mono rounded-xl cursor-pointer"
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                </div>
+
+                {/* Worlds List */}
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {worlds.length === 0 ? (
+                    <div className="p-8 text-center bg-white/5 rounded-2xl border border-white/5 text-xs text-white/40 space-y-3">
+                      <p>No saved realms discovered.</p>
+                      <button
+                        onClick={() => setViewState('create')}
+                        className="px-5 py-2.5 bg-sky-500 hover:bg-sky-400 text-white rounded-xl font-bold shadow-lg cursor-pointer"
                       >
-                        <div className="space-y-0.5">
-                          <div className="text-sm font-bold text-white flex items-center gap-2">
-                            <span>{w.name}</span>
-                            <span className="text-[9px] uppercase px-2 py-0.5 rounded bg-white/10 text-sky-300 font-mono">
-                              {w.gameMode}
-                            </span>
+                        + Create New Realm
+                      </button>
+                    </div>
+                  ) : (
+                    worlds.map((w) => {
+                      const isSelected = selectedWorldId === w.id;
+                      return (
+                        <div
+                          key={w.id}
+                          onClick={() => setSelectedWorldId(w.id)}
+                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                            isSelected
+                              ? 'bg-sky-500/20 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
+                              : 'bg-white/5 border-white/10 hover:bg-white/10'
+                          }`}
+                        >
+                          <div className="space-y-0.5">
+                            <div className="text-sm font-bold text-white flex items-center gap-2">
+                              <span>{w.name}</span>
+                              <span className="text-[9px] uppercase px-2 py-0.5 rounded bg-white/10 text-sky-300 font-mono">
+                                {w.gameMode}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-white/40 font-mono">
+                              Seed: {w.seed} • Last Played {new Date(w.lastPlayed).toLocaleDateString()}
+                            </div>
                           </div>
-                          <div className="text-[10px] text-white/40 font-mono">
-                            Seed: {w.seed} • Last Played {new Date(w.lastPlayed).toLocaleDateString()}
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={(e) => handleExportWorld(w.id, e)}
-                            title="Export Realm Save"
-                            className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-mono cursor-pointer"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setWorldToRename({ id: w.id, name: w.name });
-                              setRenameInput(w.name);
-                            }}
-                            title="Rename Realm"
-                            className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-mono cursor-pointer"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => handleDuplicateWorld(w.id, e)}
-                            title="Duplicate Realm"
-                            className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-mono cursor-pointer"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteConfirmId(w.id);
-                            }}
-                            title="Delete Realm"
-                            className="w-7 h-7 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 flex items-center justify-center text-xs font-mono cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={(e) => handleExportWorld(w.id, e)}
+                              title="Export Realm Save"
+                              className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-mono cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setWorldToRename({ id: w.id, name: w.name });
+                                setRenameInput(w.name);
+                              }}
+                              title="Rename Realm"
+                              className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-mono cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDuplicateWorld(w.id, e)}
+                              title="Duplicate Realm"
+                              className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-mono cursor-pointer"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteConfirmId(w.id);
+                              }}
+                              title="Delete Realm"
+                              className="w-7 h-7 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 flex items-center justify-center text-xs font-mono cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Bottom World Browser Actions */}
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/10">
+                  <button
+                    onClick={handlePlaySelected}
+                    className="py-3 bg-sky-500 hover:bg-sky-400 text-white rounded-2xl font-bold text-sm shadow-xl cursor-pointer"
+                  >
+                    ▶ Play Realm
+                  </button>
+                  <button
+                    onClick={() => setViewState('create')}
+                    className="py-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-bold text-sm border border-white/10 cursor-pointer"
+                  >
+                    + Create New Realm
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Create World Flow View */}
+            {viewState === 'create' && (
+              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-white/15 p-6 shadow-2xl space-y-5 animate-fade-in">
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <h3 className="text-base font-black uppercase tracking-wider">New Realm Configuration</h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setCreateTab('basic')}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        createTab === 'basic' ? 'bg-sky-500 text-white' : 'bg-white/5 text-white/50'
+                      }`}
+                    >
+                      Basic
+                    </button>
+                    <button
+                      onClick={() => setCreateTab('advanced')}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        createTab === 'advanced' ? 'bg-sky-500 text-white' : 'bg-white/5 text-white/50'
+                      }`}
+                    >
+                      Advanced
+                    </button>
+                  </div>
+                </div>
+
+                {createTab === 'basic' && (
+                  <div className="space-y-3 text-xs">
+                    <div className="space-y-1">
+                      <label className="font-bold text-white/70">World Name</label>
+                      <input
+                        type="text"
+                        value={newWorldName}
+                        onChange={(e) => setNewWorldName(e.target.value)}
+                        className="w-full bg-black/60 p-3 rounded-xl border border-white/10 text-white focus:outline-none focus:border-sky-400 font-sans"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-bold text-white/70">Game Mode</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['survival', 'creative', 'adventure', 'hardcore'] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            onClick={() => setNewGameMode(mode)}
+                            className={`py-2.5 rounded-xl text-xs font-bold capitalize transition-all cursor-pointer ${
+                              newGameMode === mode
+                                ? 'bg-sky-500 text-white shadow-md'
+                                : 'bg-white/5 text-white/50 hover:bg-white/10'
+                            }`}
+                          >
+                            {mode}
+                          </button>
+                        ))}
                       </div>
-                    );
-                  })
+                    </div>
+                  </div>
                 )}
-              </div>
 
-              {/* Bottom World Browser Actions */}
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/10">
-                <button
-                  onClick={handlePlaySelected}
-                  className="py-3 bg-sky-500 hover:bg-sky-400 text-white rounded-2xl font-bold text-sm shadow-xl cursor-pointer"
-                >
-                  ▶ Play Realm
-                </button>
-                <button
-                  onClick={() => setViewState('create')}
-                  className="py-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-bold text-sm border border-white/10 cursor-pointer"
-                >
-                  + Create New Realm
-                </button>
-              </div>
-            </div>
-          )}
+                {createTab === 'advanced' && (
+                  <div className="space-y-3 text-xs">
+                    <div className="space-y-1">
+                      <label className="font-bold text-white/70">Generation Seed (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="Randomized if empty"
+                        value={newWorldSeed}
+                        onChange={(e) => setNewWorldSeed(e.target.value)}
+                        className="w-full bg-black/60 p-3 rounded-xl border border-white/10 text-white focus:outline-none focus:border-sky-400 font-mono"
+                      />
+                    </div>
 
-          {/* Create World Flow View */}
-          {viewState === 'create' && (
-            <div className="bg-[#0c0e14]/90 backdrop-blur-2xl rounded-3xl border border-white/15 p-6 shadow-2xl space-y-5 animate-fade-in">
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <h3 className="text-base font-black uppercase tracking-wider">New Realm Configuration</h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setCreateTab('basic')}
-                    className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      createTab === 'basic' ? 'bg-sky-500 text-white' : 'bg-white/5 text-white/50'
-                    }`}
-                  >
-                    Basic
-                  </button>
-                  <button
-                    onClick={() => setCreateTab('advanced')}
-                    className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      createTab === 'advanced' ? 'bg-sky-500 text-white' : 'bg-white/5 text-white/50'
-                    }`}
-                  >
-                    Advanced
-                  </button>
-                </div>
-              </div>
-
-              {createTab === 'basic' && (
-                <div className="space-y-3 text-xs">
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/70">World Name</label>
-                    <input
-                      type="text"
-                      value={newWorldName}
-                      onChange={(e) => setNewWorldName(e.target.value)}
-                      className="w-full bg-black/60 p-3 rounded-xl border border-white/10 text-white focus:outline-none focus:border-sky-400 font-sans"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/70">Game Mode</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['survival', 'creative', 'adventure', 'hardcore'] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          onClick={() => setNewGameMode(mode)}
-                          className={`py-2.5 rounded-xl text-xs font-bold capitalize transition-all cursor-pointer ${
-                            newGameMode === mode
-                              ? 'bg-sky-500 text-white shadow-md'
-                              : 'bg-white/5 text-white/50 hover:bg-white/10'
-                          }`}
-                        >
-                          {mode}
-                        </button>
-                      ))}
+                    <div className="space-y-1">
+                      <label className="font-bold text-white/70">World Preset</label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['standard', 'continental', 'archipelago', 'mountainous', 'flattish'] as const).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => setNewWorldPreset(p)}
+                            className={`py-2 px-2 rounded-xl text-[10px] font-bold capitalize transition-all cursor-pointer ${
+                              newWorldPreset === p
+                                ? 'bg-indigo-500 text-white shadow-md'
+                                : 'bg-white/5 text-white/50 hover:bg-white/10'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
+                )}
+
+                <div className="flex gap-2 pt-2 border-t border-white/10">
+                  <button
+                    onClick={() => setViewState('worlds')}
+                    className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-2xl font-bold text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateWorldSubmit}
+                    className="flex-1 py-3 bg-sky-500 hover:bg-sky-400 text-white rounded-2xl font-bold text-xs shadow-lg cursor-pointer"
+                  >
+                    Generate Realm
+                  </button>
                 </div>
-              )}
-
-              {createTab === 'advanced' && (
-                <div className="space-y-3 text-xs">
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/70">Generation Seed (Optional)</label>
-                    <input
-                      type="text"
-                      placeholder="Randomized if empty"
-                      value={newWorldSeed}
-                      onChange={(e) => setNewWorldSeed(e.target.value)}
-                      className="w-full bg-black/60 p-3 rounded-xl border border-white/10 text-white focus:outline-none focus:border-sky-400 font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/70">World Preset</label>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {(['standard', 'continental', 'archipelago', 'mountainous', 'flattish'] as const).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => setNewWorldPreset(p)}
-                          className={`py-2 px-2 rounded-xl text-[10px] font-bold capitalize transition-all cursor-pointer ${
-                            newWorldPreset === p
-                              ? 'bg-indigo-500 text-white shadow-md'
-                              : 'bg-white/5 text-white/50 hover:bg-white/10'
-                          }`}
-                        >
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2 border-t border-white/10">
-                <button
-                  onClick={() => setViewState('worlds')}
-                  className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-2xl font-bold text-xs cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreateWorldSubmit}
-                  className="flex-1 py-3 bg-sky-500 hover:bg-sky-400 text-white rounded-2xl font-bold text-xs shadow-lg cursor-pointer"
-                >
-                  Generate Realm
-                </button>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Multiplayer Harness View */}
-          {viewState === 'multiplayer' && (
-            <div className="bg-[#0c0e14]/90 backdrop-blur-2xl rounded-3xl border border-emerald-500/30 p-6 shadow-2xl space-y-4 animate-fade-in text-center">
-              <h3 className="text-xl font-black uppercase tracking-wider text-emerald-300">Multiplayer Test Harness</h3>
-              <p className="text-xs text-white/60 leading-relaxed">
-                VoxelVerse is built with a server-authoritative network foundation. You can launch a local loopback session with a simulated second player ('Aetheria_Explorer_02') to verify real-time movement interpolation, block modification replication, and network chat.
-              </p>
+            {/* Multiplayer View */}
+            {viewState === 'multiplayer' && (
+              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-emerald-500/30 p-6 shadow-2xl space-y-4 animate-fade-in text-center">
+                <h3 className="text-xl font-black uppercase tracking-wider text-emerald-300">Multiplayer Realms</h3>
+                <p className="text-xs text-white/70 leading-relaxed">
+                  VoxelVerse features a high-performance authoritative network architecture. Launch a synchronized multiplayer session to explore worlds with real-time player interpolation, synced block modifications, and in-game chat.
+                </p>
 
-              <div className="pt-2 flex gap-3">
+                <div className="pt-2 flex gap-3">
+                  <button
+                    onClick={() => setViewState('main')}
+                    className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-2xl font-bold text-xs cursor-pointer"
+                  >
+                    Back to Menu
+                  </button>
+                  <button
+                    onClick={() => {
+                      const seed = Math.floor(Math.random() * 9999999);
+                      onStartGame(`world_mp_${Date.now()}`, seed, 'survival', 'Multiplayer Realm', 'standard', true);
+                    }}
+                    className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-bold text-xs shadow-lg cursor-pointer"
+                  >
+                    Launch Multiplayer Realm
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Credits View */}
+            {viewState === 'credits' && (
+              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-white/15 p-6 shadow-2xl space-y-4 animate-fade-in text-center">
+                <h3 className="text-xl font-black uppercase tracking-wider text-sky-400">VoxelVerse Credits</h3>
+                <div className="space-y-2 text-xs text-white/70">
+                  <p>VoxelVerse Procedural 3D Sandbox Engine</p>
+                  <p className="text-white/50">Engineered for browser performance and immersive survival crafting.</p>
+                </div>
                 <button
                   onClick={() => setViewState('main')}
-                  className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-2xl font-bold text-xs cursor-pointer"
+                  className="px-6 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold cursor-pointer"
                 >
-                  Back to Menu
-                </button>
-                <button
-                  onClick={() => {
-                    const seed = Math.floor(Math.random() * 9999999);
-                    onStartGame(`world_mp_${Date.now()}`, seed, 'survival', 'Multiplayer Testing Realm', 'standard', true);
-                  }}
-                  className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-bold text-xs shadow-lg cursor-pointer"
-                >
-                  Launch Harness Realm
+                  Close Credits
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Credits View */}
-          {viewState === 'credits' && (
-            <div className="bg-[#0c0e14]/90 backdrop-blur-2xl rounded-3xl border border-white/15 p-6 shadow-2xl space-y-4 animate-fade-in text-center">
-              <h3 className="text-xl font-black uppercase tracking-wider text-sky-400">VoxelVerse Credits</h3>
-              <div className="space-y-2 text-xs text-white/70">
-                <p>Designed & Engineered with TypeScript, Three.js, and React.</p>
-                <p className="font-mono text-white/40">Pure WebGL Procedural Voxel Engine</p>
-              </div>
-              <button
-                onClick={() => setViewState('main')}
-                className="px-6 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold cursor-pointer"
-              >
-                Close Credits
-              </button>
-            </div>
-          )}
+          {/* Right Column: Hero Visual Open Stage (Allowing Diorama to be the Centerpiece) */}
+          <div className="hidden lg:flex flex-1 pointer-events-none items-center justify-center" />
         </div>
 
         {/* Rename Confirmation Modal */}
@@ -655,9 +627,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
         <SettingsModal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
 
         {/* Footer Info */}
-        <div className="relative z-10 flex items-center justify-between text-[11px] text-white/40 font-mono">
-          <div>VoxelVerse Engine • Production Candidate v0.9.0-RC1</div>
-          <div>TypeScript & WebGL</div>
+        <div className="relative z-10 flex items-center justify-between px-6 lg:px-12 pb-5 text-[10px] text-white/30 font-mono tracking-widest uppercase">
+          <div>VoxelVerse • Procedural Voxel Sandbox</div>
+          <div>Craft • Build • Explore</div>
         </div>
       </div>
     </ErrorBoundary>
