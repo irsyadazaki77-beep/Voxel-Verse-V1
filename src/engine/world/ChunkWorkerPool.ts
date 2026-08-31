@@ -38,9 +38,10 @@ export class ChunkWorkerPool {
   public currentSessionToken: number = 1;
   private cpuFallbackGenerator: WorldGeneratorCore | null = null;
   private taskTimeouts: Map<string, any> = new Map();
+  private workerFailures: number[] = [];
 
   constructor() {
-    const threadCount = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
+    const threadCount = typeof navigator !== 'undefined' ? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1)) : 1;
     this.initWorkers(threadCount);
   }
 
@@ -51,20 +52,36 @@ export class ChunkWorkerPool {
   }
 
   private createWorker(index: number) {
+    const attempts = this.workerFailures[index] || 0;
+    if (attempts >= 2) {
+      this.workers[index] = null;
+      this.workerBusy[index] = false;
+      return;
+    }
+
     try {
+      if (typeof Worker === 'undefined') {
+        this.workers[index] = null;
+        this.workerBusy[index] = false;
+        return;
+      }
+
       const worker = new Worker(new URL('./WorldWorker.ts', import.meta.url), { type: 'module' });
       this.workers[index] = worker;
       this.workerBusy[index] = false;
 
       worker.onmessage = (e: MessageEvent<WorkerTaskResult>) => {
+        this.workerFailures[index] = 0;
         this.handleWorkerResult(index, e.data);
       };
 
       worker.onerror = (err) => {
-        Logger.warn('ChunkWorkerPool', `Worker ${index} error`, { error: err });
+        this.workerFailures[index] = (this.workerFailures[index] || 0) + 1;
+        Logger.warn('ChunkWorkerPool', `Worker ${index} error (attempt ${this.workerFailures[index]})`, { error: err });
         this.handleWorkerError(index);
       };
     } catch (e) {
+      this.workerFailures[index] = (this.workerFailures[index] || 0) + 1;
       Logger.warn('ChunkWorkerPool', `Failed to create Worker ${index}`, { error: e });
       this.workers[index] = null;
       this.workerBusy[index] = false;
@@ -84,16 +101,24 @@ export class ChunkWorkerPool {
           this.executeSync(task);
         }
       }
-      worker.terminate();
+      try {
+        worker.terminate();
+      } catch {
+        // ignore
+      }
     }
     
-    this.createWorker(workerIdx);
+    this.workers[workerIdx] = null;
+    this.workerBusy[workerIdx] = false;
+
+    if ((this.workerFailures[workerIdx] || 0) < 2) {
+      this.createWorker(workerIdx);
+    }
     this.processQueue();
   }
 
   private executeSync(task: WorkerTask) {
     if (task.type === 'generate') {
-      Logger.info('ChunkWorkerPool', `Generating chunk ${task.cx}, ${task.cz} synchronously`);
       if (!this.cpuFallbackGenerator || this.cpuFallbackGenerator.seed !== task.seed || this.cpuFallbackGenerator.preset !== (task.preset || 'standard')) {
         this.cpuFallbackGenerator = new WorldGeneratorCore(task.seed, task.preset || 'standard');
       }
@@ -106,7 +131,6 @@ export class ChunkWorkerPool {
         Logger.error('ChunkWorkerPool', `Sync generation failed for ${task.cx}, ${task.cz}`, { error: e });
       }
     } else if (task.type === 'mesh') {
-      Logger.info('ChunkWorkerPool', `Meshing chunk ${task.cx}, ${task.cz} synchronously`);
       try {
         const centerBlocks = new Uint8Array(task.centerBuffer);
         const neighbors: Record<string, Uint8Array> = {};

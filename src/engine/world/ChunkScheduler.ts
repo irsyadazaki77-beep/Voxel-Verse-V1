@@ -1,6 +1,6 @@
 // Chunk Streaming Scheduler with Camera Direction Priority, Frame Time Budget & Load Hysteresis
 import * as THREE from 'three';
-import { Chunk, ChunkState, CHUNK_SIZE_X, CHUNK_SIZE_Z } from './Chunk';
+import { Chunk, ChunkState, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z } from './Chunk';
 import { VoxelWorld } from './VoxelWorld';
 import { ChunkWorkerPool } from './ChunkWorkerPool';
 
@@ -9,6 +9,10 @@ export class ChunkScheduler {
   private workerPool: ChunkWorkerPool;
   private dirtyQueue: Set<string> = new Set(); // Chunk keys scheduled for remesh
   public warmCache: Map<string, { chunk: Chunk; unloadTime: number }> = new Map();
+
+  private projScreenMatrix = new THREE.Matrix4();
+  private frustum = new THREE.Frustum();
+  private tempBox = new THREE.Box3();
 
   // Metrics for Performance Profiler
   public metrics = {
@@ -23,6 +27,20 @@ export class ChunkScheduler {
   constructor(world: VoxelWorld) {
     this.world = world;
     this.workerPool = new ChunkWorkerPool();
+  }
+
+  public updateFrustumCulling(camera: THREE.PerspectiveCamera): void {
+    this.projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
+
+    for (const chunk of this.world.chunks.values()) {
+      const minX = chunk.cx * CHUNK_SIZE_X;
+      const minZ = chunk.cz * CHUNK_SIZE_Z;
+      this.tempBox.min.set(minX, 0, minZ);
+      this.tempBox.max.set(minX + CHUNK_SIZE_X, CHUNK_SIZE_Y, minZ + CHUNK_SIZE_Z);
+
+      chunk.group.visible = this.frustum.intersectsBox(this.tempBox);
+    }
   }
 
   public update(

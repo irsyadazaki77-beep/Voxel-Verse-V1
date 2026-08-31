@@ -10,11 +10,11 @@ export class EnvironmentSystem implements GameSystem {
   }
 
   public update(deltaTime: number): void {
-    const { sky, weather, clouds, particles, player, world } = this.runtime;
+    const { sky, weather, clouds, particles, player, world, camera } = this.runtime;
     if (!sky || !player || !world) return;
 
-    // 1. World visual update loop (water wave animation & vegetation wind displacement uTime)
-    world.update(deltaTime);
+    // 1. World visual update loop (water wave animation, vegetation wind displacement uTime & frustum culling)
+    world.update(deltaTime, camera);
 
     const biome = world.biomeManager.getBiome(player.position.x, player.position.z);
     sky.update(deltaTime, player.position, biome, player.isEyesInWater);

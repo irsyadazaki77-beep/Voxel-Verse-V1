@@ -444,13 +444,16 @@ export class VoxelWorld {
 
   public waterTime: number = 0;
 
-  public update(deltaTime: number): void {
+  public update(deltaTime: number, camera?: THREE.PerspectiveCamera): void {
     this.waterTime += deltaTime;
     if (this.waterMaterial.userData.shader) {
       this.waterMaterial.userData.shader.uniforms.uTime.value = this.waterTime;
     }
     if (this.transMaterial.userData.shader) {
       this.transMaterial.userData.shader.uniforms.uTime.value = this.waterTime;
+    }
+    if (camera) {
+      this.scheduler.updateFrustumCulling(camera);
     }
   }
 

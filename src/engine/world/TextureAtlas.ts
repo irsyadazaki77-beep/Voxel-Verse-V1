@@ -74,6 +74,7 @@ export class TextureAtlas {
 
   public static getAtlasTexture(): THREE.CanvasTexture {
     if (this.atlasTexture) return this.atlasTexture;
+    if (typeof document === 'undefined') return null as any;
 
     const width = this.ATLAS_COLS * this.TILE_SIZE;
     const height = this.ATLAS_ROWS * this.TILE_SIZE;
