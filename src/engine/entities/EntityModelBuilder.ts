@@ -22,6 +22,7 @@ export class EntityModelBuilder {
     const materials: THREE.Material[] = [];
 
     for (const part of parts) {
+      if (!part || !part.geo) continue;
       const geo = part.geo.clone();
       
       const matrix = new THREE.Matrix4();

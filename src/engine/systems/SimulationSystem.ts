@@ -40,7 +40,8 @@ export class SimulationSystem implements GameSystem {
     if (!player || !world || !stats) return;
 
     // 1. Update Player Movement Physics & Voxel Collisions
-    player.update(dt, world, gameMode, settings.viewBobbing, stats.stamina);
+    const headBobEnabled = settings.accessibility.headBobIntensity > 0 && !settings.accessibility.motionReduction;
+    player.update(dt, world, gameMode, headBobEnabled, stats.stamina);
     if ((player as any).pendingStaminaDeduction > 0) {
       stats.stamina = Math.max(0, stats.stamina - (player as any).pendingStaminaDeduction);
       (player as any).pendingStaminaDeduction = 0;

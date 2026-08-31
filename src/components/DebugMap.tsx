@@ -58,7 +58,7 @@ export const DebugMap: React.FC<DebugMapProps> = ({ world, playerPos, onClose })
               const color = getBiomeColor(pt.biomeName, pt.isWater, pt.height);
               return (
                 <div
-                  key={idx}
+                  key={`map-pt-${pt.x}-${pt.z}-${idx}`}
                   style={{ backgroundColor: color }}
                   className="w-full h-full rounded-[1px] opacity-85 hover:opacity-100 transition-opacity"
                   title={`Pos: (${Math.floor(pt.x)}, ${Math.floor(pt.z)})\nBiome: ${pt.biomeName}\nElevation Y: ${pt.height}`}

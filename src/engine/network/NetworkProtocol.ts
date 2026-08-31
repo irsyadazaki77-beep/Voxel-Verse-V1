@@ -8,10 +8,14 @@ export type NetworkMessageType =
   | 'TRANSFORM_SNAPSHOT'
   | 'BLOCK_CHANGE'
   | 'INVENTORY_ACTION'
+  | 'CRAFT_REQUEST'
+  | 'ATTACK_INTENT'
   | 'DAMAGE_EVENT'
   | 'CHAT_MESSAGE'
   | 'ENTITY_SNAPSHOT'
-  | 'SERVER_STATE_SNAPSHOT';
+  | 'SERVER_STATE_SNAPSHOT'
+  | 'PLAYER_BOOTSTRAP'
+  | 'INVENTORY_SNAPSHOT';
 
 export interface BaseNetworkMessage {
   protocolVersion: string;
@@ -60,6 +64,7 @@ export interface BlockChangeMessage extends BaseNetworkMessage {
   oldBlockType: number;
   newBlockType: number;
   playerSessionId: string;
+  revision?: number;
 }
 
 export interface InventoryActionMessage extends BaseNetworkMessage {
@@ -70,6 +75,52 @@ export interface InventoryActionMessage extends BaseNetworkMessage {
   toSlot: number;
   itemId?: string;
   count: number;
+}
+
+export interface CraftRequestMessage extends BaseNetworkMessage {
+  type: 'CRAFT_REQUEST';
+  recipeId: string;
+  stationContext?: string;
+}
+
+export interface AttackIntentMessage extends BaseNetworkMessage {
+  type: 'ATTACK_INTENT';
+  targetId: string;
+  weaponSlot?: number;
+  sequence?: number;
+}
+
+export interface InventorySnapshotMessage extends BaseNetworkMessage {
+  type: 'INVENTORY_SNAPSHOT';
+  inventory: Array<{ itemId: string; count: number } | null>;
+  equipment: Record<string, string | null>;
+}
+
+export interface PlayerBootstrapMessage extends BaseNetworkMessage {
+  type: 'PLAYER_BOOTSTRAP';
+  playerId: string;
+  playerName: string;
+  position: [number, number, number];
+  inventory: Array<{ itemId: string; count: number } | null>;
+  equipment: Record<string, string | null>;
+  stats: {
+    health: number;
+    maxHealth: number;
+    level: number;
+    exp: number;
+  };
+  questProgress: Record<string, any>;
+  reputation: Record<string, number>;
+  worldSeed: number;
+  worldPreset: string;
+  blocks: Array<{ x: number; y: number; z: number; blockType: number; revision: number }>;
+  onlinePlayers: Array<{
+    sessionId: string;
+    playerName: string;
+    position: [number, number, number];
+    rotation: [number, number, number];
+    animState: string;
+  }>;
 }
 
 export interface DamageEventMessage extends BaseNetworkMessage {
@@ -105,6 +156,10 @@ export type NetworkMessagePayload =
   | TransformSnapshotMessage
   | BlockChangeMessage
   | InventoryActionMessage
+  | CraftRequestMessage
+  | AttackIntentMessage
+  | InventorySnapshotMessage
+  | PlayerBootstrapMessage
   | DamageEventMessage
   | ChatMessageMessage
   | EntitySnapshotMessage;

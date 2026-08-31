@@ -11,15 +11,42 @@ export class AetherAnomalyManager {
   public static activeIntensity: number = 0; // 0 (none) to 1 (full anomaly shift)
   public static climaxBossId: string | null = null;
   public static anomalyCoords: [number, number, number] | null = null;
+  public static rewardClaimed: boolean = false;
   
   private static onAnomalyStateChangeCallbacks: (() => void)[] = [];
 
-  public static initialize(): void {
-    this.status = 'dormant';
-    this.timer = 180; // First anomaly in 3 minutes of playtime!
-    this.activeIntensity = 0;
-    this.climaxBossId = null;
-    this.anomalyCoords = null;
+  public static initialize(savedData?: any): void {
+    if (savedData) {
+      this.deserialize(savedData);
+    } else {
+      this.status = 'dormant';
+      this.timer = 180; // First anomaly in 3 minutes of playtime!
+      this.activeIntensity = 0;
+      this.climaxBossId = null;
+      this.anomalyCoords = null;
+      this.rewardClaimed = false;
+    }
+  }
+
+  public static serialize(): any {
+    return {
+      status: this.status,
+      timer: this.timer,
+      activeIntensity: this.activeIntensity,
+      climaxBossId: this.climaxBossId,
+      anomalyCoords: this.anomalyCoords,
+      rewardClaimed: this.rewardClaimed,
+    };
+  }
+
+  public static deserialize(data: any): void {
+    if (!data) return;
+    this.status = data.status || 'dormant';
+    this.timer = data.timer !== undefined ? data.timer : 180;
+    this.activeIntensity = data.activeIntensity || 0;
+    this.climaxBossId = data.climaxBossId || null;
+    this.anomalyCoords = data.anomalyCoords || null;
+    this.rewardClaimed = !!data.rewardClaimed;
   }
 
   public static update(deltaTime: number, runtime: GameRuntime): void {
@@ -87,6 +114,7 @@ export class AetherAnomalyManager {
       if (this.activeIntensity <= 0) {
         this.status = 'dormant';
         this.timer = 400 + Math.random() * 300; // Recurrence delay
+        this.rewardClaimed = false;
         this.notifyListeners();
       }
     }
@@ -111,6 +139,7 @@ export class AetherAnomalyManager {
 
     } else if (newStatus === 'active') {
       this.timer = 60; // 60s of standard active invasion
+      this.rewardClaimed = false;
       NotificationManager.push({
         title: 'AETHER ANOMALY UNLEASHED',
         message: 'Spatial rifts tear open! Wildlife has mutated.',
@@ -120,13 +149,22 @@ export class AetherAnomalyManager {
       });
       SubtitleManager.push('SYSTEM', 'The space-time barrier fractures!', 'environment', 5000);
       
-      // Mutate nearby mobs! Increase their health or speed
+      // Idempotent entity mutation
       Array.from(runtime.entities.entities.values()).map(e => e.state).forEach(ent => {
         if (ent.type === 'hostile' || ent.type === 'passive') {
-          ent.maxHealth = Math.round(ent.maxHealth * 1.5);
-          ent.health = ent.maxHealth;
-          ent.damage = Math.round(ent.damage * 1.3);
-          ent.name = `Mutated ${ent.name}`;
+          const eAny = ent as any;
+          if (eAny.baseMaxHealth === undefined) {
+            eAny.baseMaxHealth = ent.maxHealth;
+            eAny.baseDamage = ent.damage;
+            eAny.baseName = ent.name;
+          }
+          if (!eAny.anomalyBuff) {
+            eAny.anomalyBuff = true;
+            ent.maxHealth = Math.round(eAny.baseMaxHealth * 1.5);
+            ent.health = ent.maxHealth;
+            ent.damage = Math.round(eAny.baseDamage * 1.3);
+            ent.name = `Mutated ${eAny.baseName}`;
+          }
         }
       });
 
@@ -178,16 +216,30 @@ export class AetherAnomalyManager {
       });
       SubtitleManager.push('SYSTEM', 'The rifts close as ley energy subsides.', 'environment', 4000);
 
-      // Reward the player!
-      runtime.addItemToInventory('aether_crystal', 8);
-      runtime.stats.addXP(400);
+      // Revert mutated entity stats back to base
+      Array.from(runtime.entities.entities.values()).map(e => e.state).forEach(ent => {
+        const eAny = ent as any;
+        if (eAny.anomalyBuff) {
+          eAny.anomalyBuff = false;
+          if (eAny.baseMaxHealth !== undefined) ent.maxHealth = eAny.baseMaxHealth;
+          if (eAny.baseDamage !== undefined) ent.damage = eAny.baseDamage;
+          if (eAny.baseName !== undefined) ent.name = eAny.baseName;
+          ent.health = Math.min(ent.health, ent.maxHealth);
+        }
+      });
 
-      // Small chance to reward an epic artifact if the player is lucky!
-      if (Math.random() < 0.5) {
-        const artifacts = ['chrono_core', 'tidal_pearl', 'solaris_aegis'];
-        const chosen = artifacts[Math.floor(Math.random() * artifacts.length)];
-        runtime.addItemToInventory(chosen, 1);
-        GameEventBus.emit('ARTIFACT_UNLOCKED', { artifactId: chosen, name: chosen.replace('_', ' ').toUpperCase() });
+      // Reward the player (guaranteed only once per anomaly cycle)
+      if (!this.rewardClaimed) {
+        this.rewardClaimed = true;
+        runtime.addItemToInventory('aether_crystal', 8);
+        runtime.stats.addXP(400);
+
+        if (Math.random() < 0.5) {
+          const artifacts = ['chrono_core', 'tidal_pearl', 'solaris_aegis'];
+          const chosen = artifacts[Math.floor(Math.random() * artifacts.length)];
+          runtime.addItemToInventory(chosen, 1);
+          GameEventBus.emit('ARTIFACT_UNLOCKED', { artifactId: chosen, name: chosen.replace('_', ' ').toUpperCase() });
+        }
       }
 
       // Hide Boss health HUD

@@ -6,6 +6,7 @@ import { WorldPreset } from '../engine/world/WorldConfig';
 import { SettingsModal } from './SettingsModal';
 import { ErrorBoundary } from './ErrorBoundary';
 import { MenuVoxelDiorama } from './MenuVoxelDiorama';
+import { VoxelVerseLogo } from './VoxelVerseLogo';
 import { Download, Upload, RefreshCw, Trash2, Edit3, Copy, Play, Compass, Globe, Settings as SettingsIcon, Scroll } from 'lucide-react';
 
 interface MainMenuProps {
@@ -83,13 +84,49 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
     }
   }, [viewState]);
 
+  const getOrInitSessionToken = async (targetRealmId?: string): Promise<string | null> => {
+    let token = localStorage.getItem('voxelverse_session_token');
+    if (token) return token;
+
+    const existingPlayerId = localStorage.getItem('voxelverse_client_player_id');
+    const defaultRealm = targetRealmId || (mpRealms.length > 0 ? mpRealms[0].realmId : 'realm_sunswept');
+
+    try {
+      const res = await fetch('/api/session/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          realmId: defaultRealm,
+          playerName: mpPlayerName.trim() || 'Realm Explorer',
+          clientPlayerId: existingPlayerId || undefined,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.sessionToken) {
+          localStorage.setItem('voxelverse_session_token', data.sessionToken);
+          localStorage.setItem('voxelverse_client_player_id', data.playerId);
+          return data.sessionToken;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to auto-establish session token:', e);
+    }
+    return null;
+  };
+
   const handleCreateMpRealmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMpRealmName.trim()) return;
+
+    const token = await getOrInitSessionToken();
     try {
       const res = await fetch('/api/realms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           realmName: newMpRealmName,
           worldPreset: newMpRealmPreset,
@@ -101,6 +138,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
         setNewMpRealmSeed('');
         setIsCreatingMpRealm(false);
         fetchMpRealms();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to create realm.');
       }
     } catch (e) {
       console.error('Failed to create multiplayer realm:', e);
@@ -109,10 +149,19 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
   const handleDeleteMpRealm = async (realmId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const token = await getOrInitSessionToken(realmId);
     try {
-      const res = await fetch(`/api/realms/${realmId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/realms/${realmId}`, {
+        method: 'DELETE',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
       if (res.ok) {
         fetchMpRealms();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Could not delete realm.');
       }
     } catch (e) {
       console.error('Failed to delete realm:', e);
@@ -120,6 +169,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   };
 
   const handleJoinMpRealm = async (realmId: string) => {
+    const existingPlayerId = localStorage.getItem('voxelverse_client_player_id');
     try {
       const res = await fetch('/api/session/join', {
         method: 'POST',
@@ -127,10 +177,17 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
         body: JSON.stringify({
           realmId,
           playerName: mpPlayerName.trim() || 'Realm Explorer',
+          clientPlayerId: existingPlayerId || undefined,
         }),
       });
       if (res.ok) {
         const session = await res.json();
+        if (session.sessionToken) {
+          localStorage.setItem('voxelverse_session_token', session.sessionToken);
+        }
+        if (session.playerId) {
+          localStorage.setItem('voxelverse_client_player_id', session.playerId);
+        }
         onStartGame(
           session.realmId,
           session.worldSeed,
@@ -283,15 +340,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
         {/* Top Header Branding & Version Tag */}
         <div className="relative z-10 flex items-center justify-between px-6 lg:px-12 pt-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-500/10 border border-sky-400/20 flex items-center justify-center text-sky-400 font-black text-lg shadow-lg shadow-sky-500/10 backdrop-blur-md">
-              V
-            </div>
-            <div>
-              <span className="font-black tracking-widest text-base text-transparent bg-clip-text bg-gradient-to-br from-white via-sky-50 to-sky-300 block leading-none">VOXELVERSE</span>
-              <span className="text-[10px] text-sky-200/50 font-mono tracking-wider">STYLIZED SURVIVAL</span>
-            </div>
-          </div>
+          <VoxelVerseLogo size="md" variant="full" />
 
           <div className="flex items-center gap-3">
             <span className="text-[9px] font-mono px-2 py-0.5 text-white/40 border border-white/10 rounded-full font-bold">
@@ -346,10 +395,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                 <div className="absolute inset-0 bg-gradient-to-b from-sky-500/5 to-transparent pointer-events-none" />
                 
                 <div className="space-y-1.5 text-left relative z-10">
-                  <h2 className="text-3xl lg:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-sky-100 to-sky-400">
-                    VOXELVERSE
-                  </h2>
-                  <p className="text-xs text-white/50 tracking-wide font-medium">Procedural 3D Voxel Survival • Living Atmosphere</p>
+                  <VoxelVerseLogo size="lg" variant="full" />
                 </div>
 
                 <div className="space-y-2.5 pt-1 relative z-10">

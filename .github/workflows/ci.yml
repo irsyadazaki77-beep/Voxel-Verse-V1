@@ -11,19 +11,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Use Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
-        node-size: 18.x
+        node-version: '20.x'
         cache: 'npm'
 
     - name: Install Dependencies
       run: npm ci
 
-    - name: Run Linter
-      run: npm run lint
-
-    - name: Compile and Build Applet
-      run: npm run build
+    - name: Run Release Check (Typecheck, Test, Build)
+      run: npm run release-check

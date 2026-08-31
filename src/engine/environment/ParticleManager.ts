@@ -50,6 +50,14 @@ export class ParticleManager {
     this.scene.add(this.particleMesh);
   }
 
+  private qualityMultiplier: number = 1.0;
+
+  public setQuality(quality: 'low' | 'medium' | 'high'): void {
+    if (quality === 'low') this.qualityMultiplier = 0.5;
+    else if (quality === 'medium') this.qualityMultiplier = 0.8;
+    else this.qualityMultiplier = 1.0;
+  }
+
   private getQualityMultiplier(): number {
     try {
       const preset = SettingsManager.get().graphics.preset;
@@ -60,7 +68,7 @@ export class ParticleManager {
     } catch {
       // fallback
     }
-    return 1.0;
+    return this.qualityMultiplier;
   }
 
   private getPooledParticle(): ActiveParticle {
@@ -274,8 +282,7 @@ export class ParticleManager {
   }
 
   public update(deltaTime: number): void {
-    let colorIdx = 0;
-
+    // 1. Recycle dead particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life += deltaTime;
@@ -283,8 +290,13 @@ export class ParticleManager {
       if (p.life >= p.maxLife) {
         this.particles.splice(i, 1);
         this.particlePool.push(p);
-        continue;
       }
+    }
+
+    // 2. Synchronously write matrices and colors for all active particles
+    const activeCount = this.particles.length;
+    for (let i = 0; i < activeCount; i++) {
+      const p = this.particles[i];
 
       // Physics update
       p.velocity.y -= p.gravity * deltaTime;
@@ -300,16 +312,17 @@ export class ParticleManager {
 
       this.particleMesh.setMatrixAt(i, this.dummy.matrix);
 
-      // Write directly to preallocated colorBuffer
-      this.colorBuffer[colorIdx++] = p.color.r;
-      this.colorBuffer[colorIdx++] = p.color.g;
-      this.colorBuffer[colorIdx++] = p.color.b;
+      // Write directly to preallocated colorBuffer at index i * 3
+      const colorIdx = i * 3;
+      this.colorBuffer[colorIdx] = p.color.r;
+      this.colorBuffer[colorIdx + 1] = p.color.g;
+      this.colorBuffer[colorIdx + 2] = p.color.b;
     }
 
-    this.particleMesh.count = this.particles.length;
+    this.particleMesh.count = activeCount;
     this.particleMesh.instanceMatrix.needsUpdate = true;
 
-    if (this.particles.length > 0) {
+    if (activeCount > 0) {
       this.colorAttribute.needsUpdate = true;
     }
   }

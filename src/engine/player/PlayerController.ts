@@ -5,6 +5,7 @@ import { BLOCK_DEFS } from '../world/BlockRegistry';
 import { VoxelWorld } from '../world/VoxelWorld';
 import { InputManager } from './InputManager';
 import { CameraMotionSystem } from './CameraMotionSystem';
+import { SettingsManager } from '../ui/SettingsManager';
 
 export type PlayerState = 'grounded' | 'airborne' | 'swimming' | 'climbing' | 'flying' | 'dead';
 
@@ -59,8 +60,13 @@ export class PlayerController {
   public avatarMesh: THREE.Group; // 3D Voxel Explorer Avatar for 3rd Person
 
   public cameraMode: 'first_person' | 'third_person_back' | 'third_person_front' = 'first_person';
+  public baseFov: number = 75;
   public targetFov: number = 75;
   public currentFov: number = 75;
+
+  public setBaseFov(fov: number): void {
+    this.baseFov = fov;
+  }
 
   // State Machine
   public state: PlayerState = 'airborne';
@@ -195,9 +201,11 @@ export class PlayerController {
     this.playerGroup.add(this.avatarMesh);
   }
 
-  public handleMouseMove(movementX: number, movementY: number, sensitivity: number = 0.002, invertY: boolean = false): void {
-    this.yaw -= movementX * sensitivity;
-    this.pitch += (invertY ? movementY : -movementY) * sensitivity;
+  public handleMouseMove(movementX: number, movementY: number, sensitivity: number = 1.0, invertY: boolean = false): void {
+    // Standard angular scale multiplier for pixel mouse movements (0.0015 rad/px for sensitivity 1.0)
+    const angularSens = sensitivity < 0.05 ? sensitivity : sensitivity * 0.0015;
+    this.yaw -= movementX * angularSens;
+    this.pitch += (invertY ? movementY : -movementY) * angularSens;
 
     // Clamp pitch between -89.5 and +89.5 degrees
     const maxPitch = (Math.PI / 2) - 0.01;
@@ -361,12 +369,15 @@ export class PlayerController {
     const hasInput = this.keys.forward || this.keys.backward || this.keys.left || this.keys.right;
     const canSprint = this.keys.sprint && !this.isCrouching && !this.isSwimming && (stamina > 5 || gameMode === 'creative');
 
+    const accSettings = SettingsManager.get().accessibility;
+    const sprintFovBoost = accSettings.motionReduction ? 1 : 7;
+
     if (canSprint && hasInput && this.keys.forward) {
       this.isSprinting = true;
-      this.targetFov = 84;
+      this.targetFov = this.baseFov + sprintFovBoost;
     } else {
       this.isSprinting = false;
-      this.targetFov = 75;
+      this.targetFov = this.baseFov;
     }
 
     let targetSpeed = this.config.walkSpeed;

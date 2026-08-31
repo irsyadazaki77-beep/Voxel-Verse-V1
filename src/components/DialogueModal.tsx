@@ -175,7 +175,7 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
 
                 return (
                   <div
-                    key={idx}
+                    key={`trade-${idx}-${trade.give.itemId}`}
                     className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10"
                   >
                     <div className="flex items-center gap-3 text-xs">
@@ -223,7 +223,7 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
                 );
                 const isMet = userQty >= req.count;
                 return (
-                  <div key={idx} className="flex justify-between items-center text-xs p-2 rounded bg-black/30 border border-white/5">
+                  <div key={`upgrade-req-${idx}-${req.itemId}`} className="flex justify-between items-center text-xs p-2 rounded bg-black/30 border border-white/5">
                     <span className="text-white/70">{itemDef?.name || req.itemId}</span>
                     <span className={`font-mono font-bold ${isMet ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {userQty}/{req.count}

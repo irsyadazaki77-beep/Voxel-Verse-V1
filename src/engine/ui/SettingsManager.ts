@@ -2,6 +2,8 @@
 export interface AudioSettings {
   masterVolume: number; // 0..1
   musicVolume: number; // 0..1
+  sfxVolume: number; // 0..1
+  ambientVolume: number; // 0..1
   environmentVolume: number; // 0..1
   creatureVolume: number; // 0..1
   combatVolume: number; // 0..1
@@ -9,15 +11,21 @@ export interface AudioSettings {
 }
 
 export interface GraphicsSettings {
-  preset: 'low' | 'medium' | 'high' | 'ultra';
+  preset: 'low' | 'medium' | 'high' | 'ultra' | 'custom';
   renderDistance: number; // 2..16 chunks
   shadows: boolean;
+  shadowQuality: 'off' | 'low' | 'medium' | 'high' | 'ultra';
   waterReflections: boolean;
+  waterQuality: 'low' | 'medium' | 'high';
   vegetationDensity: 'off' | 'low' | 'high';
-  particleQuality: 'low' | 'high';
+  particleQuality: 'low' | 'medium' | 'high';
   antiAliasing: boolean;
   postProcessing: boolean;
   fov: number; // 60..110
+  clouds: boolean;
+  cloudQuality: 'low' | 'medium' | 'high';
+  particles: boolean;
+  cameraMode: 'first_person' | 'third_person_back' | 'third_person_front';
 }
 
 export type KeyBindingAction =
@@ -80,6 +88,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   audio: {
     masterVolume: 0.8,
     musicVolume: 0.6,
+    sfxVolume: 0.8,
+    ambientVolume: 0.6,
     environmentVolume: 0.8,
     creatureVolume: 0.8,
     combatVolume: 0.9,
@@ -89,12 +99,18 @@ export const DEFAULT_SETTINGS: GameSettings = {
     preset: 'high',
     renderDistance: 6,
     shadows: true,
+    shadowQuality: 'high',
     waterReflections: true,
+    waterQuality: 'high',
     vegetationDensity: 'high',
     particleQuality: 'high',
     antiAliasing: true,
     postProcessing: true,
     fov: 75,
+    clouds: true,
+    cloudQuality: 'high',
+    particles: true,
+    cameraMode: 'first_person',
   },
   controls: {
     keyBindings: {
@@ -156,20 +172,24 @@ export class SettingsManager {
 
   public static load(): GameSettings {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        this.settings = {
-          audio: { ...DEFAULT_SETTINGS.audio, ...parsed.audio },
-          graphics: { ...DEFAULT_SETTINGS.graphics, ...parsed.graphics },
-          controls: {
-            ...DEFAULT_SETTINGS.controls,
-            ...parsed.controls,
-            keyBindings: { ...DEFAULT_SETTINGS.controls.keyBindings, ...(parsed.controls?.keyBindings || {}) },
-          },
-          accessibility: { ...DEFAULT_SETTINGS.accessibility, ...parsed.accessibility },
-          gameplay: { ...DEFAULT_SETTINGS.gameplay, ...parsed.gameplay },
-        };
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          this.settings = {
+            audio: { ...DEFAULT_SETTINGS.audio, ...parsed.audio },
+            graphics: { ...DEFAULT_SETTINGS.graphics, ...parsed.graphics },
+            controls: {
+              ...DEFAULT_SETTINGS.controls,
+              ...parsed.controls,
+              keyBindings: { ...DEFAULT_SETTINGS.controls.keyBindings, ...(parsed.controls?.keyBindings || {}) },
+            },
+            accessibility: { ...DEFAULT_SETTINGS.accessibility, ...parsed.accessibility },
+            gameplay: { ...DEFAULT_SETTINGS.gameplay, ...parsed.gameplay },
+          };
+        } else {
+          this.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+        }
       } else {
         this.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
       }
@@ -182,7 +202,9 @@ export class SettingsManager {
 
   public static save(): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
+      }
     } catch (e) {
       console.warn('Failed to persist settings:', e);
     }

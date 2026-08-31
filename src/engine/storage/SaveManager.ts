@@ -8,7 +8,7 @@ import { InventoryManager } from '../items/InventoryManager';
 import { IndexedDBStorage, STORE_WORLDS, STORE_RECOVERY } from './IndexedDBStorage';
 import { Logger } from '../ui/Logger';
 
-export const CURRENT_SAVE_VERSION = 2;
+export const CURRENT_SAVE_VERSION = 3;
 export const CURRENT_CHECKSUM_VERSION = 1;
 const WORLDS_INDEX_KEY = 'voxelverse_worlds_index';
 const RECOVERY_KEY = 'voxelverse_crash_recovery';
@@ -104,6 +104,15 @@ export class SaveManager {
       data.waypoints = Array.isArray(data.waypoints) ? data.waypoints : [];
       data.exploredMapTiles = Array.isArray(data.exploredMapTiles) ? data.exploredMapTiles : [];
       data.lootedChests = Array.isArray(data.lootedChests) ? data.lootedChests : [];
+    }
+
+    if (initialVersion < 3) {
+      Logger.info('SaveManager', `Migrating save schema from v${initialVersion} to v3`);
+      data.version = 3;
+      data.anomalyState = data.anomalyState || null;
+      data.questRewardsClaimed = Array.isArray(data.questRewardsClaimed) ? data.questRewardsClaimed : [];
+      data.clearedDungeons = Array.isArray(data.clearedDungeons) ? data.clearedDungeons : [];
+      data.settlementProgress = typeof data.settlementProgress === 'object' && data.settlementProgress ? data.settlementProgress : {};
     }
 
     return data;
@@ -202,6 +211,9 @@ export class SaveManager {
     const exploredMapTiles = Array.isArray(raw?.exploredMapTiles) ? raw.exploredMapTiles : [];
     const lootedChests = Array.isArray(raw?.lootedChests) ? raw.lootedChests : [];
     const settlementProgress = typeof raw?.settlementProgress === 'object' && raw.settlementProgress ? raw.settlementProgress : {};
+    const anomalyState = raw?.anomalyState || null;
+    const questRewardsClaimed = Array.isArray(raw?.questRewardsClaimed) ? raw.questRewardsClaimed : [];
+    const clearedDungeons = Array.isArray(raw?.clearedDungeons) ? raw.clearedDungeons : [];
 
     return {
       version,
@@ -245,6 +257,9 @@ export class SaveManager {
       exploredMapTiles,
       lootedChests,
       settlementProgress,
+      anomalyState,
+      questRewardsClaimed,
+      clearedDungeons,
     };
   }
 

@@ -188,7 +188,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                           const req = obj.requiredCount;
                           const objDone = cur >= req;
                           return (
-                            <div key={idx} className="flex items-center justify-between text-xs">
+                            <div key={`journal-obj-${def.id}-${idx}`} className="flex items-center justify-between text-xs">
                               <div className="flex items-center gap-2">
                                 <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border ${
                                   objDone ? 'bg-emerald-500 border-emerald-400 text-zinc-950' : 'border-zinc-600 bg-zinc-800'

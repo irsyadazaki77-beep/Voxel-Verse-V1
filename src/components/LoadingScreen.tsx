@@ -1,5 +1,6 @@
 // Stage-Based Professional Game Loading Screen
 import React from 'react';
+import { VoxelVerseLogo } from './VoxelVerseLogo';
 
 interface LoadingScreenProps {
   worldName: string;
@@ -18,26 +19,17 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
     <div id="loading-screen" className="fixed inset-0 z-50 flex flex-col justify-between p-12 bg-[#08090d] text-white font-sans select-none animate-fade-in">
       {/* Top Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-2xl border border-white/10 backdrop-blur-md">
-          <div className="w-3 h-3 rounded-md bg-sky-400 animate-pulse shadow-[0_0_12px_rgba(56,189,248,0.8)]"></div>
-          <div>
-            <h1 className="text-sm font-black uppercase tracking-widest text-white/90">VoxelVerse Engine</h1>
-            <span className="text-[9px] uppercase font-mono tracking-wider text-sky-400">Phase 9 Game Architecture</span>
-          </div>
-        </div>
+        <VoxelVerseLogo size="sm" variant="full" />
 
         <div className="text-xs font-mono text-white/40">
           Seed: {seed}
         </div>
       </div>
 
-      {/* Center Animated Voxel Spinner & World Name */}
+      {/* Center Animated Voxel Logo & World Name */}
       <div className="my-auto max-w-md mx-auto text-center space-y-6">
-        <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-          <div className="absolute inset-0 rounded-2xl border-2 border-sky-400/30 animate-spin"></div>
-          <div className="w-12 h-12 bg-sky-500/20 rounded-xl border border-sky-400 flex items-center justify-center text-xl font-black text-sky-300 shadow-[0_0_20px_rgba(56,189,248,0.4)]">
-            🧊
-          </div>
+        <div className="flex justify-center">
+          <VoxelVerseLogo size="xl" variant="icon" animated={true} />
         </div>
 
         <div className="space-y-1">

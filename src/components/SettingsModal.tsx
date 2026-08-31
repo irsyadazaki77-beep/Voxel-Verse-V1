@@ -45,6 +45,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     SettingsManager.update({ graphics: { ...settings.graphics, ...partial } });
   };
 
+  const updateControls = (partial: Partial<typeof settings.controls>) => {
+    SettingsManager.update({ controls: { ...settings.controls, ...partial } });
+  };
+
   const updateAccessibility = (partial: Partial<typeof settings.accessibility>) => {
     SettingsManager.update({ accessibility: { ...settings.accessibility, ...partial } });
   };
@@ -204,11 +208,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
           {/* Controls Tab */}
           {activeTab === 'controls' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="text-[11px] text-white/50 bg-sky-500/10 border border-sky-500/20 p-2.5 rounded-xl flex items-center justify-between">
                 <span>Active Input Device: <strong className="uppercase text-sky-300 font-mono">{InputManager.getActiveDevice()}</strong></span>
                 <span className="text-[10px] text-white/40">Click any key binding to reassign</span>
               </div>
+
+              <div className="space-y-1 bg-white/5 p-3.5 rounded-2xl border border-white/5">
+                <div className="flex justify-between font-bold">
+                  <span>Mouse / Look Sensitivity</span>
+                  <span className="font-mono text-sky-400">{settings.controls.mouseSensitivity.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="3.0"
+                  step="0.05"
+                  value={settings.controls.mouseSensitivity}
+                  onChange={(e) => updateControls({ mouseSensitivity: parseFloat(e.target.value) })}
+                  className="w-full accent-sky-400 cursor-pointer"
+                />
+              </div>
+
+              <label className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5 cursor-pointer">
+                <span className="font-bold">Invert Y-Axis</span>
+                <input
+                  type="checkbox"
+                  checked={settings.controls.invertY}
+                  onChange={(e) => updateControls({ invertY: e.target.checked })}
+                  className="w-4 h-4 accent-sky-400 cursor-pointer"
+                />
+              </label>
+
+              <div className="font-bold text-white/70 text-[11px] uppercase tracking-wider pt-2 border-t border-white/10">Key Bindings</div>
 
               <div className="grid grid-cols-2 gap-2">
                 {Object.entries(settings.controls.keyBindings).map(([act, code]) => {

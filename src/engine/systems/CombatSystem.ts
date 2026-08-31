@@ -139,7 +139,7 @@ export class CombatSystem implements GameSystem {
     }
 
     const targetEntity = entities.entities.get(targetEntityId);
-    if (targetEntity && this.runtime.particles) {
+    if (targetEntity && targetEntity.mesh && targetEntity.mesh.position && this.runtime.particles) {
       this.runtime.particles.spawnCombatSparks(
         targetEntity.mesh.position.clone().add(new THREE.Vector3(0, 0.8, 0)),
         attackCalc.isCritical

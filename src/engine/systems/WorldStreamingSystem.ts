@@ -18,7 +18,7 @@ export class WorldStreamingSystem implements GameSystem {
     world.updateChunks(
       player.position,
       player.getForwardVector(),
-      settings.renderDistance,
+      settings.graphics.renderDistance,
       3.0 // 3.0 chunk hysteresis for stable unloading
     );
   }

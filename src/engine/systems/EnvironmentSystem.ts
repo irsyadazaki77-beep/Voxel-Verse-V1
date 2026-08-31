@@ -13,6 +13,9 @@ export class EnvironmentSystem implements GameSystem {
     const { sky, weather, clouds, particles, player, world } = this.runtime;
     if (!sky || !player || !world) return;
 
+    // 1. World visual update loop (water wave animation & vegetation wind displacement uTime)
+    world.update(deltaTime);
+
     const biome = world.biomeManager.getBiome(player.position.x, player.position.z);
     sky.update(deltaTime, player.position, biome, player.isEyesInWater);
 

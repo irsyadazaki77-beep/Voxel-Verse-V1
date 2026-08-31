@@ -213,7 +213,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 
                   return (
                     <button
-                      key={idx}
+                      key={`inv-slot-${idx}`}
                       id={`inv-slot-${idx}`}
                       onClick={e => handleSlotClick(idx, e.type === 'contextmenu')}
                       onContextMenu={e => {

@@ -380,6 +380,16 @@ export interface WorldSaveData {
       reputation: number;
     }
   };
+  anomalyState?: {
+    status: string;
+    timer: number;
+    activeIntensity: number;
+    climaxBossId: string | null;
+    anomalyCoords: [number, number, number] | null;
+    rewardClaimed: boolean;
+  };
+  questRewardsClaimed?: string[];
+  clearedDungeons?: string[];
 }
 
 // ==========================================
@@ -534,27 +544,11 @@ export interface BossCombatState {
   activeAbility?: string;
 }
 
-export interface GameSettings {
-  renderDistance: number; // Chunks radius (e.g. 3, 4, 6, 8)
-  fov: number; // 60 - 105
-  mouseSensitivity: number; // 0.0005 - 0.005
-  invertMouse: boolean;
-  masterVolume: number; // 0 - 1
-  musicVolume: number; // 0 - 1
-  sfxVolume: number; // 0 - 1
-  ambientVolume: number; // 0 - 1
-  shadows: boolean;
-  shadowQuality: 'off' | 'low' | 'medium' | 'high' | 'ultra';
-  waterQuality: 'low' | 'medium' | 'high';
-  particleQuality: 'low' | 'medium' | 'high';
-  graphicsPreset: 'low' | 'medium' | 'high' | 'ultra' | 'custom';
-  ambientOcclusion: boolean;
-  bloom: boolean;
-  windEffect: boolean;
-  clouds: boolean;
-  cloudQuality: 'low' | 'medium' | 'high';
-  particles: boolean;
-  viewBobbing: boolean;
-  showFps: boolean;
-  cameraMode: 'first_person' | 'third_person_back' | 'third_person_front';
-}
+export type {
+  GameSettings,
+  AudioSettings,
+  GraphicsSettings,
+  ControlSettings,
+  AccessibilitySettings,
+  GameplaySettings,
+} from './engine/ui/SettingsManager';

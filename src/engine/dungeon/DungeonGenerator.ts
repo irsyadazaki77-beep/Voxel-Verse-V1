@@ -220,4 +220,68 @@ export class DungeonGenerator {
       default: return 'Ancient Subterranean Dungeon';
     }
   }
+
+  // BFS Graph Reachability Validation to guarantee zero isolated/unreachable rooms
+  public static validateReachability(dungeonDef: DungeonDef): boolean {
+    if (!dungeonDef.rooms || dungeonDef.rooms.length === 0) return false;
+    const entrance = dungeonDef.rooms.find(r => r.type === 'entrance');
+    if (!entrance) return false;
+
+    const adj: Map<string, Set<string>> = new Map();
+    dungeonDef.rooms.forEach(r => adj.set(r.id, new Set()));
+
+    for (let i = 0; i < dungeonDef.rooms.length; i++) {
+      for (let j = i + 1; j < dungeonDef.rooms.length; j++) {
+        const rA = dungeonDef.rooms[i];
+        const rB = dungeonDef.rooms[j];
+        let connected = false;
+
+        // Check door proximity
+        for (const dA of rA.doors) {
+          for (const dB of rB.doors) {
+            if (Math.abs(dA.x - dB.x) <= 2 && Math.abs(dA.y - dB.y) <= 2 && Math.abs(dA.z - dB.z) <= 2) {
+              connected = true;
+              break;
+            }
+          }
+          if (connected) break;
+        }
+
+        // Or check bounding box adjacency
+        if (!connected) {
+          const overlapX = rA.bounds.minX <= rB.bounds.maxX + 1 && rA.bounds.maxX + 1 >= rB.bounds.minX;
+          const overlapY = rA.bounds.minY <= rB.bounds.maxY + 1 && rA.bounds.maxY + 1 >= rB.bounds.minY;
+          const overlapZ = rA.bounds.minZ <= rB.bounds.maxZ + 1 && rA.bounds.maxZ + 1 >= rB.bounds.minZ;
+          if (overlapX && overlapY && overlapZ) {
+            connected = true;
+          }
+        }
+
+        if (connected) {
+          adj.get(rA.id)!.add(rB.id);
+          adj.get(rB.id)!.add(rA.id);
+        }
+      }
+    }
+
+    // BFS graph traversal starting at entrance
+    const visited = new Set<string>();
+    const queue = [entrance.id];
+    visited.add(entrance.id);
+
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      const neighbors = adj.get(curr);
+      if (neighbors) {
+        neighbors.forEach(nId => {
+          if (!visited.has(nId)) {
+            visited.add(nId);
+            queue.push(nId);
+          }
+        });
+      }
+    }
+
+    return visited.size === dungeonDef.rooms.length;
+  }
 }

@@ -123,13 +123,19 @@ export class GameRuntime {
 
     // Listen/Sync to SettingsManager for dynamically changing settings
     this.settingsUnsubscribe = SettingsManager.subscribe((newSettings) => {
-      this.settings = newSettings as any;
+      this.settings = newSettings;
       if (this.camera) {
         this.camera.fov = newSettings.graphics.fov;
         this.camera.updateProjectionMatrix();
       }
+      if (this.player) {
+        this.player.setBaseFov(newSettings.graphics.fov);
+      }
       if (this.renderer) {
         this.renderer.shadowMap.enabled = newSettings.graphics.shadows;
+      }
+      if (this.particles) {
+        this.particles.setQuality(newSettings.graphics.particleQuality);
       }
     });
 
@@ -138,12 +144,12 @@ export class GameRuntime {
     this.scene.background = new THREE.Color(0x7eb1eb);
     this.scene.fog = new THREE.FogExp2(0xaaccff, 0.012);
 
-    this.camera = new THREE.PerspectiveCamera(settings.fov, window.innerWidth / window.innerHeight, 0.1, 400);
+    this.camera = new THREE.PerspectiveCamera(settings.graphics.fov, window.innerWidth / window.innerHeight, 0.1, 400);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = settings.shadows;
+    this.renderer.shadowMap.enabled = settings.graphics.shadows;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -457,15 +463,22 @@ export class GameRuntime {
     this.animate(this.lastTime);
   }
 
+  private isDisposed: boolean = false;
+
   public stop(): void {
+    if (this.isDisposed) return;
+    this.isDisposed = true;
+
     cancelAnimationFrame(this.reqId);
 
     // Unsubscribe from SettingsManager and NetworkSession
     if (this.settingsUnsubscribe) {
       this.settingsUnsubscribe();
+      this.settingsUnsubscribe = null;
     }
     if (this.networkBlockUnsubscribe) {
       this.networkBlockUnsubscribe();
+      this.networkBlockUnsubscribe = null;
     }
     QuestManager.dispose();
     if (this.viewmodel) {
@@ -552,8 +565,8 @@ export class GameRuntime {
       this.player.handleMouseMove(
         this.inputManager.mouseDeltaX,
         this.inputManager.mouseDeltaY,
-        this.settings.mouseSensitivity,
-        this.settings.invertMouse
+        this.settings.controls.mouseSensitivity,
+        this.settings.controls.invertY
       );
 
       if (this.inputManager.mouseWheelDelta !== 0) {

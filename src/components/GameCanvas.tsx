@@ -22,6 +22,7 @@ import { MapModal } from './MapModal';
 import { ContentDebugModal } from './ContentDebugModal';
 import { NetworkSession } from '../engine/network/NetworkSession';
 import { QuestManager } from '../engine/progression/QuestManager';
+import { SettingsManager } from '../engine/ui/SettingsManager';
 
 interface GameCanvasProps {
   worldId: string;
@@ -98,32 +99,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
   }, []);
 
-  // Global default client settings for quality presets
-  const settingsRef = useRef<GameSettings>({
-    fov: 75,
-    mouseSensitivity: 0.002,
-    renderDistance: 4,
-    masterVolume: 0.8,
-    musicVolume: 0.6,
-    sfxVolume: 0.8,
-    ambientVolume: 0.6,
-    invertMouse: false,
-    shadows: true,
-    shadowQuality: 'medium',
-    waterQuality: 'medium',
-    particleQuality: 'medium',
-    graphicsPreset: 'medium',
-    ambientOcclusion: true,
-    bloom: true,
-    windEffect: true,
-    clouds: true,
-    cloudQuality: 'medium',
-    particles: true,
-    viewBobbing: true,
-    showFps: true,
-    cameraMode: 'first_person',
-  });
-
   const setModal = useCallback((modal: ModalType) => {
     setActiveModal(modal);
     if (runtimeRef.current) {
@@ -154,7 +129,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             worldName,
             seed,
             gameMode,
-            settingsRef.current,
+            SettingsManager.get(),
             preset,
             existingSave
           );

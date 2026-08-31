@@ -34,7 +34,7 @@ export interface GameEventPayloads {
   ARTIFACT_UNLOCKED: { artifactId: string; name: string };
   LORE_FOUND: { loreId: string; title: string };
   QUEST_ACCEPTED: { questId: string };
-  QUEST_COMPLETED: { questId: string; xpReward: number };
+  QUEST_COMPLETED: { questId: string; xpReward: number; rewards?: any };
   DUNGEON_CLEARED: { dungeonId: string; theme: string };
   WORLD_EVENT_TRIGGERED: { eventType: string; eventName: string; pos?: [number, number, number] };
   SETTLEMENT_VISITED: { settlementId: string; name: string; pos: [number, number, number] };

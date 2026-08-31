@@ -173,7 +173,7 @@ export const AnvilModal: React.FC<AnvilModalProps> = ({
 
               return (
                 <button
-                  key={idx}
+                  key={`anvil-inv-${idx}`}
                   onClick={() => handleSlotSelect(idx)}
                   className={`w-11 h-11 rounded-lg flex flex-col items-center justify-center relative border transition-all cursor-pointer ${
                     isSelected

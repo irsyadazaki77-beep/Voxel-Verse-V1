@@ -772,6 +772,13 @@ export interface CraftCalculation {
 }
 
 export class CraftingSystem {
+  public static unlockedRecipesList: string[] = [];
+
+  public static unlockRecipe(recipeId: string): void {
+    if (!this.unlockedRecipesList.includes(recipeId)) {
+      this.unlockedRecipesList.push(recipeId);
+    }
+  }
   // Check if recipe is discovered by the player
   public static isRecipeUnlocked(recipe: CraftingRecipe, unlockedList: string[] = []): boolean {
     if (recipe.unlockedByDefault) return true;

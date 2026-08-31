@@ -7,6 +7,8 @@ import { EntityModelBuilder } from './EntityModelBuilder';
 import { Pathfinder } from '../ai/Pathfinder';
 import { GameEventBus } from '../events/GameEventBus';
 
+import { SETTLEMENT_REGISTRY, SettlementManager } from '../settlement/SettlementManager';
+
 export interface FloatingText {
   id: string;
   text: string;
@@ -590,12 +592,19 @@ export class EntityManager {
     // Flash Red or Gold Hit Feedback
     mesh.traverse(child => {
       if (child instanceof THREE.Mesh && child.material) {
-        const oldCol = (child.material as THREE.MeshLambertMaterial).color.clone();
-        (child.material as THREE.MeshLambertMaterial).color.setHex(isCritical ? 0xfacc15 : 0xff3333);
-        setTimeout(() => {
-          if (child.material) {
-            (child.material as THREE.MeshLambertMaterial).color.copy(oldCol);
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        const oldCols = materials.map(m => (m && (m as THREE.MeshLambertMaterial).color) ? (m as THREE.MeshLambertMaterial).color.clone() : null);
+        materials.forEach(m => {
+          if (m && (m as THREE.MeshLambertMaterial).color) {
+            (m as THREE.MeshLambertMaterial).color.setHex(isCritical ? 0xfacc15 : 0xff3333);
           }
+        });
+        setTimeout(() => {
+          materials.forEach((m, idx) => {
+            if (m && (m as THREE.MeshLambertMaterial).color && oldCols[idx]) {
+              (m as THREE.MeshLambertMaterial).color.copy(oldCols[idx]!);
+            }
+          });
         }, isCritical ? 220 : 150);
       }
     });
@@ -765,6 +774,7 @@ export class EntityManager {
       const gItem = this.groundItems[i];
       if (gItem.position.distanceTo(playerPos) <= radius) {
         picked.push({ itemId: gItem.item.itemId, count: gItem.item.count });
+        GameEventBus.emit('ITEM_COLLECTED', { itemId: gItem.item.itemId, count: gItem.item.count });
         this.entityGroup.remove(gItem.mesh);
         if (gItem.mesh.material instanceof THREE.Material) {
           gItem.mesh.material.dispose();
@@ -773,6 +783,48 @@ export class EntityManager {
       }
     }
     return picked;
+  }
+
+  public spawnSettlementNPCs(world: VoxelWorld): void {
+    const settlements = SETTLEMENT_REGISTRY;
+    let offsetIdx = 0;
+    for (const sId of Object.keys(settlements)) {
+      const s = settlements[sId];
+      for (const npcId of s.npcIds) {
+        const entityId = `npc_${s.id}_${npcId}`;
+        const dialogueData = SettlementManager.getNPCDialogue(npcId, false, s.id);
+
+        if (this.entities.has(entityId)) {
+          const existing = this.entities.get(entityId)!;
+          existing.state.dialogue = dialogueData.lines;
+          existing.state.tradeOffers = dialogueData.trades;
+          continue;
+        }
+
+        const sx = s.originPos[0] + (offsetIdx % 3) * 2 - 2;
+        const sz = s.originPos[2] + Math.floor(offsetIdx / 3) * 2 - 2;
+        const sy = world.getSpawnHeight(sx, sz);
+        offsetIdx++;
+
+        this.spawnEntity({
+          id: entityId,
+          type: 'npc',
+          name: dialogueData.name,
+          position: [sx, sy, sz],
+          velocity: [0, 0, 0],
+          rotation: 0,
+          health: 100,
+          maxHealth: 100,
+          damage: 0,
+          speed: 1.5,
+          aiState: 'idle',
+          modelType: dialogueData.role === 'merchant' ? 'merchant' : 'elder',
+          drops: [],
+          dialogue: dialogueData.lines,
+          tradeOffers: dialogueData.trades,
+        });
+      }
+    }
   }
 
   public addFloatingText(text: string, position: THREE.Vector3, color: string = '#ffffff'): void {

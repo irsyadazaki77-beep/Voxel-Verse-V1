@@ -4,6 +4,7 @@ import { BLOCK_DEFS } from '../engine/world/BlockRegistry';
 import { ITEM_DEFS } from '../engine/items/ItemRegistry';
 import { RaycastHit } from '../engine/world/VoxelWorld';
 import { SettingsManager, GameSettings } from '../engine/ui/SettingsManager';
+import { VoxelVerseLogo } from './VoxelVerseLogo';
 import { QuestManager } from '../engine/progression/QuestManager';
 import { NotificationManager, GameNotification } from '../engine/ui/NotificationManager';
 import { SubtitleManager, SubtitleEntry } from '../engine/ui/SubtitleManager';
@@ -389,6 +390,12 @@ export const HUD: React.FC<HUDProps> = ({
       <div className="flex justify-between items-start w-full relative z-20">
         {/* Left: Telemetry & Quest Objective */}
         <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <VoxelVerseLogo size="sm" variant="icon" animated={false} />
+            <span className="text-[11px] font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-sky-200 to-sky-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+              VOXEL<span className="text-sky-400">VERSE</span>
+            </span>
+          </div>
           {settings.gameplay.showFps && <HUDTelemetryOverlay />}
           
           {/* Active Quests HUD Panel */}
@@ -410,7 +417,7 @@ export const HUD: React.FC<HUDProps> = ({
                         const isDone = count >= obj.requiredCount;
                         return (
                           <div 
-                            key={idx} 
+                            key={`hud-quest-obj-${q.def.id}-${idx}`} 
                             className={`flex items-start gap-1.5 text-[10px] leading-relaxed transition-colors ${
                               isDone ? 'text-zinc-500 line-through' : 'text-zinc-400'
                             }`}
@@ -648,7 +655,7 @@ export const HUD: React.FC<HUDProps> = ({
             
             return (
               <button
-                key={idx}
+                key={`hotbar-slot-${idx}`}
                 id={`hotbar_slot_${idx}`}
                 onClick={() => onSelectHotbar(idx)}
                 className={`w-12 h-12 rounded-xl flex items-center justify-center relative transition-all duration-100 cursor-pointer ${

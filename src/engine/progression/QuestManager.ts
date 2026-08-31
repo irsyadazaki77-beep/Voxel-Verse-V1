@@ -3,6 +3,9 @@ import { QuestDef, QuestObjective, QuestState, ItemStack } from '../../types';
 import { GameEventBus } from '../events/GameEventBus';
 import { CraftingSystem } from '../items/CraftingSystem';
 
+import { SETTLEMENT_REGISTRY, SettlementManager } from '../settlement/SettlementManager';
+import { NotificationManager } from '../ui/NotificationManager';
+
 export const QUEST_REGISTRY: Record<string, QuestDef> = {
   q_first_steps: {
     id: 'q_first_steps',
@@ -91,11 +94,20 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
 
 export class QuestManager {
   private static questStates: Map<string, { state: QuestState; progress: number[] }> = new Map();
+  private static claimedRewards: Set<string> = new Set();
   private static onQuestChangeCallbacks: (() => void)[] = [];
   private static eventUnsubscribes: (() => void)[] = [];
 
-  public static initialize(savedQuests?: { [questId: string]: { state: QuestState; progress: { [idx: number]: number } } }): void {
+  public static initialize(
+    savedQuests?: { [questId: string]: { state: QuestState; progress: { [idx: number]: number } } },
+    savedClaimedRewards?: string[]
+  ): void {
     this.questStates.clear();
+    this.claimedRewards.clear();
+
+    if (savedClaimedRewards && Array.isArray(savedClaimedRewards)) {
+      savedClaimedRewards.forEach(id => this.claimedRewards.add(id));
+    }
 
     // Default quests initialization
     Object.keys(QUEST_REGISTRY).forEach((qId) => {
@@ -133,6 +145,20 @@ export class QuestManager {
 
     this.checkPrerequisites();
     this.setupEventListeners();
+  }
+
+  private static matchesTarget(objTarget: string, eventTarget: string): boolean {
+    if (objTarget === eventTarget) return true;
+    const ALIASES: Record<string, string[]> = {
+      'cobblestone': ['cobblestone', '3', 'river_cobblestone'],
+      'stalker': ['stalker', 'shadow_stalker'],
+      'ruin_sentinel': ['ruin_sentinel', 'boss_ruin_sentinel'],
+      'boss_void_sovereign': ['boss_void_sovereign', 'void_sovereign', 'boss_void_sovereign_1'],
+      'shrine': ['shrine', 'ancient_shrine', 'explorer_cabin'],
+      'dungeon': ['dungeon', 'dungeon_entrance', 'subterranean_dungeon']
+    };
+    const list = ALIASES[objTarget];
+    return list ? list.includes(eventTarget) : false;
   }
 
   private static setupEventListeners(): void {
@@ -195,7 +221,7 @@ export class QuestManager {
       if (!qDef) return;
 
       qDef.objectives.forEach((obj, idx) => {
-        if (obj.type === type && (obj.targetId === targetId || targetId.includes(obj.targetId))) {
+        if (obj.type === type && this.matchesTarget(obj.targetId, targetId)) {
           const current = qState.progress[idx] || 0;
           if (current < obj.requiredCount) {
             qState.progress[idx] = Math.min(obj.requiredCount, current + amount);
@@ -209,7 +235,7 @@ export class QuestManager {
       if (allComplete) {
         qState.state = 'completed';
         changed = true;
-        GameEventBus.emit('QUEST_COMPLETED', { questId: qId, xpReward: qDef.rewards.xp });
+        this.claimRewards(qId, qDef);
         this.checkPrerequisites();
       }
     });
@@ -217,6 +243,53 @@ export class QuestManager {
     if (changed) {
       this.notifyListeners();
     }
+  }
+
+  public static claimRewards(qId: string, qDef: QuestDef): boolean {
+    if (this.claimedRewards.has(qId)) return false;
+
+    this.claimedRewards.add(qId);
+
+    // Emit event with full reward specs
+    GameEventBus.emit('QUEST_COMPLETED', {
+      questId: qId,
+      xpReward: qDef.rewards.xp,
+      rewards: qDef.rewards,
+    });
+
+    // Handle recipe unlock
+    if (qDef.rewards.unlockedRecipe) {
+      CraftingSystem.unlockRecipe(qDef.rewards.unlockedRecipe);
+    }
+
+    // Handle reputation reward
+    if (qDef.rewards.reputation) {
+      SettlementManager.addReputation(qDef.rewards.reputation.settlementId, qDef.rewards.reputation.amount);
+    } else if (qDef.giverSettlement) {
+      // Default reputation bonus for settlement giver
+      const settlementKey = qDef.giverSettlement.toLowerCase().replace(/\s+/g, '_');
+      if (SETTLEMENT_REGISTRY[settlementKey]) {
+        SettlementManager.addReputation(settlementKey, 20);
+      }
+    }
+
+    NotificationManager.push({
+      title: 'Quest Completed!',
+      message: `${qDef.title}: +${qDef.rewards.xp} XP awarded!`,
+      priority: 'HIGH',
+      icon: '📜',
+      durationMs: 7000,
+    });
+
+    return true;
+  }
+
+  public static isRewardClaimed(qId: string): boolean {
+    return this.claimedRewards.has(qId);
+  }
+
+  public static getClaimedRewards(): string[] {
+    return Array.from(this.claimedRewards);
   }
 
   public static checkPrerequisites(): void {

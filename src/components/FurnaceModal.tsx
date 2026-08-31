@@ -275,7 +275,7 @@ export const FurnaceModal: React.FC<FurnaceModalProps> = ({
 
               return (
                 <button
-                  key={idx}
+                  key={`furnace-inv-${idx}`}
                   onClick={() => handleInventorySlotClick(idx)}
                   className={`w-11 h-11 rounded-lg flex flex-col items-center justify-center relative border transition-all cursor-pointer ${
                     slot

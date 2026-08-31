@@ -1,6 +1,7 @@
 // Overhauled Game Pause & System Menu (Phase 9)
 import React, { useState } from 'react';
 import { SettingsModal } from './SettingsModal';
+import { VoxelVerseLogo } from './VoxelVerseLogo';
 
 interface PauseMenuProps {
   onResume: () => void;
@@ -21,11 +22,11 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
     <div id="modal-pause-overlay" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in font-sans select-none">
       <div className="w-full max-w-sm bg-[#0c0e14] rounded-3xl border border-white/15 p-6 shadow-2xl text-white space-y-5">
         {/* Header */}
-        <div className="text-center space-y-1">
-          <div className="inline-block px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-[10px] uppercase font-mono font-bold text-sky-400 tracking-wider">
+        <div className="text-center space-y-2 flex flex-col items-center">
+          <VoxelVerseLogo size="md" variant="full" />
+          <div className="inline-block px-3 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-[10px] uppercase font-mono font-bold text-sky-400 tracking-wider">
             {isMultiplayer ? 'Multiplayer Session' : 'Game Suspended'}
           </div>
-          <h2 className="text-2xl font-black tracking-tight text-white">SYSTEM MENU</h2>
         </div>
 
         {/* Action Buttons */}

@@ -3,6 +3,7 @@
 import { BlockType } from '../../types';
 import { STRUCTURE_REGION_SIZE, CHUNK_SIZE_Y } from './WorldConfig';
 import { DungeonGenerator } from '../dungeon/DungeonGenerator';
+import { SettlementManager } from '../settlement/SettlementManager';
 
 export interface VoxelBlockPlacement {
   dx: number; // Offset relative to structure origin
@@ -12,6 +13,7 @@ export interface VoxelBlockPlacement {
 }
 
 export class StructureGenerator {
+
   // 1. TREE GENERATORS
   public static generateOakTree(seed: number): VoxelBlockPlacement[] {
     const blocks: VoxelBlockPlacement[] = [];
@@ -388,22 +390,54 @@ export class StructureGenerator {
     ];
 
     for (const s of settlements) {
-      const dx = s.x - (chunkMinX + 8);
-      const dz = s.z - (chunkMinZ + 8);
-      if (Math.abs(dx) < 36 && Math.abs(dz) < 36) {
+      // Determine ground height and spiral search if on steep slope or water
+      let placeX = s.x;
+      let placeZ = s.z;
+      let groundY = s.height;
+
+      if (getHeightAt) {
+        groundY = getHeightAt(s.x, s.z);
+        if (groundY < 58 || Math.abs(getHeightAt(s.x + 8, s.z) - getHeightAt(s.x - 8, s.z)) > 6) {
+          for (let r = 4; r <= 32; r += 4) {
+            let found = false;
+            for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
+              const testX = Math.round(s.x + Math.cos(angle + seed * 0.1) * r);
+              const testZ = Math.round(s.z + Math.sin(angle + seed * 0.1) * r);
+              const testY = getHeightAt(testX, testZ);
+              const slope = Math.abs(getHeightAt(testX + 4, testZ) - getHeightAt(testX - 4, testZ));
+              if (testY >= 58 && slope <= 6) {
+                placeX = testX;
+                placeZ = testZ;
+                groundY = testY;
+                found = true;
+                break;
+              }
+            }
+            if (found) break;
+          }
+        }
+      }
+
+      const dx = placeX - (chunkMinX + 8);
+      const dz = placeZ - (chunkMinZ + 8);
+
+      if (Math.abs(dx) < 48 && Math.abs(dz) < 48) {
+        const state = SettlementManager.getSettlementState(s.id);
+        const level = state ? state.level : 1;
+
         let bp: VoxelBlockPlacement[] = [];
         if (s.type === 'haven') {
-          bp = StructureGenerator.generateHavenCampBlueprint();
+          bp = StructureGenerator.generateHavenCampBlueprint(level);
         } else if (s.type === 'suncrest') {
-          bp = StructureGenerator.generateSuncrestHamletBlueprint();
+          bp = StructureGenerator.generateSuncrestHamletBlueprint(level);
         } else if (s.type === 'ferrite') {
-          bp = StructureGenerator.generateFerriteOutpostBlueprint();
+          bp = StructureGenerator.generateFerriteOutpostBlueprint(level);
         }
 
         for (const block of bp) {
-          const worldX = s.x + block.dx;
-          const worldY = s.height + block.dy;
-          const worldZ = s.z + block.dz;
+          const worldX = placeX + block.dx;
+          const worldY = groundY + block.dy;
+          const worldZ = placeZ + block.dz;
 
           if (
             worldX >= chunkMinX &&
@@ -419,6 +453,21 @@ export class StructureGenerator {
               dz: worldZ - chunkMinZ,
               block: block.block,
             });
+
+            // Foundation support: fill beneath floor if terrain is lower
+            if (block.dy === 0 || block.dy === -1) {
+              const terrainY = getHeightAt ? getHeightAt(worldX, worldZ) : groundY;
+              if (terrainY < worldY) {
+                for (let fy = worldY - 1; fy >= Math.max(0, terrainY); fy--) {
+                  placements.push({
+                    dx: worldX - chunkMinX,
+                    dy: fy,
+                    dz: worldZ - chunkMinZ,
+                    block: BlockType.STONE_BRICKS,
+                  });
+                }
+              }
+            }
           }
         }
       }
@@ -434,13 +483,14 @@ export class StructureGenerator {
     ];
 
     for (const d of dungeons) {
+      const surfaceY = getHeightAt ? getHeightAt(d.x, d.z) : d.surfaceY;
       // (a) Surface Entrance
       const distS = Math.max(Math.abs(d.x - (chunkMinX + 8)), Math.abs(d.z - (chunkMinZ + 8)));
       if (distS < 30) {
         const bp = StructureGenerator.generateDungeonEntrance();
         for (const block of bp) {
           const worldX = d.x + block.dx;
-          const worldY = d.surfaceY + block.dy;
+          const worldY = surfaceY + block.dy;
           const worldZ = d.z + block.dz;
 
           if (
@@ -462,7 +512,7 @@ export class StructureGenerator {
       }
 
       // (b) Underground Rooms
-      const originY = d.surfaceY - d.depth;
+      const originY = surfaceY - d.depth;
       const distD = Math.max(Math.abs(d.x - (chunkMinX + 8)), Math.abs(d.z + 15 - (chunkMinZ + 8)));
       if (distD < 50) {
         const result = DungeonGenerator.generateDungeon(d.x, originY, d.z, d.theme as any, d.tier as any, seed);
@@ -568,8 +618,8 @@ export class StructureGenerator {
     return placements;
   }
 
-  // 4. SETTLEMENT BLUEPRINTS
-  public static generateHavenCampBlueprint(): VoxelBlockPlacement[] {
+  // 4. SETTLEMENT BLUEPRINTS WITH LEVEL PROGRESSION (1-5)
+  public static generateHavenCampBlueprint(level: number = 1): VoxelBlockPlacement[] {
     const blocks: VoxelBlockPlacement[] = [];
     // Campfire at [0, 0, 0]
     blocks.push({ dx: 0, dy: 0, dz: 0, block: BlockType.COBBLESTONE });
@@ -578,7 +628,8 @@ export class StructureGenerator {
     blocks.push({ dx: -2, dy: 0, dz: 0, block: BlockType.OAK_LOG });
     blocks.push({ dx: 2, dy: 0, dz: 0, block: BlockType.OAK_LOG });
     blocks.push({ dx: 0, dy: 0, dz: -2, block: BlockType.OAK_LOG });
-    // Merchant Tent
+
+    // Merchant Tent (Level 1+)
     for (let x = -6; x <= -2; x++) {
       for (let z = -6; z <= -2; z++) {
         blocks.push({ dx: x, dy: -1, dz: z, block: BlockType.WOOD_PLANKS });
@@ -598,6 +649,51 @@ export class StructureGenerator {
     blocks.push({ dx: -5, dy: 0, dz: -5, block: BlockType.CHEST });
     blocks.push({ dx: -3, dy: 0, dz: -5, block: BlockType.FURNACE });
 
+    // Level 2+: Crafting/Smithy Annex
+    if (level >= 2) {
+      blocks.push({ dx: -7, dy: 0, dz: -4, block: BlockType.ANVIL_SMITHING });
+      blocks.push({ dx: -7, dy: 0, dz: -3, block: BlockType.FURNACE });
+      blocks.push({ dx: -7, dy: 0, dz: -2, block: BlockType.LANTERN });
+    }
+
+    // Level 3+: Farm Plot
+    if (level >= 3) {
+      for (let x = 2; x <= 6; x++) {
+        for (let z = -6; z <= -2; z++) {
+          const isWater = x === 4;
+          blocks.push({ dx: x, dy: -1, dz: z, block: isWater ? BlockType.WATER : BlockType.FARMLAND });
+          if (!isWater) {
+            blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.CROP_WHEAT_3 });
+          }
+        }
+      }
+    }
+
+    // Level 4+: Watchtower & Wall Perimeter
+    if (level >= 4) {
+      for (let y = 0; y <= 6; y++) {
+        blocks.push({ dx: 6, dy: y, dz: 6, block: BlockType.STONE_PILLAR });
+        blocks.push({ dx: 8, dy: y, dz: 6, block: BlockType.STONE_PILLAR });
+        blocks.push({ dx: 6, dy: y, dz: 8, block: BlockType.STONE_PILLAR });
+        blocks.push({ dx: 8, dy: y, dz: 8, block: BlockType.STONE_PILLAR });
+        if (y === 6) {
+          for (let tx = 5; tx <= 9; tx++) {
+            for (let tz = 5; tz <= 9; tz++) {
+              blocks.push({ dx: tx, dy: y, dz: tz, block: BlockType.STONE_SLAB });
+            }
+          }
+          blocks.push({ dx: 7, dy: 7, dz: 7, block: BlockType.LANTERN });
+        }
+      }
+    }
+
+    // Level 5+: Aether Monument
+    if (level >= 5) {
+      blocks.push({ dx: 0, dy: 1, dz: 4, block: BlockType.ANCIENT_RUNE_STONE });
+      blocks.push({ dx: 0, dy: 2, dz: 4, block: BlockType.AETHER_CRYSTAL_ORE });
+      blocks.push({ dx: 0, dy: 3, dz: 4, block: BlockType.GLOWSTONE_CRYSTAL });
+    }
+
     // Fences
     for (let x = -8; x <= 8; x++) {
       blocks.push({ dx: x, dy: 0, dz: -8, block: BlockType.FENCE_WOOD });
@@ -610,7 +706,7 @@ export class StructureGenerator {
     return blocks;
   }
 
-  public static generateSuncrestHamletBlueprint(): VoxelBlockPlacement[] {
+  public static generateSuncrestHamletBlueprint(level: number = 1): VoxelBlockPlacement[] {
     const blocks: VoxelBlockPlacement[] = [];
     // Water Well in center
     for (let x = -1; x <= 1; x++) {
@@ -650,6 +746,12 @@ export class StructureGenerator {
     blocks.push({ dx: -4, dy: 0, dz: -7, block: BlockType.BOOKSHELF });
     blocks.push({ dx: -7, dy: 1, dz: -7, block: BlockType.LANTERN });
 
+    // Level 2+: Blacksmith Shed
+    if (level >= 2) {
+      blocks.push({ dx: -8, dy: 0, dz: 2, block: BlockType.FURNACE });
+      blocks.push({ dx: -7, dy: 0, dz: 2, block: BlockType.ANVIL_SMITHING });
+    }
+
     // Farm Plots (from 3, -6 to 8, 6)
     for (let x = 3; x <= 8; x++) {
       for (let z = -6; z <= 6; z++) {
@@ -660,10 +762,24 @@ export class StructureGenerator {
         }
       }
     }
+
+    // Level 4+: Watchtower / Guard post
+    if (level >= 4) {
+      for (let y = 0; y <= 5; y++) {
+        blocks.push({ dx: -7, dy: y, dz: 7, block: BlockType.STONE_BRICKS });
+      }
+      blocks.push({ dx: -7, dy: 6, dz: 7, block: BlockType.LANTERN });
+    }
+
+    // Level 5+: Aether Spire
+    if (level >= 5) {
+      blocks.push({ dx: 0, dy: 3, dz: 0, block: BlockType.GLOWSTONE_CRYSTAL });
+    }
+
     return blocks;
   }
 
-  public static generateFerriteOutpostBlueprint(): VoxelBlockPlacement[] {
+  public static generateFerriteOutpostBlueprint(level: number = 1): VoxelBlockPlacement[] {
     const blocks: VoxelBlockPlacement[] = [];
     // Blacksmith's Forge (from -9, -9 to -4, -4)
     for (let x = -9; x <= -4; x++) {
@@ -687,6 +803,12 @@ export class StructureGenerator {
     blocks.push({ dx: -5, dy: -1, dz: -5, block: BlockType.LAVA });
     blocks.push({ dx: -5, dy: 0, dz: -5, block: BlockType.AIR });
 
+    // Level 2+: Armory vault
+    if (level >= 2) {
+      blocks.push({ dx: -6, dy: 0, dz: -8, block: BlockType.CHEST });
+      blocks.push({ dx: -6, dy: 1, dz: -8, block: BlockType.LANTERN });
+    }
+
     // Watchtower at [5, 5]
     for (let y = 0; y <= 5; y++) {
       blocks.push({ dx: 4, dy: y, dz: 4, block: BlockType.STONE_BRICKS });
@@ -702,6 +824,13 @@ export class StructureGenerator {
         blocks.push({ dx: 5, dy: 6, dz: 5, block: BlockType.LANTERN });
       }
     }
+
+    // Level 5+: Leyline Terminal
+    if (level >= 5) {
+      blocks.push({ dx: 0, dy: 0, dz: 0, block: BlockType.ANCIENT_RUNE_STONE });
+      blocks.push({ dx: 0, dy: 1, dz: 0, block: BlockType.GLOWSTONE_CRYSTAL });
+    }
+
     return blocks;
   }
 }
