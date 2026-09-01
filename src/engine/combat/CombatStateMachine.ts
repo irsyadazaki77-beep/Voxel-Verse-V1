@@ -1,8 +1,11 @@
-// Advanced Combat State Machine & Feedback Engine (Phase 3)
-// Handles weapon wind-up, active swing window, recovery cooldowns, bow charge dynamics, combos, parry & critical strikes
+// Advanced Combat State Machine & Feedback Engine (Phase 3 & Master Overhaul)
+// Handles weapon wind-up, active swing window, recovery cooldowns, bow charge dynamics, combos, parry, poise & critical ripostes
 import * as THREE from 'three';
 import { ItemDef, ItemStack } from '../../types';
 import { ITEM_DEFS } from '../items/ItemRegistry';
+import { WeaponArchetypes, WeaponProfile } from './WeaponArchetypes';
+import { PoiseSystem } from './PoiseSystem';
+import { ArtifactSynergyManager } from '../artifacts/ArtifactSynergyManager';
 
 export type CombatState =
   | 'IDLE'
@@ -18,9 +21,12 @@ export interface AttackResult {
   hit: boolean;
   damage: number;
   isCritical: boolean;
+  isRiposte: boolean;
+  poiseDamage: number;
   knockback: THREE.Vector3;
   comboIndex: number;
   damageType: 'physical' | 'piercing' | 'fire' | 'magic';
+  weaponProfile: WeaponProfile;
 }
 
 export interface HitFeedback {
@@ -47,7 +53,7 @@ export class CombatStateMachine {
 
   // Shield & Parry
   public isBlocking: boolean = false;
-  public parryWindowTimer: number = 0; // First 0.2s of block is a perfect parry
+  public parryWindowTimer: number = 0; // First 0.22s of block is a perfect parry
 
   // Hit reaction & Hit-stop
   public hitStopRemaining: number = 0;
@@ -56,9 +62,11 @@ export class CombatStateMachine {
   // Timings per weapon tier/type
   private currentWindUpDuration: number = 0.08;
   private currentActiveDuration: number = 0.12;
-  private currentRecoveryDuration: number = 0.25;
+  private currentRecoveryDuration: number = 0.22;
 
   public update(deltaTime: number): void {
+    PoiseSystem.update(deltaTime);
+
     if (this.hitStopRemaining > 0) {
       this.hitStopRemaining -= deltaTime;
       if (this.hitStopRemaining > 0) return; // Freeze frame hitstop
@@ -99,7 +107,7 @@ export class CombatStateMachine {
         if (this.stateTimer >= this.currentRecoveryDuration) {
           this.state = 'IDLE';
           this.stateTimer = 0;
-          this.comboWindowTimer = 0.6; // 600ms to chain next combo attack
+          this.comboWindowTimer = 0.65; // 650ms to chain next combo attack
         }
         break;
 
@@ -141,13 +149,14 @@ export class CombatStateMachine {
     }
 
     const itemDef = heldItem ? ITEM_DEFS[heldItem.itemId] : null;
-    const baseSpeed = itemDef?.attackSpeed || 2.0; // Swings per second
+    const profile = WeaponArchetypes.getProfile(heldItem);
+    const baseSpeed = itemDef?.attackSpeed || (1.0 / (profile.windupTime + profile.activeTime + profile.recoveryTime));
 
-    // Scale animation timings based on weapon attack speed
+    // Scale animation timings based on weapon profile & speed
     const cycleTime = 1.0 / Math.max(0.5, baseSpeed);
-    this.currentWindUpDuration = cycleTime * 0.22;
-    this.currentActiveDuration = cycleTime * 0.28;
-    this.currentRecoveryDuration = cycleTime * 0.50;
+    this.currentWindUpDuration = profile.windupTime * (cycleTime / 0.5);
+    this.currentActiveDuration = profile.activeTime * (cycleTime / 0.5);
+    this.currentRecoveryDuration = profile.recoveryTime * (cycleTime / 0.5);
 
     // Advance combo step
     if (this.comboWindowTimer > 0) {
@@ -162,38 +171,56 @@ export class CombatStateMachine {
     return true;
   }
 
-  // Calculate Damage and Critical Strike
+  // Calculate Damage, Poise Break, Riposte and Critical Strikes
   public calculateMeleeDamage(
     heldItem: ItemStack | null,
     isFallingOrJumping: boolean,
-    isSprinting: boolean
+    isSprinting: boolean,
+    isTargetStaggered: boolean = false
   ): AttackResult {
     const itemDef = heldItem ? ITEM_DEFS[heldItem.itemId] : null;
+    const profile = WeaponArchetypes.getProfile(heldItem);
+    const synergy = ArtifactSynergyManager.getCombinedBonuses();
+
     let baseDamage = itemDef?.attackDamage || 1.0;
+    baseDamage *= synergy.damageMultiplier;
 
     // Combo multiplier: Step 0 (1.0x), Step 1 (1.15x), Step 2 Finisher (1.45x)
     let comboMultiplier = 1.0;
     if (this.comboStep === 1) comboMultiplier = 1.15;
     else if (this.comboStep === 2) comboMultiplier = 1.45;
 
-    // Critical Hit condition: Falling / airborne jump attack gives +50% crit
-    const isCritical = isFallingOrJumping;
-    const critMultiplier = isCritical ? 1.5 : 1.0;
+    // Critical Hit condition: Falling jump attack OR sweet-spot spacing OR staggered foe
+    let isCritical = isFallingOrJumping || Math.random() < synergy.critChanceBonus;
+    let isRiposte = isTargetStaggered;
+
+    let critMultiplier = isCritical ? 1.5 : 1.0;
+    if (isRiposte) {
+      critMultiplier = 2.2; // Staggered Riposte Finisher deals 220% massive damage
+      isCritical = true;
+    }
 
     const totalDamage = Math.round((baseDamage * comboMultiplier * critMultiplier) * 10) / 10;
+
+    // Poise damage calculation
+    let totalPoiseDamage = profile.poiseDamage * synergy.poiseDamageBonus;
+    if (this.comboStep === 2) totalPoiseDamage *= 1.4; // Finisher deals heavy poise break
 
     // Knockback force calculation
     let knockbackStrength = 5.0 + (itemDef?.tier || 0) * 1.5;
     if (isSprinting) knockbackStrength += 3.5; // Sprint tackle knockback
-    if (this.comboStep === 2) knockbackStrength += 4.0; // Finisher blast
+    if (this.comboStep === 2) knockbackStrength += 4.5; // Finisher blast
 
     return {
       hit: true,
       damage: totalDamage,
       isCritical,
+      isRiposte,
+      poiseDamage: Math.round(totalPoiseDamage),
       knockback: new THREE.Vector3(0, 0, knockbackStrength),
       comboIndex: this.comboStep,
       damageType: itemDef?.category === 'weapon' ? 'physical' : 'physical',
+      weaponProfile: profile,
     };
   }
 
@@ -213,13 +240,14 @@ export class CombatStateMachine {
 
     const chargeRatio = this.bowDrawProgress; // 0..1
     const isFullCharge = chargeRatio >= 0.95;
+    const synergy = ArtifactSynergyManager.getCombinedBonuses();
 
     // Projectile speed curve (18 m/s up to 45 m/s)
     const arrowVelocity = 18.0 + chargeRatio * 27.0;
     // Damage scaling (3 base up to 18 on full charge)
-    const baseDamage = 3.0 + chargeRatio * 15.0;
-    const isCritical = isFullCharge;
-    const arrowDamage = Math.round((baseDamage * (isCritical ? 1.4 : 1.0)) * 10) / 10;
+    let baseDamage = (3.0 + chargeRatio * 15.0) * synergy.damageMultiplier;
+    const isCritical = isFullCharge || Math.random() < synergy.critChanceBonus;
+    const arrowDamage = Math.round((baseDamage * (isCritical ? 1.45 : 1.0)) * 10) / 10;
 
     this.state = 'IDLE';
     this.stateTimer = 0;

@@ -161,11 +161,86 @@ export class BlockPlacementEngine {
     }
   }
 
+  // Generate thematic high-quality procedural loot for unopened naturally generated chests
+  private static generateProceduralLoot(pos: [number, number, number]): (ItemStack | null)[] {
+    const [x, y, z] = pos;
+    const slots: (ItemStack | null)[] = new Array(27).fill(null);
+    const distFromOrigin = Math.hypot(x, z);
+
+    const lootTable: { itemId: string; min: number; max: number; chance: number }[] = [];
+
+    if (y < 45) {
+      // Subterranean Dungeon / Vault Chest
+      lootTable.push(
+        { itemId: 'iron_ingot', min: 4, max: 8, chance: 0.9 },
+        { itemId: 'gold_ingot', min: 2, max: 5, chance: 0.7 },
+        { itemId: 'healing_potion', min: 1, max: 3, chance: 0.8 },
+        { itemId: 'swiftness_potion', min: 1, max: 2, chance: 0.5 },
+        { itemId: 'wooden_arrow', min: 8, max: 24, chance: 0.75 },
+        { itemId: 'hearty_stew', min: 1, max: 2, chance: 0.6 },
+        { itemId: 'ancient_tome', min: 1, max: 2, chance: 0.45 },
+        { itemId: 'mythril_ingot', min: 1, max: 3, chance: 0.35 },
+        { itemId: 'eye_of_aether', min: 1, max: 1, chance: 0.15 },
+        { itemId: 'chrono_core', min: 1, max: 1, chance: 0.1 }
+      );
+    } else if (distFromOrigin < 120) {
+      // Haven / Starter Area Chest
+      lootTable.push(
+        { itemId: 'bread', min: 3, max: 6, chance: 1.0 },
+        { itemId: 'torch', min: 4, max: 12, chance: 0.9 },
+        { itemId: 'stick', min: 4, max: 10, chance: 0.85 },
+        { itemId: 'raw_copper', min: 4, max: 8, chance: 0.8 },
+        { itemId: 'wild_carrot', min: 2, max: 5, chance: 0.7 },
+        { itemId: 'healing_potion', min: 1, max: 1, chance: 0.4 }
+      );
+    } else if (distFromOrigin < 450) {
+      // Mid-Range Frontier (Suncrest Agricultural area)
+      lootTable.push(
+        { itemId: 'copper_ingot', min: 4, max: 8, chance: 0.9 },
+        { itemId: 'bread', min: 4, max: 8, chance: 0.85 },
+        { itemId: 'baked_potato', min: 3, max: 6, chance: 0.8 },
+        { itemId: 'leather_pelt', min: 2, max: 5, chance: 0.75 },
+        { itemId: 'cooked_meat', min: 2, max: 4, chance: 0.7 },
+        { itemId: 'iron_ingot', min: 2, max: 4, chance: 0.5 },
+        { itemId: 'healing_potion', min: 1, max: 2, chance: 0.5 }
+      );
+    } else {
+      // Deep Frontier / Outpost Bastion
+      lootTable.push(
+        { itemId: 'iron_ingot', min: 6, max: 12, chance: 0.95 },
+        { itemId: 'coal', min: 8, max: 16, chance: 0.9 },
+        { itemId: 'hearty_stew', min: 2, max: 4, chance: 0.8 },
+        { itemId: 'gold_ingot', min: 2, max: 4, chance: 0.6 },
+        { itemId: 'mythril_ingot', min: 1, max: 3, chance: 0.4 },
+        { itemId: 'swiftness_potion', min: 1, max: 3, chance: 0.6 },
+        { itemId: 'ancient_tome', min: 1, max: 2, chance: 0.5 }
+      );
+    }
+
+    let slotIdx = 0;
+    for (const item of lootTable) {
+      if (Math.random() <= item.chance && slotIdx < 27) {
+        const count = item.min + Math.floor(Math.random() * (item.max - item.min + 1));
+        // Distribute loosely in chest slots
+        const targetSlot = Math.min(26, slotIdx * 2 + Math.floor(Math.random() * 2));
+        if (!slots[targetSlot]) {
+          slots[targetSlot] = { itemId: item.itemId, count };
+        } else {
+          slots[slotIdx] = { itemId: item.itemId, count };
+        }
+        slotIdx++;
+      }
+    }
+
+    return slots;
+  }
+
   // Get or initialize container storage
   public static getContainer(pos: [number, number, number]): (ItemStack | null)[] {
     const key = `${pos[0]},${pos[1]},${pos[2]}`;
     if (!this.containers.has(key)) {
-      this.containers.set(key, new Array(27).fill(null));
+      const generated = this.generateProceduralLoot(pos);
+      this.containers.set(key, generated);
     }
     return this.containers.get(key)!;
   }

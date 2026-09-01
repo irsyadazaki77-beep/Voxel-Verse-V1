@@ -5,6 +5,9 @@ import { CombatStateMachine } from '../combat/CombatStateMachine';
 import { MiningEngine } from '../world/MiningEngine';
 import { GameEventBus } from '../events/GameEventBus';
 import { BossCombatState } from '../../types';
+import { PoiseSystem } from '../combat/PoiseSystem';
+import { ArtifactSynergyManager } from '../artifacts/ArtifactSynergyManager';
+import { BalanceTelemetry } from '../telemetry/BalanceTelemetry';
 
 export class CombatSystem implements GameSystem {
   public readonly name = 'CombatSystem';
@@ -52,7 +55,7 @@ export class CombatSystem implements GameSystem {
     const activeItem = this.runtime.getActiveHotbarItem();
 
     // 1. Ranged Combat (Bow Draw and Release)
-    if (activeItem && activeItem.itemId === 'hunting_bow') {
+    if (activeItem && activeItem.itemId.includes('bow')) {
       if (inputManager.isActionActive('Use')) {
         if (this.combatMachine.state === 'IDLE') {
           this.combatMachine.startBowDraw();
@@ -89,6 +92,24 @@ export class CombatSystem implements GameSystem {
           }
         }
       }
+    } else if (activeItem && (activeItem.itemId.includes('shield') || activeItem.itemId.includes('aegis'))) {
+      // Shield blocking logic
+      if (inputManager.isActionActive('Use')) {
+        if (this.combatMachine.state === 'IDLE') {
+          this.combatMachine.startBlock();
+          player.isBlockingShield = true;
+        }
+      } else {
+        if (this.combatMachine.state === 'PARRY_BLOCK') {
+          this.combatMachine.releaseBlock();
+          player.isBlockingShield = false;
+        }
+      }
+    } else {
+      if (player.isBlockingShield) {
+        player.isBlockingShield = false;
+        this.combatMachine.releaseBlock();
+      }
     }
 
     // 2. Update Active Boss Health & Status
@@ -117,14 +138,23 @@ export class CombatSystem implements GameSystem {
     player.triggerSwing();
 
     const isAirborneOrFalling = !player.isGrounded && player.velocity.y < 0;
-    const attackCalc = this.combatMachine.calculateMeleeDamage(activeItem, isAirborneOrFalling, player.isSprinting);
+    const isTargetStaggered = PoiseSystem.isEntityStaggered(targetEntityId);
+    
+    const attackCalc = this.combatMachine.calculateMeleeDamage(
+      activeItem,
+      isAirborneOrFalling,
+      player.isSprinting,
+      isTargetStaggered
+    );
 
     const result = entities.attackEntity(
       targetEntityId,
       attackCalc.damage,
       player.position,
       attackCalc.isCritical,
-      attackCalc.comboIndex
+      attackCalc.comboIndex,
+      1.0,
+      attackCalc.poiseDamage
     );
 
     const feedback = this.combatMachine.applyHitFeedback(
@@ -147,19 +177,36 @@ export class CombatSystem implements GameSystem {
     }
 
     GameEventBus.emit('COMBAT_HIT', {
-      hitType: attackCalc.isCritical ? 'crit' : 'hit',
+      hitType: attackCalc.isRiposte ? 'crit' : (attackCalc.isCritical ? 'crit' : 'hit'),
       damage: attackCalc.damage,
       targetPos: [player.position.x, player.position.y, player.position.z],
     });
 
-    if (attackCalc.isCritical) {
+    BalanceTelemetry.recordAttack(
+      attackCalc.damage,
+      attackCalc.isCritical,
+      attackCalc.comboIndex,
+      attackCalc.isRiposte
+    );
+
+    if (attackCalc.isRiposte) {
+      audio.playCriticalHit();
+    } else if (attackCalc.isCritical) {
       audio.playCriticalHit();
     } else {
       audio.playPlayerHit();
     }
 
+    // Life Leech bonus from Artifact Synergy
+    const synergy = ArtifactSynergyManager.getCombinedBonuses();
+    if (synergy.lifeLeechRatio > 0 && stats && attackCalc.isCritical) {
+      const leechAmount = attackCalc.damage * synergy.lifeLeechRatio;
+      stats.heal(leechAmount);
+    }
+
     if (result?.killed && stats) {
-      stats.addXP(5);
+      const xpAmount = targetEntity?.state.type === 'boss' ? 100 : 15;
+      stats.addXP(xpAmount);
     }
 
     // Consume weapon durability
@@ -180,3 +227,4 @@ export class CombatSystem implements GameSystem {
     this.activeBoss = null;
   }
 }
+

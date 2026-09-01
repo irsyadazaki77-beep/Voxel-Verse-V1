@@ -38,6 +38,7 @@ import { PersistenceSystem } from '../systems/PersistenceSystem';
 import { TelemetrySystem } from '../systems/TelemetrySystem';
 import { RenderSystem } from '../systems/RenderSystem';
 import { RenderQualityManager } from '../systems/RenderQualityManager';
+import { BalanceTelemetry } from '../telemetry/BalanceTelemetry';
 
 import { NetworkSession } from '../network/NetworkSession';
 
@@ -338,6 +339,7 @@ export class GameRuntime {
 
     this.combatSystem.initialize();
     AetherAnomalyManager.initialize();
+    BalanceTelemetry.initialize();
 
     // Register player position correction callback from authoritative server
     NetworkSession.getInstance().onPlayerCorrected((pos, vel) => {
@@ -539,6 +541,7 @@ export class GameRuntime {
     const biome = this.world.biomeManager.getBiome(this.player.position.x, this.player.position.z);
     
     // Core Engine Sub-Ticks outside systems if any (like Furnaces/Farming plots/Map visit etc)
+    BalanceTelemetry.update(deltaTime);
     FurnaceManager.update(deltaTime);
     FarmingManager.update(deltaTime, this.world);
     DiscoverySystem.update(deltaTime);

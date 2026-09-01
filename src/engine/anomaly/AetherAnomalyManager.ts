@@ -20,7 +20,7 @@ export class AetherAnomalyManager {
       this.deserialize(savedData);
     } else {
       this.status = 'dormant';
-      this.timer = 180; // First anomaly in 3 minutes of playtime!
+      this.timer = 1500 + Math.random() * 300; // First major anomaly occurs at 25-30 minutes of natural playtime!
       this.activeIntensity = 0;
       this.climaxBossId = null;
       this.anomalyCoords = null;
@@ -113,7 +113,7 @@ export class AetherAnomalyManager {
       this.activeIntensity = Math.max(0, this.activeIntensity - deltaTime * 0.2);
       if (this.activeIntensity <= 0) {
         this.status = 'dormant';
-        this.timer = 400 + Math.random() * 300; // Recurrence delay
+        this.timer = 1500 + Math.random() * 600; // 25 to 35 minutes recurrence delay
         this.rewardClaimed = false;
         this.notifyListeners();
       }
@@ -125,7 +125,7 @@ export class AetherAnomalyManager {
     this.notifyListeners();
 
     if (newStatus === 'warning') {
-      this.timer = 25; // 25s warning
+      this.timer = 30; // 30s atmospheric buildup warning
       NotificationManager.push({
         title: 'AETHER DISTURBANCE DETECTED',
         message: 'The local leylines are vibrating violently. A portal is opening...',

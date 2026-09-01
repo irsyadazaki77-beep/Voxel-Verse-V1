@@ -8,6 +8,7 @@ import { Pathfinder } from '../ai/Pathfinder';
 import { GameEventBus } from '../events/GameEventBus';
 
 import { SETTLEMENT_REGISTRY, SettlementManager } from '../settlement/SettlementManager';
+import { PoiseSystem } from '../combat/PoiseSystem';
 
 export interface FloatingText {
   id: string;
@@ -189,6 +190,15 @@ export class EntityManager {
     state.attackCooldown = state.attackCooldown || 1400;
     state.attackRange = state.attackRange || 2.4;
     state.targetPos = state.targetPos || [ePos.x, ePos.y, ePos.z];
+
+    // Check if entity is currently staggered by poise break
+    if (PoiseSystem.isEntityStaggered(state.id)) {
+      state.aiState = 'alert';
+      state.velocity[0] *= 0.1;
+      state.velocity[2] *= 0.1;
+      state.path = [];
+      return;
+    }
 
     // Origin home position tracking
     if (!(state as any).homePos) {
@@ -572,13 +582,21 @@ export class EntityManager {
     knockbackOrigin: THREE.Vector3,
     isCritical: boolean = false,
     comboIndex: number = 0,
-    knockbackScale: number = 1.0
+    knockbackScale: number = 1.0,
+    poiseDamage: number = 20
   ): { damageDealt: number; killed: boolean; entityName: string; isCritical: boolean } | null {
     const entry = this.entities.get(entityId);
     if (!entry) return null;
 
     const { state, mesh } = entry;
     state.health = Math.max(0, state.health - damage);
+
+    // Apply Poise Damage and Check Stagger
+    const isBoss = state.type === 'boss' || state.modelType.includes('boss') || state.modelType === 'void_sovereign' || state.modelType === 'ruin_sentinel';
+    const staggered = PoiseSystem.applyPoiseDamage(entityId, poiseDamage, isBoss ? 160 : 55);
+    if (staggered) {
+      this.addFloatingText('STAGGERED!', new THREE.Vector3(...state.position).add(new THREE.Vector3(0, 2.2, 0)), '#f59e0b');
+    }
 
     // Apply Knockback with stagger scaling
     const knockDir = new THREE.Vector3(state.position[0], 0, state.position[2])
