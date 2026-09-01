@@ -38,9 +38,10 @@ export class WeatherSystem {
     rainGeo.setAttribute('position', new THREE.BufferAttribute(this.rainPositions, 3));
     const rainMat = new THREE.PointsMaterial({
       color: 0x99ccff,
-      size: 0.28,
+      size: 0.15,
       transparent: true,
-      opacity: 0,
+      opacity: 0.0,
+      depthWrite: false,
     });
     this.rainParticles = new THREE.Points(rainGeo, rainMat);
     this.weatherGroup.add(this.rainParticles);

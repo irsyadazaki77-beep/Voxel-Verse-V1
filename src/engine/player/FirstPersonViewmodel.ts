@@ -108,17 +108,50 @@ export class FirstPersonViewmodel {
 
       // Head
       let headColor = 0x888888;
-      if (item.itemId.includes('copper')) headColor = 0xc87d55;
-      if (item.itemId.includes('iron')) headColor = 0xdcdcdc;
-      if (item.itemId.includes('gold')) headColor = 0xfacc15;
-      if (item.itemId.includes('mythril')) headColor = 0x38bdf8;
-      if (item.itemId.includes('aether')) headColor = 0xc084fc;
+      let roughness = 0.6;
+      let metalness = 0.3;
+      let emissive = 0x000000;
+      let emissiveIntensity = 0.0;
+
+      if (item.itemId.includes('wood')) {
+        headColor = 0x8b5a2b;
+        roughness = 0.9;
+        metalness = 0.0;
+      } else if (item.itemId.includes('copper')) {
+        headColor = 0xc87d55;
+        roughness = 0.45;
+        metalness = 0.6;
+      } else if (item.itemId.includes('iron')) {
+        headColor = 0xdcdcdc;
+        roughness = 0.35;
+        metalness = 0.75;
+      } else if (item.itemId.includes('gold')) {
+        headColor = 0xfacc15;
+        roughness = 0.25;
+        metalness = 0.85;
+      } else if (item.itemId.includes('mythril')) {
+        headColor = 0x88ccff;
+        roughness = 0.2;
+        metalness = 0.9;
+      } else if (item.itemId.includes('aether')) {
+        headColor = 0xc084fc;
+        roughness = 0.4;
+        metalness = 0.5;
+        emissive = 0x5511aa;
+        emissiveIntensity = 0.5;
+      }
 
       const isSword = itemDef.category === 'weapon' || item.itemId.includes('sword');
       const headGeo = isSword 
         ? new THREE.BoxGeometry(0.06, 0.40, 0.03) 
         : new THREE.BoxGeometry(0.22, 0.08, 0.08);
-      const headMat = new THREE.MeshLambertMaterial({ color: headColor });
+      const headMat = new THREE.MeshStandardMaterial({ 
+        color: headColor, 
+        roughness, 
+        metalness,
+        emissive: new THREE.Color(emissive),
+        emissiveIntensity
+      });
       const head = new THREE.Mesh(headGeo, headMat);
       head.position.set(0, 0.30, 0);
       toolGroup.add(head);

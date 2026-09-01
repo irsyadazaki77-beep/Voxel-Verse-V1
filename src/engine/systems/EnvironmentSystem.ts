@@ -17,13 +17,31 @@ export class EnvironmentSystem implements GameSystem {
     world.update(deltaTime, camera);
 
     const biome = world.biomeManager.getBiome(player.position.x, player.position.z);
-    sky.update(deltaTime, player.position, biome, player.isEyesInWater);
+    sky.update(deltaTime, player.position, biome, player.isEyesInWater, weather ? weather.weather : null);
+
+    // Dynamic Tone Mapping Exposure
+    if (this.runtime.renderer) {
+      let targetExposure = 1.0;
+      if (sky.timeOfDay >= 7.5 && sky.timeOfDay < 16.5) {
+        targetExposure = 1.05; // Bright day
+      } else if (sky.timeOfDay >= 16.5 && sky.timeOfDay < 19.0) {
+        targetExposure = 1.1; // Golden hour (bloom effect)
+      } else if (sky.timeOfDay < 5.0 || sky.timeOfDay > 19.0) {
+        targetExposure = 0.85; // Night time
+      }
+      if (player.position.y < 32) {
+        targetExposure = 1.2; // Increase exposure in caves slightly to see
+      }
+      // Lerp exposure
+      const curExposure = this.runtime.renderer.toneMappingExposure;
+      this.runtime.renderer.toneMappingExposure += (targetExposure - curExposure) * deltaTime * 2.0;
+    }
 
     if (weather) {
       weather.update(deltaTime, player.position, (biome?.temperature ?? 0) < 0);
     }
     if (clouds) {
-      clouds.update(deltaTime, player.position, weather ? weather.weather : { type: 'clear', intensity: 0, windAngle: 0.5, windSpeed: 2.0, durationLeft: 0 });
+      clouds.update(deltaTime, player.position, weather ? weather.weather : { type: 'clear', intensity: 0, windAngle: 0.5, windSpeed: 2.0, durationLeft: 0 }, sky.timeOfDay);
     }
     if (particles) {
       if (player.isEyesInWater) {

@@ -37,6 +37,7 @@ import { EnvironmentSystem } from '../systems/EnvironmentSystem';
 import { PersistenceSystem } from '../systems/PersistenceSystem';
 import { TelemetrySystem } from '../systems/TelemetrySystem';
 import { RenderSystem } from '../systems/RenderSystem';
+import { RenderQualityManager } from '../systems/RenderQualityManager';
 
 import { NetworkSession } from '../network/NetworkSession';
 
@@ -89,6 +90,7 @@ export class GameRuntime {
   public persistenceSystem!: PersistenceSystem;
   public telemetrySystem!: TelemetrySystem;
   public renderSystem!: RenderSystem;
+  public renderQualityManager!: RenderQualityManager;
 
   private reqId: number = 0;
   private lastTime: number = 0;
@@ -131,8 +133,9 @@ export class GameRuntime {
       if (this.player) {
         this.player.setBaseFov(newSettings.graphics.fov);
       }
-      if (this.renderer) {
+      if (this.renderer && this.renderQualityManager) {
         this.renderer.shadowMap.enabled = newSettings.graphics.shadows;
+        this.renderQualityManager.updateQualitySettings(newSettings.graphics);
       }
       if (this.particles) {
         this.particles.setQuality(newSettings.graphics.particleQuality);
@@ -148,9 +151,14 @@ export class GameRuntime {
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    
+    this.renderQualityManager = new RenderQualityManager(this);
+    this.renderQualityManager.updateQualitySettings(settings.graphics);
+    this.renderQualityManager.currentResolution = { width: window.innerWidth, height: window.innerHeight };
+
     this.renderer.shadowMap.enabled = settings.graphics.shadows;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // PCFSoftShadowMap for better soft shadows
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
 
@@ -455,6 +463,9 @@ export class GameRuntime {
 
   public resize(width: number, height: number): void {
     this.renderSystem.resize(width, height);
+    if (this.renderQualityManager) {
+      this.renderQualityManager.resize(width, height);
+    }
   }
 
   public start(): void {

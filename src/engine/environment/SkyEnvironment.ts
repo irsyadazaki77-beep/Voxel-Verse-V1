@@ -4,6 +4,8 @@ import { BiomeDef } from '../../types';
 import { EnvironmentAtmosphereEngine, VisualProfile } from './EnvironmentVisualProfile';
 import { AetherAnomalyManager } from '../anomaly/AetherAnomalyManager';
 
+import { WeatherState } from '../../types';
+
 export class SkyEnvironment {
   public scene: THREE.Scene;
   public timeOfDay: number = 6.0; // 0 to 24 hours
@@ -99,8 +101,41 @@ export class SkyEnvironment {
     this.scene.add(this.auroraParticles);
 
     // 7. Sky Dome Mesh for gradient background
-    const skyGeo = new THREE.SphereGeometry(320, 20, 20);
-    const skyMat = new THREE.MeshBasicMaterial({ color: 0x66aaff, side: THREE.BackSide });
+    const skyGeo = new THREE.SphereGeometry(320, 32, 16); // slightly higher res for smooth gradient
+    const skyShader = {
+      uniforms: {
+        topColor: { value: new THREE.Color(0x66aaff) },
+        bottomColor: { value: new THREE.Color(0xffffff) },
+        offset: { value: 33 },
+        exponent: { value: 0.6 }
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform float offset;
+        uniform float exponent;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition + offset).y;
+          gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+        }
+      `
+    };
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.clone(skyShader.uniforms),
+      vertexShader: skyShader.vertexShader,
+      fragmentShader: skyShader.fragmentShader,
+      side: THREE.BackSide,
+      fog: false
+    });
     this.skyDomeMesh = new THREE.Mesh(skyGeo, skyMat);
     this.scene.add(this.skyDomeMesh);
   }
@@ -120,16 +155,16 @@ export class SkyEnvironment {
 
     if (quality === 'low') {
       mapSize = 512;
-      bounds = 25;
+      bounds = 20;
     } else if (quality === 'medium') {
       mapSize = 1024;
-      bounds = 38;
+      bounds = 30;
     } else if (quality === 'high') {
       mapSize = 2048;
-      bounds = 52;
+      bounds = 40;
     } else if (quality === 'ultra') {
       mapSize = 4096;
-      bounds = 75;
+      bounds = 55;
     }
 
     this.sunLight.shadow.mapSize.width = mapSize;
@@ -141,7 +176,7 @@ export class SkyEnvironment {
     this.sunLight.shadow.camera.updateProjectionMatrix();
   }
 
-  public update(deltaTime: number, playerPos: THREE.Vector3, currentBiome?: BiomeDef, isEyesInWater: boolean = false): void {
+  public update(deltaTime: number, playerPos: THREE.Vector3, currentBiome?: BiomeDef, isEyesInWater: boolean = false, currentWeather: WeatherState | null = null): void {
     // Advance time
     this.timeOfDay = (this.timeOfDay + deltaTime * this.timeScale) % 24;
     const profile = EnvironmentAtmosphereEngine.getProfile(currentBiome?.id);
@@ -244,6 +279,23 @@ export class SkyEnvironment {
         auroraOpacity = 0.75;
       }
     }
+    
+    // Weather effects on lighting
+    if (currentWeather && currentWeather.intensity > 0.05) {
+      const weatherIntensity = currentWeather.intensity;
+      if (currentWeather.type === 'rain' || currentWeather.type === 'snow') {
+        sunIntensity *= (1.0 - weatherIntensity * 0.4);
+        ambientIntensity *= (1.0 + weatherIntensity * 0.2); // diffuse scattered light
+        skyColor.lerp(new THREE.Color(0x667788), weatherIntensity * 0.5);
+        fogColor.lerp(new THREE.Color(0x778899), weatherIntensity * 0.6);
+      } else if (currentWeather.type === 'storm') {
+        sunIntensity *= (1.0 - weatherIntensity * 0.8);
+        ambientIntensity *= (1.0 - weatherIntensity * 0.3);
+        hemiIntensity *= (1.0 - weatherIntensity * 0.3);
+        skyColor.lerp(new THREE.Color(0x222233), weatherIntensity * 0.8);
+        fogColor.lerp(new THREE.Color(0x333344), weatherIntensity * 0.85);
+      }
+    }
 
     // Underground Deep Cave Atmosphere (Y < 32)
     if (playerPos.y < 32) {
@@ -281,7 +333,12 @@ export class SkyEnvironment {
     }
 
     // Apply colors to scene & materials
-    (this.skyDomeMesh.material as THREE.MeshBasicMaterial).color.copy(skyColor);
+    const skyMat = this.skyDomeMesh.material as THREE.ShaderMaterial;
+    if (skyMat.uniforms) {
+      skyMat.uniforms.topColor.value.copy(skyColor);
+      skyMat.uniforms.bottomColor.value.copy(fogColor); // use fogColor for horizon to blend seamlessly
+    }
+    
     (this.starsParticles.material as THREE.PointsMaterial).opacity = starOpacity;
     (this.auroraParticles.material as THREE.PointsMaterial).opacity = auroraOpacity;
 

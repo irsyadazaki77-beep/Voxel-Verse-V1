@@ -60,7 +60,7 @@ export class CloudSystem {
     }
   }
 
-  public update(deltaTime: number, playerPos: THREE.Vector3, weather: WeatherState): void {
+  public update(deltaTime: number, playerPos: THREE.Vector3, weather: WeatherState, timeOfDay: number = 12.0): void {
     // Keep cloud layer centered around player
     this.cloudGroup.position.x = playerPos.x;
     this.cloudGroup.position.z = playerPos.z;
@@ -73,7 +73,6 @@ export class CloudSystem {
     for (const cluster of this.cloudClusters) {
       cluster.position.x += dx;
       cluster.position.z += dz;
-
       // Wrap around radius boundaries
       if (cluster.position.x > 300) cluster.position.x -= 600;
       if (cluster.position.x < -300) cluster.position.x += 600;
@@ -94,6 +93,17 @@ export class CloudSystem {
     } else if (weather.type === 'snow') {
       targetColor.setRGB(0.85, 0.88, 0.92);
       targetOpacity = 0.88;
+    }
+
+    // Sunset tint during golden hour
+    if (timeOfDay >= 16.5 && timeOfDay < 19.0 && weather.type !== 'storm') {
+      const sunsetTint = new THREE.Color(0xff9977);
+      targetColor.lerp(sunsetTint, 0.6);
+    } else if (timeOfDay >= 5.0 && timeOfDay < 7.5 && weather.type !== 'storm') {
+      const dawnTint = new THREE.Color(0xffbb99);
+      targetColor.lerp(dawnTint, 0.5);
+    } else if (timeOfDay < 5.0 || timeOfDay > 19.0) {
+      targetColor.setHex(0x334466); // Dark blue clouds at night
     }
 
     this.cloudMaterial.color.lerp(targetColor, deltaTime * 2.0);

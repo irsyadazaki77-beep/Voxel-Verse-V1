@@ -11,7 +11,8 @@ export interface AudioSettings {
 }
 
 export interface GraphicsSettings {
-  preset: 'low' | 'medium' | 'high' | 'ultra' | 'custom';
+  preset: 'low' | 'medium' | 'high' | 'ultra' | 'custom' | 'auto';
+  renderScale: number; // 0.5 .. 1.5
   renderDistance: number; // 2..16 chunks
   shadows: boolean;
   shadowQuality: 'off' | 'low' | 'medium' | 'high' | 'ultra';
@@ -21,6 +22,8 @@ export interface GraphicsSettings {
   particleQuality: 'low' | 'medium' | 'high';
   antiAliasing: boolean;
   postProcessing: boolean;
+  bloom: boolean;
+  ambientOcclusion: boolean;
   fov: number; // 60..110
   clouds: boolean;
   cloudQuality: 'low' | 'medium' | 'high';
@@ -97,6 +100,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   },
   graphics: {
     preset: 'high',
+    renderScale: 1.0,
     renderDistance: 6,
     shadows: true,
     shadowQuality: 'high',
@@ -106,6 +110,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
     particleQuality: 'high',
     antiAliasing: true,
     postProcessing: true,
+    bloom: true,
+    ambientOcclusion: true,
     fov: 75,
     clouds: true,
     cloudQuality: 'high',

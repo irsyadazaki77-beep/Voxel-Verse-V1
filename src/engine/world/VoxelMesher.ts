@@ -49,7 +49,7 @@ export class VoxelMesher {
   }
 
   private static aoToFactor(ao: number): number {
-    return 0.55 + (ao / 3.0) * 0.45;
+    return 0.45 + (ao / 3.0) * 0.55;
   }
 
   // Fast Block Property Checkers

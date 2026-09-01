@@ -57,6 +57,46 @@ export class VoxelWorld {
       roughness: 0.85,
       metalness: 0.05,
     });
+    
+    this.solidMaterial.onBeforeCompile = (shader) => {
+      shader.vertexShader = `
+        varying vec3 vWorldPos;
+        ${shader.vertexShader}
+      `.replace(
+        '#include <begin_vertex>',
+        `
+        #include <begin_vertex>
+        vec4 wPos = modelMatrix * vec4(transformed, 1.0);
+        vWorldPos = wPos.xyz;
+        `
+      );
+      
+      shader.fragmentShader = `
+        varying vec3 vWorldPos;
+        
+        // Simple 3D hash function
+        float hash(vec3 p) {
+          p = fract(p * 0.3183099 + .1);
+          p *= 17.0;
+          return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+        
+        ${shader.fragmentShader}
+      `.replace(
+        '#include <color_fragment>',
+        `
+        #include <color_fragment>
+        
+        // Block coordinate (snapped to grid)
+        vec3 blockCoord = floor(vWorldPos + 0.5);
+        float h = hash(blockCoord);
+        
+        // Subtle deterministic variation (brightness and saturation)
+        float variation = (h - 0.5) * 0.06; // +/- 3%
+        diffuseColor.rgb *= (1.0 + variation);
+        `
+      );
+    };
 
     this.transMaterial = new THREE.MeshStandardMaterial({
       map: atlasTex,
@@ -73,16 +113,48 @@ export class VoxelWorld {
       this.transMaterial.userData.shader = shader;
       shader.vertexShader = `
         uniform float uTime;
+        varying vec3 vWorldPos;
         ${shader.vertexShader}
       `.replace(
         '#include <begin_vertex>',
         `
         #include <begin_vertex>
-        // Subtle GPU wind sway for cross vegetation foliage (top vertices)
+        vec4 wPos = modelMatrix * vec4(transformed, 1.0);
+        vWorldPos = wPos.xyz;
+        
+        // Vegetation wind 2.0: Different phase per world pos
         if (position.y > 0.3) {
-          float wind = sin(transformed.x * 2.5 + transformed.z * 2.5 + uTime * 2.8) * 0.045;
+          float phase = wPos.x * 2.5 + wPos.z * 2.5;
+          float wind = sin(phase + uTime * 2.8) * 0.045 + sin(phase * 0.5 + uTime * 1.5) * 0.02;
           transformed.x += wind;
           transformed.z += wind * 0.5;
+        }
+        `
+      );
+      
+      shader.fragmentShader = `
+        varying vec3 vWorldPos;
+        
+        float hash(vec3 p) {
+          p = fract(p * 0.3183099 + .1);
+          p *= 17.0;
+          return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+        
+        ${shader.fragmentShader}
+      `.replace(
+        '#include <color_fragment>',
+        `
+        #include <color_fragment>
+        vec3 blockCoord = floor(vWorldPos + 0.5);
+        float h = hash(blockCoord);
+        float variation = (h - 0.5) * 0.08;
+        diffuseColor.rgb *= (1.0 + variation);
+        
+        // Leaf translucency impression
+        if (vWorldPos.y > 0.3) {
+          // Boost brightness slightly
+          diffuseColor.rgb *= 1.1;
         }
         `
       );
@@ -92,9 +164,9 @@ export class VoxelWorld {
       map: atlasTex,
       vertexColors: true,
       transparent: true,
-      opacity: 0.72,
-      roughness: 0.15,
-      metalness: 0.1,
+      opacity: 0.85,
+      roughness: 0.05,
+      metalness: 0.6,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -104,16 +176,47 @@ export class VoxelWorld {
       this.waterMaterial.userData.shader = shader;
       shader.vertexShader = `
         uniform float uTime;
+        varying vec3 vWorldPosition;
         ${shader.vertexShader}
       `.replace(
         '#include <begin_vertex>',
         `
         #include <begin_vertex>
-        // Water 3.0: Dual sinusoidal wave surface displacement
+        // Water 4.0: Dual sinusoidal wave surface displacement
         float wave1 = sin(transformed.x * 2.2 + uTime * 2.5) * 0.04;
         float wave2 = cos(transformed.z * 2.2 + uTime * 2.0) * 0.04;
         float wave3 = sin((transformed.x + transformed.z) * 1.5 + uTime * 3.0) * 0.025;
         transformed.y += wave1 + wave2 + wave3;
+        
+        vec4 wPos = modelMatrix * vec4(transformed, 1.0);
+        vWorldPosition = wPos.xyz;
+        `
+      );
+      
+      shader.fragmentShader = `
+        varying vec3 vWorldPosition;
+        ${shader.fragmentShader}
+      `.replace(
+        '#include <color_fragment>',
+        `
+        #include <color_fragment>
+        
+        // Water 4.0: Fresnel edge response and depth color
+        vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+        float fresnel = dot(viewDir, normalize(vNormal));
+        fresnel = clamp(1.0 - fresnel, 0.0, 1.0);
+        fresnel = pow(fresnel, 3.0);
+        
+        // Deep water color (turquoise) vs Shallow water color (cyan)
+        vec3 deepColor = vec3(0.05, 0.45, 0.55);
+        vec3 shallowColor = vec3(0.2, 0.8, 0.9);
+        
+        // Simulate depth based on wave and angle
+        vec3 waterColor = mix(shallowColor, deepColor, fresnel * 0.8 + 0.2);
+        
+        // Apply tint
+        diffuseColor.rgb = mix(diffuseColor.rgb, waterColor, 0.6 + fresnel * 0.4);
+        diffuseColor.a = 0.65 + fresnel * 0.35; // More opaque at grazing angles
         `
       );
     };
