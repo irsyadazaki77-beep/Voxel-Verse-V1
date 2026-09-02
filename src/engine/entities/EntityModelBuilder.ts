@@ -225,4 +225,180 @@ export class EntityModelBuilder {
 
     return this.buildMergedMesh(parts);
   }
+
+  // 7. Woolbeast (Fluffy Quadruped Livestock)
+  public static buildWoolbeast(): THREE.Group {
+    const bodyGeo = new THREE.BoxGeometry(0.8, 0.7, 1.1);
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0xf1f5f9 });
+    const headGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+    const headMat = new THREE.MeshLambertMaterial({ color: 0xe2e8f0 });
+    const hornGeo = new THREE.BoxGeometry(0.1, 0.25, 0.1);
+    const hornMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
+    const legGeo = new THREE.BoxGeometry(0.2, 0.5, 0.2);
+    const legMat = new THREE.MeshLambertMaterial({ color: 0x64748b });
+
+    const parts: EntityPart[] = [
+      { geo: bodyGeo, mat: bodyMat, pos: [0, 0.65, 0] },
+      { geo: headGeo, mat: headMat, pos: [0, 0.95, 0.6] },
+      { geo: hornGeo, mat: hornMat, pos: [0.18, 1.2, 0.55], rot: [0.2, 0, -0.3] },
+      { geo: hornGeo, mat: hornMat, pos: [-0.18, 1.2, 0.55], rot: [0.2, 0, 0.3] },
+      { geo: legGeo, mat: legMat, pos: [0.3, 0.25, 0.35] },
+      { geo: legGeo, mat: legMat, pos: [-0.3, 0.25, 0.35] },
+      { geo: legGeo, mat: legMat, pos: [0.3, 0.25, -0.35] },
+      { geo: legGeo, mat: legMat, pos: [-0.3, 0.25, -0.35] },
+    ];
+
+    return this.buildMergedMesh(parts);
+  }
+
+  // 8. Grazeback (Heavy Armored Quadruped)
+  public static buildGrazeback(): THREE.Group {
+    const bodyGeo = new THREE.BoxGeometry(0.9, 0.8, 1.4);
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x52525b });
+    const plateGeo = new THREE.BoxGeometry(0.82, 0.2, 1.2);
+    const plateMat = new THREE.MeshLambertMaterial({ color: 0x27272a });
+    const headGeo = new THREE.BoxGeometry(0.45, 0.45, 0.5);
+    const legGeo = new THREE.BoxGeometry(0.25, 0.55, 0.25);
+    const legMat = new THREE.MeshLambertMaterial({ color: 0x3f3f46 });
+
+    const parts: EntityPart[] = [
+      { geo: bodyGeo, mat: bodyMat, pos: [0, 0.75, 0] },
+      { geo: plateGeo, mat: plateMat, pos: [0, 1.2, 0] },
+      { geo: headGeo, mat: bodyMat, pos: [0, 0.85, 0.8] },
+      { geo: legGeo, mat: legMat, pos: [0.32, 0.28, 0.45] },
+      { geo: legGeo, mat: legMat, pos: [-0.32, 0.28, 0.45] },
+      { geo: legGeo, mat: legMat, pos: [0.32, 0.28, -0.45] },
+      { geo: legGeo, mat: legMat, pos: [-0.32, 0.28, -0.45] },
+    ];
+
+    return this.buildMergedMesh(parts);
+  }
+
+  // 9. Shadow Wolf (Predator Wolf)
+  public static buildShadowWolf(): THREE.Group {
+    const bodyGeo = new THREE.BoxGeometry(0.5, 0.5, 1.1);
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x18181b });
+    const headGeo = new THREE.BoxGeometry(0.35, 0.35, 0.45);
+    const eyeGeo = new THREE.BoxGeometry(0.06, 0.04, 0.04);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const earGeo = new THREE.BoxGeometry(0.08, 0.15, 0.08);
+    const legGeo = new THREE.BoxGeometry(0.14, 0.55, 0.14);
+
+    const parts: EntityPart[] = [
+      { geo: bodyGeo, mat: bodyMat, pos: [0, 0.6, 0] },
+      { geo: headGeo, mat: bodyMat, pos: [0, 0.8, 0.6] },
+      { geo: eyeGeo, mat: eyeMat, pos: [0.1, 0.82, 0.8] },
+      { geo: eyeGeo, mat: eyeMat, pos: [-0.1, 0.82, 0.8] },
+      { geo: earGeo, mat: bodyMat, pos: [0.12, 1.02, 0.55] },
+      { geo: earGeo, mat: bodyMat, pos: [-0.12, 1.02, 0.55] },
+      { geo: legGeo, mat: bodyMat, pos: [0.18, 0.28, 0.38] },
+      { geo: legGeo, mat: bodyMat, pos: [-0.18, 0.28, 0.38] },
+      { geo: legGeo, mat: bodyMat, pos: [0.18, 0.28, -0.38] },
+      { geo: legGeo, mat: bodyMat, pos: [-0.18, 0.28, -0.38] },
+    ];
+
+    return this.buildMergedMesh(parts);
+  }
+
+  // 10. Glowhen (Feathered Poultry)
+  public static buildGlowhen(): THREE.Group {
+    const bodyGeo = new THREE.BoxGeometry(0.35, 0.35, 0.45);
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0xfef08a });
+    const tailGeo = new THREE.BoxGeometry(0.15, 0.25, 0.15);
+    const tailMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const headGeo = new THREE.BoxGeometry(0.2, 0.25, 0.2);
+    const beakGeo = new THREE.BoxGeometry(0.08, 0.06, 0.1);
+    const beakMat = new THREE.MeshLambertMaterial({ color: 0xf97316 });
+    const legGeo = new THREE.BoxGeometry(0.06, 0.25, 0.06);
+
+    const parts: EntityPart[] = [
+      { geo: bodyGeo, mat: bodyMat, pos: [0, 0.35, 0] },
+      { geo: tailGeo, mat: tailMat, pos: [0, 0.5, -0.22] },
+      { geo: headGeo, mat: bodyMat, pos: [0, 0.55, 0.18] },
+      { geo: beakGeo, mat: beakMat, pos: [0, 0.54, 0.3] },
+      { geo: legGeo, mat: beakMat, pos: [0.08, 0.12, 0] },
+      { geo: legGeo, mat: beakMat, pos: [-0.08, 0.12, 0] },
+    ];
+
+    return this.buildMergedMesh(parts);
+  }
+
+  // 11. Crystal Bee (Aether Insect)
+  public static buildCrystalBee(): THREE.Group {
+    const bodyGeo = new THREE.BoxGeometry(0.25, 0.25, 0.35);
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0xf59e0b, emissive: 0x442200 });
+    const wingGeo = new THREE.BoxGeometry(0.2, 0.02, 0.15);
+    const wingMat = new THREE.MeshLambertMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.75 });
+    const stingerGeo = new THREE.BoxGeometry(0.04, 0.04, 0.1);
+
+    const parts: EntityPart[] = [
+      { geo: bodyGeo, mat: bodyMat, pos: [0, 0.5, 0] },
+      { geo: wingGeo, mat: wingMat, pos: [0.18, 0.6, 0], rot: [0, 0, 0.2] },
+      { geo: wingGeo, mat: wingMat, pos: [-0.18, 0.6, 0], rot: [0, 0, -0.2] },
+      { geo: stingerGeo, mat: bodyMat, pos: [0, 0.5, -0.22] },
+    ];
+
+    return this.buildMergedMesh(parts);
+  }
+
+  // 12. Glowfin (Aquatic Water Life)
+  public static buildGlowfin(): THREE.Group {
+    const bodyGeo = new THREE.BoxGeometry(0.18, 0.3, 0.6);
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x0284c7 });
+    const finGeo = new THREE.BoxGeometry(0.02, 0.2, 0.25);
+    const finMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+
+    const parts: EntityPart[] = [
+      { geo: bodyGeo, mat: bodyMat, pos: [0, 0.3, 0] },
+      { geo: finGeo, mat: finMat, pos: [0, 0.45, 0] },
+      { geo: finGeo, mat: finMat, pos: [0, 0.25, -0.35], rot: [0, 0.4, 0] },
+    ];
+
+    return this.buildMergedMesh(parts);
+  }
+
+  // 13. Void Lynx (Rare Void Predator)
+  public static buildVoidLynx(): THREE.Group {
+    const bodyGeo = new THREE.BoxGeometry(0.45, 0.45, 1.0);
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x2e1065 });
+    const headGeo = new THREE.BoxGeometry(0.32, 0.32, 0.38);
+    const eyeGeo = new THREE.BoxGeometry(0.06, 0.04, 0.04);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xc084fc });
+    const clawMat = new THREE.MeshBasicMaterial({ color: 0xa855f7 });
+    const legGeo = new THREE.BoxGeometry(0.12, 0.5, 0.12);
+
+    const parts: EntityPart[] = [
+      { geo: bodyGeo, mat: bodyMat, pos: [0, 0.55, 0] },
+      { geo: headGeo, mat: bodyMat, pos: [0, 0.72, 0.55] },
+      { geo: eyeGeo, mat: eyeMat, pos: [0.09, 0.74, 0.72] },
+      { geo: eyeGeo, mat: eyeMat, pos: [-0.09, 0.74, 0.72] },
+      { geo: legGeo, mat: bodyMat, pos: [0.16, 0.25, 0.35] },
+      { geo: legGeo, mat: bodyMat, pos: [-0.16, 0.25, 0.35] },
+      { geo: legGeo, mat: bodyMat, pos: [0.16, 0.25, -0.35] },
+      { geo: legGeo, mat: bodyMat, pos: [-0.16, 0.25, -0.35] },
+    ];
+
+    return this.buildMergedMesh(parts);
+  }
+
+  // Unified factory by modelType key
+  public static buildByModelType(modelType: string): THREE.Group {
+    switch (modelType) {
+      case 'stag': return this.buildStag();
+      case 'woolbeast': return this.buildWoolbeast();
+      case 'grazeback': return this.buildGrazeback();
+      case 'wolf':
+      case 'shadow_wolf': return this.buildShadowWolf();
+      case 'glowhen': return this.buildGlowhen();
+      case 'bee':
+      case 'crystal_bee': return this.buildCrystalBee();
+      case 'glowfin': return this.buildGlowfin();
+      case 'void_lynx': return this.buildVoidLynx();
+      case 'shadow_stalker': return this.buildShadowStalker();
+      case 'void_spitter': return this.buildVoidSpitter();
+      case 'ruin_sentinel': return this.buildRuinSentinel();
+      case 'void_sovereign': return this.buildVoidSovereign();
+      default: return this.buildStag();
+    }
+  }
 }

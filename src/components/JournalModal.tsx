@@ -9,6 +9,7 @@ import { BountyContractManager, BountyContract } from '../engine/exploration/Bou
 import { TreasureMapSystem, TreasureMap } from '../engine/exploration/TreasureMapSystem';
 import { ArtifactSynergyManager, ARTIFACT_SYNERGIES } from '../engine/artifacts/ArtifactSynergyManager';
 import { WorldStabilitySystem } from '../engine/exploration/WorldStabilitySystem';
+import { CREATURE_REGISTRY } from '../engine/entities/CreatureRegistry';
 import { QuestDef, QuestState, DiscoveryRecord, WorldTierId } from '../types';
 import { 
   BookOpen, 
@@ -41,7 +42,7 @@ interface JournalModalProps {
   playerLevel: number;
 }
 
-type TabType = 'quests' | 'bounties' | 'treasure' | 'discoveries' | 'artifacts' | 'tiers' | 'stability' | 'lore';
+type TabType = 'quests' | 'bounties' | 'treasure' | 'discoveries' | 'artifacts' | 'tiers' | 'stability' | 'lore' | 'bestiary';
 
 export const JournalModal: React.FC<JournalModalProps> = ({
   isOpen,
@@ -126,6 +127,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
       title: 'WORLD',
       items: [
         { id: 'stability', label: 'Ley Stability', icon: Activity },
+        { id: 'bestiary', label: 'Fauna Bestiary', icon: Flame },
         { id: 'lore', label: 'Lore Codex', icon: Scroll },
       ]
     }
@@ -593,6 +595,67 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* BESTIARY TAB */}
+              {activeTab === 'bestiary' && (
+                <div className="space-y-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
+                  <div className="border-b border-[var(--vv-border-subtle)] pb-3">
+                    <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+                      <Flame className="w-5 h-5 text-[var(--vv-warning)]" />
+                      Fauna & Wildlife Bestiary
+                    </h3>
+                    <p className="text-xs text-[var(--vv-text-muted)] mt-1">
+                      Species profiles, biomes, diets, taming mechanics, and livestock outputs in VoxelVerse Ecosystem 2.0.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {Object.values(CREATURE_REGISTRY).map(creature => (
+                      <div key={creature.id} className="p-5 rounded-xl bg-[var(--vv-surface)] border border-[var(--vv-border-subtle)] flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-base font-bold text-white flex items-center gap-2">
+                              {creature.name}
+                            </h4>
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--vv-aether)]/20 text-[var(--vv-aether)] border border-[var(--vv-aether)]/30">
+                              {creature.rarity}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[var(--vv-text-muted)] mb-3 leading-relaxed">
+                            {creature.description}
+                          </p>
+
+                          <div className="grid grid-cols-2 gap-2 text-[11px] mb-3 bg-black/30 p-3 rounded-lg border border-white/5">
+                            <div>
+                              <span className="text-[var(--vv-text-muted)]">Role:</span> <strong className="text-white">{creature.role}</strong>
+                            </div>
+                            <div>
+                              <span className="text-[var(--vv-text-muted)]">Activity:</span> <strong className="text-white">{creature.activity}</strong>
+                            </div>
+                            <div>
+                              <span className="text-[var(--vv-text-muted)]">Diet:</span> <strong className="text-white">{creature.diet}</strong>
+                            </div>
+                            <div>
+                              <span className="text-[var(--vv-text-muted)]">Tameable:</span> <strong className={creature.tameable ? 'text-[var(--vv-success)]' : 'text-zinc-500'}>{creature.tameable ? 'Yes' : 'No'}</strong>
+                            </div>
+                          </div>
+
+                          {creature.productOutput && (
+                            <div className="text-[11px] bg-[var(--vv-success)]/10 text-[var(--vv-success)] p-2 rounded border border-[var(--vv-success)]/20 mb-2">
+                              <strong>Yields:</strong> {creature.productOutput.itemId.replace('_', ' ')} every {creature.productOutput.intervalSeconds}s
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="text-[10px] font-mono text-[var(--vv-text-muted)] flex justify-between border-t border-[var(--vv-border-subtle)] pt-2 mt-2">
+                          <span>Biomes: {creature.biomes.join(', ')}</span>
+                          <span>HP: {creature.baseHealth}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

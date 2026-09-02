@@ -1132,6 +1132,47 @@ try {
   assert(false, 'Soak Test Suite Exception', (e as Error).message);
 }
 
+// Living World & Ecosystem 2.0 Tests
+console.log('\n[TEST GROUP] Living World & Ecosystem 2.0');
+try {
+  const { CREATURE_REGISTRY } = await import('../engine/entities/CreatureRegistry');
+  const { LivestockSystem } = await import('../engine/systems/LivestockSystem');
+  const { FishingSystem } = await import('../engine/systems/FishingSystem');
+  const { EcosystemManager } = await import('../engine/entities/EcosystemManager');
+
+  // 1. Creature Registry
+  assert(Object.keys(CREATURE_REGISTRY).length >= 8, 'Creature registry contains 8+ original fauna species');
+  const stag = CREATURE_REGISTRY['aether_stag'];
+  assert(stag && stag.mountCapable && stag.tameable, 'Aether Stag is tameable and mount-capable');
+
+  // 2. Taming Mechanics
+  const tempEntity: any = { id: 'stag_test', type: 'aether_stag', trustMeter: 0, isTamed: false };
+  const feedResult = LivestockSystem.feedCreature(tempEntity, 'aether_crystal');
+  assert(feedResult.success && tempEntity.trustMeter > 0, 'Feeding preferred food increases trust meter');
+
+  // 3. Breeding Logic
+  const parentA: any = { id: 'pA', type: 'woolbeast', isTamed: true };
+  const parentB: any = { id: 'pB', type: 'woolbeast', isTamed: true };
+  const canBreed = LivestockSystem.canBreed(parentA, parentB, 'wheat', 2, 10);
+  assert(canBreed, 'Adult woolbeasts fed wheat can breed when below area population cap');
+
+  const baby = LivestockSystem.breed(parentA, parentB, [10, 64, 10]);
+  assert(baby.isBaby && baby.scale === 0.5, 'Breeding produces scaled baby entity');
+
+  // 4. Interactive Fishing Catch Generation
+  FishingSystem.reset();
+  FishingSystem.castLine([0, 64, 0], [0, 0, 1], true, 'aether_bait');
+  const catchRes = FishingSystem.generateCatch('ocean', false, 0.5);
+  assert(catchRes && catchRes.itemId.length > 0 && catchRes.xpEarned > 0, 'Fishing generates valid catch with XP');
+
+  // 5. Ecosystem Event Trigger
+  EcosystemManager.triggerRandomEvent();
+  assert(EcosystemManager.activeEvent !== 'NONE' && EcosystemManager.eventTimer > 0, 'Ecosystem event successfully triggered');
+
+} catch (e) {
+  assert(false, 'Ecosystem 2.0 Suite Exception', (e as Error).message);
+}
+
 // Summary
 console.log('\n====================================================');
 const passedCount = results.filter((r) => r.passed).length;

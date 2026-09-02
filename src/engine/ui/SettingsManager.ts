@@ -12,18 +12,28 @@ export interface AudioSettings {
 
 export interface GraphicsSettings {
   preset: 'low' | 'medium' | 'high' | 'ultra' | 'custom' | 'auto';
-  renderScale: number; // 0.5 .. 1.5
+  resolutionMode: 'auto' | 'native' | '1080p' | '1440p' | '4k' | 'custom';
+  renderScale: number; // 0.5 .. 2.0
   renderDistance: number; // 2..16 chunks
   shadows: boolean;
   shadowQuality: 'off' | 'low' | 'medium' | 'high' | 'ultra';
+  shadowMapSize: 512 | 1024 | 2048 | 4096;
   waterReflections: boolean;
-  waterQuality: 'low' | 'medium' | 'high';
+  waterQuality: 'low' | 'medium' | 'high' | 'ultra';
   vegetationDensity: 'off' | 'low' | 'high';
   particleQuality: 'low' | 'medium' | 'high';
   antiAliasing: boolean;
+  antiAliasingMode: 'off' | 'fxaa' | 'smaa';
   postProcessing: boolean;
   bloom: boolean;
+  bloomStrength: number;
   ambientOcclusion: boolean;
+  ambientOcclusionQuality: 'off' | 'low' | 'medium' | 'high';
+  colorGrading: 'none' | 'cinematic' | 'vibrant' | 'warm_golden' | 'cool_twilight';
+  sharpening: boolean;
+  sharpenStrength: number;
+  dynamicResolution: boolean;
+  targetFps: 30 | 60 | 120 | 144;
   fov: number; // 60..110
   clouds: boolean;
   cloudQuality: 'low' | 'medium' | 'high';
@@ -100,18 +110,28 @@ export const DEFAULT_SETTINGS: GameSettings = {
   },
   graphics: {
     preset: 'high',
+    resolutionMode: 'auto',
     renderScale: 1.0,
     renderDistance: 6,
     shadows: true,
     shadowQuality: 'high',
+    shadowMapSize: 2048,
     waterReflections: true,
     waterQuality: 'high',
     vegetationDensity: 'high',
     particleQuality: 'high',
     antiAliasing: true,
+    antiAliasingMode: 'smaa',
     postProcessing: true,
     bloom: true,
+    bloomStrength: 0.35,
     ambientOcclusion: true,
+    ambientOcclusionQuality: 'high',
+    colorGrading: 'cinematic',
+    sharpening: true,
+    sharpenStrength: 0.25,
+    dynamicResolution: true,
+    targetFps: 60,
     fov: 75,
     clouds: true,
     cloudQuality: 'high',

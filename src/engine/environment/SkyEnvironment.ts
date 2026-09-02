@@ -199,9 +199,28 @@ export class SkyEnvironment {
       playerPos.z - Math.sin(sunAngle * 0.5) * 40
     );
 
-    this.sunLight.position.set(sunX, Math.max(12, sunY), sunZ);
-    this.sunLight.target.position.copy(playerPos);
+    // Texel Snapping for Zero Shadow Shimmering
+    const mapSize = this.sunLight.shadow.mapSize.width || 2048;
+    const bounds = this.sunLight.shadow.camera.right || 40;
+    const texelSize = (bounds * 2.0) / mapSize;
+
+    // Project player position onto light orientation and snap
+    const lightDir = new THREE.Vector3().subVectors(this.sunLight.position, playerPos).normalize();
+    const shadowTarget = playerPos.clone();
+    
+    // Snap target coordinates in world space along orthogonal axes
+    shadowTarget.x = Math.floor(shadowTarget.x / texelSize) * texelSize;
+    shadowTarget.y = Math.floor(shadowTarget.y / texelSize) * texelSize;
+    shadowTarget.z = Math.floor(shadowTarget.z / texelSize) * texelSize;
+
+    this.sunLight.target.position.copy(shadowTarget);
     this.sunLight.target.updateMatrixWorld();
+
+    this.sunLight.position.set(
+      shadowTarget.x + Math.cos(sunAngle) * dist,
+      Math.max(shadowTarget.y + 12, shadowTarget.y + Math.sin(sunAngle) * dist),
+      shadowTarget.z + Math.sin(sunAngle * 0.5) * 40
+    );
 
     this.starsParticles.position.copy(playerPos);
     this.auroraParticles.position.copy(playerPos);

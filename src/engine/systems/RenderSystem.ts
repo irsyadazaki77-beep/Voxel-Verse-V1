@@ -72,17 +72,35 @@ export class RenderSystem implements GameSystem {
     }
 
     const renderStart = performance.now();
-    renderer.render(scene, camera);
-    this.runtime.lastRenderTimeMs = performance.now() - renderStart;
+    
+    const isEyesInWater = player.isEyesInWater || false;
+    const exposure = renderer.toneMappingExposure || 1.0;
+
+    if (this.runtime.renderPipeline) {
+      this.runtime.renderPipeline.render(deltaTime, isEyesInWater, exposure);
+    } else {
+      renderer.render(scene, camera);
+    }
+    
+    const renderTime = performance.now() - renderStart;
+    this.runtime.lastRenderTimeMs = renderTime;
+
+    if (this.runtime.renderQualityManager && this.runtime.settings?.graphics) {
+      this.runtime.renderQualityManager.trackFrameTime(renderTime, this.runtime.settings.graphics);
+    }
   }
 
   public resize(width: number, height: number): void {
-    const { camera, renderer } = this.runtime;
+    const { camera, renderer, renderPipeline } = this.runtime;
     if (!camera || !renderer) return;
 
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
+
+    if (renderPipeline) {
+      renderPipeline.setSize(width, height);
+    }
   }
 
   public dispose(): void {

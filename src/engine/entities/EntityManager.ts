@@ -9,6 +9,8 @@ import { GameEventBus } from '../events/GameEventBus';
 
 import { SETTLEMENT_REGISTRY, SettlementManager } from '../settlement/SettlementManager';
 import { PoiseSystem } from '../combat/PoiseSystem';
+import { CREATURE_REGISTRY } from './CreatureRegistry';
+import { EcosystemManager } from './EcosystemManager';
 
 export interface FloatingText {
   id: string;
@@ -102,21 +104,12 @@ export class EntityManager {
   }
 
   public spawnEntity(state: EntityState): void {
-    let mesh: THREE.Group;
-    if (state.modelType === 'stag') {
-      mesh = EntityModelBuilder.buildStag();
-    } else if (state.modelType === 'stalker') {
-      mesh = EntityModelBuilder.buildShadowStalker();
-    } else if (state.modelType === 'void_spitter') {
-      mesh = EntityModelBuilder.buildVoidSpitter();
-    } else if (state.modelType === 'merchant') {
-      mesh = EntityModelBuilder.buildNPC('merchant');
-    } else if (state.modelType === 'ruin_sentinel') {
-      mesh = EntityModelBuilder.buildRuinSentinel();
-    } else if (state.modelType === 'boss_void_sovereign' || state.modelType === 'void_sovereign') {
-      mesh = EntityModelBuilder.buildVoidSovereign();
-    } else {
-      mesh = EntityModelBuilder.buildNPC('elder');
+    const modelKey = state.modelType || state.type;
+    const mesh = EntityModelBuilder.buildByModelType(modelKey);
+
+    if (state.isBaby || state.scale) {
+      const s = state.scale || (state.isBaby ? 0.5 : 1.0);
+      mesh.scale.set(s, s, s);
     }
 
     mesh.position.set(...state.position);
@@ -336,6 +329,44 @@ export class EntityManager {
         Pathfinder.cleanCache();
     }
     const now = Date.now();
+
+    // Ecosystem Manager 2.0 Tick Integration (Runs low-frequency 2s tick for world fauna & ecosystem equilibrium)
+    EcosystemManager.update(
+      dt,
+      this.entities as any,
+      [playerPos.x, playerPos.y, playerPos.z],
+      isNight ? 0.9 : 0.5,
+      false,
+      false,
+      (creatureId, pos) => {
+        const def = CREATURE_REGISTRY[creatureId];
+        if (!def) return;
+        const spawnY = world.getSpawnHeight(pos[0], pos[2]);
+        this.spawnEntity({
+          id: `${creatureId}_${Date.now()}_${Math.floor(Math.random() * 100)}`,
+          type: def.role === 'PREDATOR' ? 'hostile' : 'passive',
+          name: def.name,
+          position: [pos[0], spawnY, pos[2]],
+          velocity: [0, 0, 0],
+          rotation: Math.random() * Math.PI * 2,
+          health: def.baseHealth,
+          maxHealth: def.baseHealth,
+          damage: def.baseDamage,
+          speed: def.baseSpeed,
+          aiState: 'wander',
+          modelType: def.modelType,
+          drops: def.drops,
+          attackRange: def.baseDamage > 0 ? 2.5 : 0,
+        });
+      },
+      (despawnId) => {
+        const entry = this.entities.get(despawnId);
+        if (entry) {
+          this.entityGroup.remove(entry.mesh);
+          this.entities.delete(despawnId);
+        }
+      }
+    );
 
     // Periodic Nocturnal / Hostile Monster Spawning
     if (this.spawnTimer > 10 && this.entities.size < 16) {

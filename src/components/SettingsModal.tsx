@@ -139,45 +139,126 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 <>
                   <div className="space-y-4">
                     <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2 flex items-center gap-2">
-                      <Zap className="w-4 h-4 text-[var(--vv-warning)]" /> Recommended Presets
+                      <Zap className="w-4 h-4 text-[var(--vv-warning)]" /> Recommended Quality Presets
                     </h3>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <button 
                         onClick={() => applyPreset('performance')}
-                        className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
+                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                           settings.graphics.preset === 'low' ? 'bg-[var(--vv-warning)]/10 border-[var(--vv-warning)] shadow-inner' : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] hover:border-[var(--vv-border)]'
                         }`}
                       >
-                        <Zap className={`w-6 h-6 ${settings.graphics.preset === 'low' ? 'text-[var(--vv-warning)]' : 'text-[var(--vv-text-muted)]'}`} />
-                        <span className={`text-sm font-bold ${settings.graphics.preset === 'low' ? 'text-[var(--vv-warning)]' : 'text-white'}`}>Performance</span>
-                        <span className="text-[10px] text-[var(--vv-text-muted)] text-center hidden sm:block">Max FPS, Low Detail</span>
+                        <Zap className={`w-5 h-5 ${settings.graphics.preset === 'low' ? 'text-[var(--vv-warning)]' : 'text-[var(--vv-text-muted)]'}`} />
+                        <span className={`text-xs font-bold ${settings.graphics.preset === 'low' ? 'text-[var(--vv-warning)]' : 'text-white'}`}>Performance</span>
                       </button>
                       <button 
                         onClick={() => applyPreset('balanced')}
-                        className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
+                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                           settings.graphics.preset === 'medium' ? 'bg-[var(--vv-primary)]/10 border-[var(--vv-primary)] shadow-inner' : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] hover:border-[var(--vv-border)]'
                         }`}
                       >
-                        <MonitorSmartphone className={`w-6 h-6 ${settings.graphics.preset === 'medium' ? 'text-[var(--vv-primary)]' : 'text-[var(--vv-text-muted)]'}`} />
-                        <span className={`text-sm font-bold ${settings.graphics.preset === 'medium' ? 'text-[var(--vv-primary)]' : 'text-white'}`}>Balanced</span>
-                        <span className="text-[10px] text-[var(--vv-text-muted)] text-center hidden sm:block">Good mix of FPS & looks</span>
+                        <MonitorSmartphone className={`w-5 h-5 ${settings.graphics.preset === 'medium' ? 'text-[var(--vv-primary)]' : 'text-[var(--vv-text-muted)]'}`} />
+                        <span className={`text-xs font-bold ${settings.graphics.preset === 'medium' ? 'text-[var(--vv-primary)]' : 'text-white'}`}>Balanced</span>
                       </button>
                       <button 
                         onClick={() => applyPreset('quality')}
-                        className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
+                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                           settings.graphics.preset === 'high' ? 'bg-[var(--vv-success)]/10 border-[var(--vv-success)] shadow-inner' : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] hover:border-[var(--vv-border)]'
                         }`}
                       >
-                        <Eye className={`w-6 h-6 ${settings.graphics.preset === 'high' ? 'text-[var(--vv-success)]' : 'text-[var(--vv-text-muted)]'}`} />
-                        <span className={`text-sm font-bold ${settings.graphics.preset === 'high' ? 'text-[var(--vv-success)]' : 'text-white'}`}>Quality</span>
-                        <span className="text-[10px] text-[var(--vv-text-muted)] text-center hidden sm:block">High Detail, Lower FPS</span>
+                        <Eye className={`w-5 h-5 ${settings.graphics.preset === 'high' ? 'text-[var(--vv-success)]' : 'text-[var(--vv-text-muted)]'}`} />
+                        <span className={`text-xs font-bold ${settings.graphics.preset === 'high' ? 'text-[var(--vv-success)]' : 'text-white'}`}>Quality</span>
+                      </button>
+                      <button 
+                        onClick={() => {
+                          updateGraphics({
+                            preset: 'ultra',
+                            resolutionMode: '4k',
+                            shadowQuality: 'ultra',
+                            shadowMapSize: 4096,
+                            antiAliasingMode: 'smaa',
+                            postProcessing: true,
+                            bloom: true,
+                            colorGrading: 'cinematic',
+                            renderDistance: 12,
+                          });
+                        }}
+                        className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
+                          settings.graphics.preset === 'ultra' ? 'bg-purple-500/10 border-purple-500 shadow-inner' : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] hover:border-[var(--vv-border)]'
+                        }`}
+                      >
+                        <Monitor className={`w-5 h-5 ${settings.graphics.preset === 'ultra' ? 'text-purple-400' : 'text-[var(--vv-text-muted)]'}`} />
+                        <span className={`text-xs font-bold ${settings.graphics.preset === 'ultra' ? 'text-purple-400' : 'text-white'}`}>4K Ultra</span>
                       </button>
                     </div>
                   </div>
 
                   <div className="space-y-6">
-                    <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2">Advanced Display</h3>
+                    <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2">4K Resolution & Render Pipeline</h3>
                     
+                    {/* Resolution Mode Dropdown */}
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <label className="block font-bold text-white text-sm">Resolution Mode</label>
+                        <select
+                          value={settings.graphics.resolutionMode || 'auto'}
+                          onChange={(e) => updateGraphics({ resolutionMode: e.target.value as any, preset: 'custom' })}
+                          className="w-full bg-black/40 border border-[var(--vv-border)] rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:border-[var(--vv-primary)]"
+                        >
+                          <option value="auto">Auto (Responsive DPR)</option>
+                          <option value="native">Native Screen Resolution</option>
+                          <option value="1080p">1080p (1920x1080)</option>
+                          <option value="1440p">1440p QHD (2560x1440)</option>
+                          <option value="4k">4K UHD (3840x2160)</option>
+                          <option value="custom">Custom Scale</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <label className="block font-bold text-white text-sm">Anti-Aliasing (AA)</label>
+                        <select
+                          value={settings.graphics.antiAliasingMode || 'smaa'}
+                          onChange={(e) => updateGraphics({ antiAliasingMode: e.target.value as any, preset: 'custom' })}
+                          className="w-full bg-black/40 border border-[var(--vv-border)] rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:border-[var(--vv-primary)]"
+                        >
+                          <option value="off">Off (Sharp Voxels)</option>
+                          <option value="fxaa">FXAA (Fast AA)</option>
+                          <option value="smaa">SMAA (Ultra Crisp Edge AA)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <label className="block font-bold text-white text-sm">Color Grading</label>
+                        <select
+                          value={settings.graphics.colorGrading || 'cinematic'}
+                          onChange={(e) => updateGraphics({ colorGrading: e.target.value as any, preset: 'custom' })}
+                          className="w-full bg-black/40 border border-[var(--vv-border)] rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:border-[var(--vv-primary)]"
+                        >
+                          <option value="none">None (Standard)</option>
+                          <option value="cinematic">Cinematic ACES (Teal/Orange)</option>
+                          <option value="vibrant">Vibrant & Punchy</option>
+                          <option value="warm_golden">Warm Golden Hour</option>
+                          <option value="cool_twilight">Cool Twilight</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <label className="block font-bold text-white text-sm">Shadow Map Resolution</label>
+                        <select
+                          value={settings.graphics.shadowMapSize || 2048}
+                          onChange={(e) => updateGraphics({ shadowMapSize: parseInt(e.target.value, 10) as any, preset: 'custom' })}
+                          className="w-full bg-black/40 border border-[var(--vv-border)] rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:border-[var(--vv-primary)]"
+                        >
+                          <option value="512">512 (Low)</option>
+                          <option value="1024">1024 (Medium)</option>
+                          <option value="2048">2048 (High HD)</option>
+                          <option value="4096">4096 (Ultra 4K Crisp)</option>
+                        </select>
+                      </div>
+                    </div>
+
                     {/* Render Distance with Cost Indicator */}
                     <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
                       <div className="flex justify-between items-center">
@@ -196,14 +277,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                       <input
                         type="range"
                         min="2"
-                        max="12"
+                        max="16"
                         value={settings.graphics.renderDistance}
                         onChange={(e) => updateGraphics({ renderDistance: parseInt(e.target.value, 10), preset: 'custom' })}
                         className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
                       />
                       <div className="flex justify-between text-[10px] text-[var(--vv-text-muted)] font-mono">
                         <span>2 (Fast)</span>
-                        <span>12 (Heavy)</span>
+                        <span>16 (Extreme)</span>
                       </div>
                     </div>
 
@@ -225,13 +306,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     <div className="grid sm:grid-cols-2 gap-4">
                       <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
                         <div>
-                          <div className="font-bold text-sm text-white">Dynamic Shadows</div>
-                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Performance Heavy</div>
+                          <div className="font-bold text-sm text-white">Dynamic Resolution</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Smooth FPS Lock (60FPS)</div>
                         </div>
                         <input
                           type="checkbox"
-                          checked={settings.graphics.shadows}
-                          onChange={(e) => updateGraphics({ shadows: e.target.checked, preset: 'custom' })}
+                          checked={settings.graphics.dynamicResolution !== false}
+                          onChange={(e) => updateGraphics({ dynamicResolution: e.target.checked, preset: 'custom' })}
                           className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
                         />
                       </label>
@@ -239,7 +320,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                       <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
                         <div>
                           <div className="font-bold text-sm text-white">Post-Processing</div>
-                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Bloom & Color Grading</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Bloom & Color Pass</div>
                         </div>
                         <input
                           type="checkbox"

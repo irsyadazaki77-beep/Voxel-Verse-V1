@@ -1143,6 +1143,101 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     output: { itemId: 'aether_cargo_cart', count: 1 },
     xpReward: 15,
   },
+
+  // ECOSYSTEM 2.0 RECIPES
+  {
+    id: 'craft_fishing_rod',
+    name: 'Crafted Fishing Rod',
+    category: 'tools',
+    station: 'crafting_bench',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'stick', count: 3 },
+      { itemId: 'woolbeast_fiber', count: 2 },
+    ],
+    output: { itemId: 'fishing_rod', count: 1 },
+    xpReward: 5,
+  },
+  {
+    id: 'craft_aether_rod',
+    name: 'Aether Resonance Rod',
+    category: 'tools',
+    station: 'crafting_bench',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'fishing_rod', count: 1 },
+      { itemId: 'aether_crystal', count: 2 },
+      { itemId: 'aether_wax', count: 1 },
+    ],
+    output: { itemId: 'aether_rod', count: 1 },
+    xpReward: 25,
+  },
+  {
+    id: 'craft_animal_feed',
+    name: 'Enriched Grain Feed (4x)',
+    category: 'farming',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wheat', count: 2 },
+      { itemId: 'seeds', count: 2 },
+    ],
+    output: { itemId: 'animal_feed', count: 4 },
+    xpReward: 3,
+  },
+  {
+    id: 'craft_aether_bait',
+    name: 'Luminescent Aether Bait (4x)',
+    category: 'farming',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'earth_worm', count: 2 },
+      { itemId: 'aether_crystal', count: 1 },
+    ],
+    output: { itemId: 'aether_bait', count: 4 },
+    xpReward: 8,
+  },
+  {
+    id: 'cook_fish_fillet',
+    name: 'Seared Fish Fillet',
+    category: 'food',
+    station: 'furnace',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'river_trout', count: 1 },
+    ],
+    output: { itemId: 'cooked_fish', count: 1 },
+    fuelRequired: 1,
+    xpReward: 4,
+  },
+  {
+    id: 'cook_aether_fish_stew',
+    name: 'Aether Fish Chowder',
+    category: 'food',
+    station: 'crafting_bench',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'aether_glowfin', count: 1 },
+      { itemId: 'potato', count: 2 },
+      { itemId: 'milk_bucket', count: 1 },
+    ],
+    output: { itemId: 'aether_fish_stew', count: 1 },
+    xpReward: 20,
+  },
+  {
+    id: 'craft_bio_fertilizer',
+    name: 'Rich Bio-Fertilizer (2x)',
+    category: 'farming',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'dirt', count: 2 },
+      { itemId: 'woolbeast_fiber', count: 1 },
+    ],
+    output: { itemId: 'fertilizer', count: 2 },
+    xpReward: 2,
+  },
 ];
 
 

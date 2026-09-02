@@ -45,6 +45,7 @@ import { PersistenceSystem } from '../systems/PersistenceSystem';
 import { TelemetrySystem } from '../systems/TelemetrySystem';
 import { RenderSystem } from '../systems/RenderSystem';
 import { RenderQualityManager } from '../systems/RenderQualityManager';
+import { RenderPipeline } from '../rendering/RenderPipeline';
 import { BalanceTelemetry } from '../telemetry/BalanceTelemetry';
 
 import { NetworkSession } from '../network/NetworkSession';
@@ -99,6 +100,7 @@ export class GameRuntime {
   public telemetrySystem!: TelemetrySystem;
   public renderSystem!: RenderSystem;
   public renderQualityManager!: RenderQualityManager;
+  public renderPipeline!: RenderPipeline;
 
   private reqId: number = 0;
   private lastTime: number = 0;
@@ -144,6 +146,9 @@ export class GameRuntime {
       if (this.renderer && this.renderQualityManager) {
         this.renderer.shadowMap.enabled = newSettings.graphics.shadows;
         this.renderQualityManager.updateQualitySettings(newSettings.graphics);
+        if (this.renderPipeline) {
+          this.renderPipeline.updateSettings(newSettings.graphics, window.innerWidth, window.innerHeight);
+        }
       }
       if (this.particles) {
         this.particles.setQuality(newSettings.graphics.particleQuality);
@@ -163,6 +168,9 @@ export class GameRuntime {
     this.renderQualityManager = new RenderQualityManager(this);
     this.renderQualityManager.updateQualitySettings(settings.graphics);
     this.renderQualityManager.currentResolution = { width: window.innerWidth, height: window.innerHeight };
+
+    this.renderPipeline = new RenderPipeline(this.renderer, this.scene, this.camera);
+    this.renderPipeline.updateSettings(settings.graphics, window.innerWidth, window.innerHeight);
 
     this.renderer.shadowMap.enabled = settings.graphics.shadows;
     // PCFSoftShadowMap for better soft shadows
@@ -545,6 +553,9 @@ export class GameRuntime {
     this.particles.dispose();
     this.entities.dispose();
     this.gameStats.dispose();
+    if (this.renderPipeline) {
+      this.renderPipeline.dispose();
+    }
     this.renderer.dispose();
 
     this.simulationSystem.dispose();
