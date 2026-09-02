@@ -20,12 +20,12 @@ export const ItemTooltip: React.FC<ItemTooltipProps> = ({ stack, position }) => 
 
   // Rarity styling
   const rarityStyles: Record<string, { label: string; text: string; bg: string; border: string }> = {
-    common: { label: 'COMMON', text: 'text-slate-300', bg: 'bg-slate-800/80', border: 'border-slate-600/50' },
-    uncommon: { label: 'UNCOMMON', text: 'text-emerald-300', bg: 'bg-emerald-950/80', border: 'border-emerald-500/50' },
-    rare: { label: 'RARE', text: 'text-sky-300', bg: 'bg-sky-950/80', border: 'border-sky-500/50' },
-    epic: { label: 'EPIC', text: 'text-purple-300', bg: 'bg-purple-950/80', border: 'border-purple-500/50' },
-    legendary: { label: 'LEGENDARY', text: 'text-amber-300', bg: 'bg-amber-950/80', border: 'border-amber-500/50' },
-    ancient: { label: 'ANCIENT', text: 'text-rose-300', bg: 'bg-rose-950/80', border: 'border-rose-500/50' },
+    common: { label: 'COMMON', text: 'text-[var(--vv-text-main)]', bg: 'bg-[var(--vv-surface)]', border: 'border-[var(--vv-border)]' },
+    uncommon: { label: 'UNCOMMON', text: 'text-[var(--vv-success)]', bg: 'bg-[var(--vv-success)]/10', border: 'border-[var(--vv-success)]/30' },
+    rare: { label: 'RARE', text: 'text-[var(--vv-primary)]', bg: 'bg-[var(--vv-primary)]/10', border: 'border-[var(--vv-primary)]/30' },
+    epic: { label: 'EPIC', text: 'text-purple-400', bg: 'bg-purple-900/20', border: 'border-purple-500/30' },
+    legendary: { label: 'LEGENDARY', text: 'text-[var(--vv-warning)]', bg: 'bg-[var(--vv-warning)]/10', border: 'border-[var(--vv-warning)]/30' },
+    ancient: { label: 'ANCIENT', text: 'text-[var(--vv-danger)]', bg: 'bg-[var(--vv-danger)]/10', border: 'border-[var(--vv-danger)]/30' },
   };
 
   const style = rarityStyles[rarity] || rarityStyles.common;
@@ -37,58 +37,58 @@ export const ItemTooltip: React.FC<ItemTooltipProps> = ({ stack, position }) => 
   return (
     <div
       style={position ? { left: `${posX}px`, top: `${posY}px` } : undefined}
-      className={`fixed z-50 w-60 p-3 rounded-2xl bg-[#0c0e14]/95 backdrop-blur-xl border ${style.border} shadow-2xl space-y-2 pointer-events-none font-sans text-white text-xs animate-fade-in`}
+      className={`fixed z-50 w-64 p-4 rounded-xl bg-[var(--vv-bg)] backdrop-blur-xl border ${style.border} shadow-2xl space-y-3 pointer-events-none font-sans text-white text-xs animate-in fade-in zoom-in-95 duration-150`}
     >
       {/* Header Name & Rarity */}
-      <div className="flex items-start justify-between gap-2 pb-1 border-b border-white/10">
+      <div className="flex items-start justify-between gap-2 pb-2 border-b border-[var(--vv-border-subtle)]">
         <div>
-          <h4 className={`font-black tracking-tight text-sm ${style.text}`}>{name}</h4>
-          <span className="text-[9px] uppercase font-mono tracking-widest text-white/50">{category}</span>
+          <h4 className={`font-display font-bold text-[15px] leading-tight ${style.text} drop-shadow-sm`}>{name}</h4>
+          <span className="text-[10px] uppercase font-bold tracking-widest text-[var(--vv-text-muted)]">{category}</span>
         </div>
-        <span className={`px-2 py-0.5 rounded-full text-[8px] font-mono font-bold tracking-wider ${style.bg} ${style.text} border ${style.border}`}>
+        <span className={`px-2 py-1 rounded bg-black/40 text-[9px] font-bold tracking-wider ${style.text} border ${style.border} uppercase`}>
           {style.label}
         </span>
       </div>
 
       {/* Stats Breakdown */}
-      <div className="space-y-1 text-[11px] font-mono">
+      <div className="space-y-1.5 text-xs font-semibold">
         {itemDef?.attackDamage !== undefined && (
-          <div className="flex justify-between text-rose-300">
-            <span>Attack Damage:</span>
-            <span className="font-bold">+{itemDef.attackDamage} HP</span>
+          <div className="flex justify-between text-[var(--vv-danger)]">
+            <span>Attack Damage</span>
+            <span className="font-mono">+{itemDef.attackDamage} HP</span>
           </div>
         )}
 
         {itemDef?.miningEfficiency !== undefined && (
-          <div className="flex justify-between text-amber-300">
-            <span>Mining Efficiency:</span>
-            <span className="font-bold">{itemDef.miningEfficiency}x</span>
+          <div className="flex justify-between text-[var(--vv-warning)]">
+            <span>Mining Efficiency</span>
+            <span className="font-mono">{itemDef.miningEfficiency}x</span>
           </div>
         )}
 
         {itemDef?.armorValue !== undefined && (
-          <div className="flex justify-between text-sky-300">
-            <span>Armor Protection:</span>
-            <span className="font-bold">+{itemDef.armorValue} Defense</span>
+          <div className="flex justify-between text-[var(--vv-primary)]">
+            <span>Armor Protection</span>
+            <span className="font-mono">+{itemDef.armorValue} DEF</span>
           </div>
         )}
 
         {itemDef?.foodValue !== undefined && (
-          <div className="flex justify-between text-emerald-300">
-            <span>Nutrition:</span>
-            <span className="font-bold">+{itemDef.foodValue} Hunger</span>
+          <div className="flex justify-between text-[var(--color-hunger)]">
+            <span>Nutrition</span>
+            <span className="font-mono">+{itemDef.foodValue} HUNGER</span>
           </div>
         )}
 
         {currentDurability !== undefined && maxDurability !== undefined && (
-          <div className="space-y-0.5 pt-1">
-            <div className="flex justify-between text-[10px] text-white/60">
+          <div className="space-y-1 pt-2">
+            <div className="flex justify-between text-[10px] text-[var(--vv-text-muted)] font-bold">
               <span>Durability</span>
-              <span>{currentDurability} / {maxDurability}</span>
+              <span className="font-mono">{currentDurability} / {maxDurability}</span>
             </div>
-            <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden border border-[var(--vv-border)]">
               <div
-                className="h-full bg-sky-400 rounded-full transition-all"
+                className={`h-full transition-all ${currentDurability / maxDurability < 0.3 ? 'bg-[var(--vv-danger)]' : 'bg-[var(--vv-success)]'}`}
                 style={{ width: `${Math.max(0, Math.min(100, (currentDurability / maxDurability) * 100))}%` }}
               ></div>
             </div>
@@ -98,15 +98,17 @@ export const ItemTooltip: React.FC<ItemTooltipProps> = ({ stack, position }) => 
 
       {/* Description / Lore */}
       {itemDef?.description && (
-        <p className="text-[10px] text-white/70 italic leading-snug pt-1 border-t border-white/5">
-          "{itemDef.description}"
-        </p>
+        <div className="pt-2 border-t border-[var(--vv-border-subtle)]">
+          <p className="text-[11px] text-[var(--vv-text-muted)] italic leading-relaxed">
+            "{itemDef.description}"
+          </p>
+        </div>
       )}
 
       {/* Action Prompts */}
-      <div className="pt-1 flex justify-between text-[9px] text-white/40 font-mono border-t border-white/5">
+      <div className="pt-2 mt-2 flex justify-between text-[9px] text-[var(--vv-text-muted)] font-bold uppercase tracking-wider border-t border-[var(--vv-border-subtle)]">
         <span>[L-Click] Select</span>
-        <span>[Shift+Click] Transfer</span>
+        <span>[Shift+Click] Quick Move</span>
       </div>
     </div>
   );

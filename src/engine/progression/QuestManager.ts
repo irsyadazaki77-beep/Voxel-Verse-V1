@@ -44,7 +44,7 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
       xp: 120,
       items: [
         { itemId: 'iron_ingot', count: 4 },
-        { itemId: 'potion_healing', count: 2 },
+        { itemId: 'healing_potion', count: 2 },
       ],
     },
     prerequisites: ['q_first_steps'],
@@ -102,8 +102,7 @@ export class QuestManager {
     savedQuests?: { [questId: string]: { state: QuestState; progress: { [idx: number]: number } } },
     savedClaimedRewards?: string[]
   ): void {
-    this.questStates.clear();
-    this.claimedRewards.clear();
+    this.dispose();
 
     if (savedClaimedRewards && Array.isArray(savedClaimedRewards)) {
       savedClaimedRewards.forEach(id => this.claimedRewards.add(id));
@@ -205,11 +204,6 @@ export class QuestManager {
         this.advanceObjective('discover', data.landmarkId, 1);
       })
     );
-  }
-
-  public static dispose(): void {
-    this.eventUnsubscribes.forEach((unsub) => unsub());
-    this.eventUnsubscribes = [];
   }
 
   public static advanceObjective(type: string, targetId: string, amount: number = 1): void {
@@ -332,6 +326,14 @@ export class QuestManager {
       obj[qId] = { state: qState.state, progress: progObj };
     });
     return obj;
+  }
+
+  public static dispose(): void {
+    this.eventUnsubscribes.forEach(un => un());
+    this.eventUnsubscribes = [];
+    this.questStates.clear();
+    this.claimedRewards.clear();
+    this.onQuestChangeCallbacks = [];
   }
 
   public static onQuestChange(cb: () => void): () => void {

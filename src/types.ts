@@ -364,10 +364,19 @@ export interface WorldSaveData {
     monstersDefeated: number;
     distanceTraveled: number;
   };
-  // Phase 8: Progression, Discovery, Quest, Artifact & Event Persistence
+  // Phase 8 & Phase 1 Hardening: Progression, Discovery, Quest, Artifact & Event Persistence
   discoveries?: { [key: string]: number }; // id -> timestamp discovered
   quests?: { [questId: string]: { state: QuestState; progress: { [objIdx: number]: number } } };
   artifactsFound?: string[];
+  artifactState?: {
+    unlocked: string[];
+    equipped: (string | null)[];
+  };
+  bountyContracts?: BountyContract[];
+  treasureMaps?: TreasureMap[];
+  worldStability?: number;
+  activatedMonoliths?: string[];
+  dungeonExpedition?: ExpeditionRunState | null;
   loreUnlocked?: string[];
   defeatedBosses?: { [bossId: string]: { count: number; lastDefeatedDay: number } };
   activeEvents?: WorldEventInstance[];
@@ -390,6 +399,69 @@ export interface WorldSaveData {
   };
   questRewardsClaimed?: string[];
   clearedDungeons?: string[];
+}
+
+// ==========================================
+// BOUNTY & TREASURE MAP TYPES
+// ==========================================
+
+export type ContractCategory = 'monster_hunt' | 'expedition' | 'foraging' | 'crafting' | 'relic_retrieval';
+export type ContractStatus = 'available' | 'active' | 'completed' | 'claimed';
+
+export interface BountyContract {
+  id: string;
+  title: string;
+  category: ContractCategory;
+  issuerSettlementId: string;
+  description: string;
+  targetType: string;
+  targetCount: number;
+  currentCount: number;
+  status: ContractStatus;
+  rewards: {
+    xp: number;
+    credits: number;
+    reputation: number;
+    itemReward?: { itemId: string; count: number };
+  };
+  timeLimitSeconds?: number;
+  dangerStars: number;
+}
+
+export interface TreasureMap {
+  id: string;
+  name: string;
+  regionHint: string;
+  landmarkClue: string;
+  targetPos: [number, number, number];
+  isDeciphered: boolean;
+  isFound: boolean;
+  rewards: {
+    itemId: string;
+    count: number;
+  }[];
+  xpReward: number;
+}
+
+export interface DungeonModifier {
+  id: string;
+  name: string;
+  description: string;
+  enemyHealthMultiplier: number;
+  enemyDamageMultiplier: number;
+  lootDropMultiplier: number;
+  rareRelicChanceBonus: number;
+  hazardEffect?: 'blazing_floors' | 'aether_storm' | 'void_fog' | 'armored_horde';
+}
+
+export interface ExpeditionRunState {
+  isActive: boolean;
+  dungeonId: string;
+  modifier: DungeonModifier | null;
+  roomsCleared: number;
+  totalRooms: number;
+  lootCollectedCount: number;
+  bossDefeated: boolean;
 }
 
 // ==========================================
@@ -439,6 +511,7 @@ export interface ArtifactDef {
   lore: string;
   passiveAbility: string;
   effectType: 'night_vision' | 'stamina_boost' | 'thermal_aegis' | 'water_breathing' | 'void_step' | 'precursor_forge';
+  tags?: string[];
   unlockedRecipes?: string[];
   iconColor: string;
 }

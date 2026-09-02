@@ -240,6 +240,8 @@ export class AetherAnomalyManager {
           runtime.addItemToInventory(chosen, 1);
           GameEventBus.emit('ARTIFACT_UNLOCKED', { artifactId: chosen, name: chosen.replace('_', ' ').toUpperCase() });
         }
+
+        GameEventBus.emit('ANOMALY_RESOLVED', { anomalyId: 'aether_rift' });
       }
 
       // Hide Boss health HUD
@@ -247,6 +249,16 @@ export class AetherAnomalyManager {
       this.climaxBossId = null;
       this.anomalyCoords = null;
     }
+  }
+
+  public static dispose(): void {
+    this.onAnomalyStateChangeCallbacks = [];
+    this.status = 'dormant';
+    this.timer = 300;
+    this.activeIntensity = 0;
+    this.climaxBossId = null;
+    this.anomalyCoords = null;
+    this.rewardClaimed = false;
   }
 
   public static onAnomalyStateChange(cb: () => void): () => void {

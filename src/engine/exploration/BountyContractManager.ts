@@ -1,35 +1,16 @@
 // Dynamic Bounty & Hunting Contract System for VoxelVerse 3.0
 import { GameEventBus } from '../events/GameEventBus';
+import { BountyContract, ContractCategory, ContractStatus } from '../../types';
+import { SETTLEMENT_REGISTRY } from '../settlement/SettlementManager';
 
-export type ContractCategory = 'monster_hunt' | 'expedition' | 'foraging' | 'crafting' | 'relic_retrieval';
-export type ContractStatus = 'available' | 'active' | 'completed' | 'claimed';
-
-export interface BountyContract {
-  id: string;
-  title: string;
-  category: ContractCategory;
-  issuerSettlement: string;
-  description: string;
-  targetType: string;
-  targetCount: number;
-  currentCount: number;
-  status: ContractStatus;
-  rewards: {
-    xp: number;
-    credits: number;
-    reputation: number;
-    itemReward?: { itemId: string; count: number };
-  };
-  timeLimitSeconds?: number;
-  dangerStars: number;
-}
+export type { ContractCategory, ContractStatus, BountyContract };
 
 export const INITIAL_BOUNTY_CONTRACTS: BountyContract[] = [
   {
     id: 'bounty_stalker_pack',
     title: 'Purge the Shadow Prowlers',
     category: 'monster_hunt',
-    issuerSettlement: 'Oakhaven Village',
+    issuerSettlementId: 'suncrest_hamlet',
     description: 'A pack of predatory Shadow Stalkers have been ambushing timber loggers on the edge of the groves.',
     targetType: 'stalker',
     targetCount: 4,
@@ -47,7 +28,7 @@ export const INITIAL_BOUNTY_CONTRACTS: BountyContract[] = [
     id: 'bounty_aether_harvest',
     title: 'Crystalline Ley Harvest',
     category: 'foraging',
-    issuerSettlement: 'Aetheria Outpost',
+    issuerSettlementId: 'ferrite_outpost',
     description: 'The outpost astromancers require luminescent flora to stabilize their celestial scrying lens.',
     targetType: 'sun_orchid',
     targetCount: 6,
@@ -65,7 +46,7 @@ export const INITIAL_BOUNTY_CONTRACTS: BountyContract[] = [
     id: 'bounty_sentinel_core',
     title: 'Hunt the Ancient Colossus',
     category: 'monster_hunt',
-    issuerSettlement: 'Sunken Mechanum',
+    issuerSettlementId: 'ferrite_outpost',
     description: 'A rogue Precursor Ruin Sentinel is patrolling the basalt ruins. Slay it and retrieve its mechanical core.',
     targetType: 'ruin_sentinel',
     targetCount: 1,
@@ -75,7 +56,7 @@ export const INITIAL_BOUNTY_CONTRACTS: BountyContract[] = [
       xp: 450,
       credits: 200,
       reputation: 60,
-      itemReward: { itemId: 'heart_of_colossus', count: 1 },
+      itemReward: { itemId: 'ancient_alloy', count: 2 },
     },
     dangerStars: 4,
   },
@@ -83,7 +64,7 @@ export const INITIAL_BOUNTY_CONTRACTS: BountyContract[] = [
     id: 'bounty_deep_mythril',
     title: 'Deep Vein Excavation',
     category: 'expedition',
-    issuerSettlement: 'Ironforge Stronghold',
+    issuerSettlementId: 'ferrite_outpost',
     description: 'Mine precious Mythril ore from deep subterranean caverns beneath Y=30.',
     targetType: 'mythril_ore',
     targetCount: 5,
@@ -93,40 +74,65 @@ export const INITIAL_BOUNTY_CONTRACTS: BountyContract[] = [
       xp: 220,
       credits: 110,
       reputation: 35,
-      itemReward: { itemId: 'diamond', count: 2 },
+      itemReward: { itemId: 'gold_ingot', count: 4 },
     },
     dangerStars: 3,
   },
 ];
 
 export class BountyContractManager {
-  private static contracts: BountyContract[] = [...INITIAL_BOUNTY_CONTRACTS];
+  private static contracts: BountyContract[] = JSON.parse(JSON.stringify(INITIAL_BOUNTY_CONTRACTS));
   private static listeners: (() => void)[] = [];
+  private static unsubscribers: (() => void)[] = [];
 
-  public static initialize(): void {
+  public static initialize(savedContracts?: BountyContract[]): void {
+    this.dispose();
+
+    if (Array.isArray(savedContracts) && savedContracts.length > 0) {
+      this.contracts = JSON.parse(JSON.stringify(savedContracts));
+    } else {
+      this.contracts = JSON.parse(JSON.stringify(INITIAL_BOUNTY_CONTRACTS));
+    }
+
     // Listen for monster kills
-    GameEventBus.on('ENTITY_KILLED', (e: { modelType?: string }) => {
-      if (e.modelType) {
+    const unEntity = GameEventBus.on('ENTITY_KILLED', (e) => {
+      if (e?.modelType) {
         this.progressContracts('monster_hunt', e.modelType, 1);
       }
     });
+    this.unsubscribers.push(unEntity);
 
     // Listen for block mining
-    GameEventBus.on('BLOCK_MINED', (e: { itemId?: string; blockType?: any }) => {
-      if (e.itemId) {
-        this.progressContracts('expedition', e.itemId, 1);
-        this.progressContracts('foraging', e.itemId, 1);
+    const unBlock = GameEventBus.on('BLOCK_MINED', (e: any) => {
+      if (e?.toolUsed || e?.blockType) {
+        this.progressContracts('expedition', String(e.blockType || ''), 1);
       }
     });
+    this.unsubscribers.push(unBlock);
 
     // Listen for item collections
-    GameEventBus.on('ITEM_COLLECTED', (e: { itemId: string; count: number }) => {
-      this.progressContracts('foraging', e.itemId, e.count);
+    const unItem = GameEventBus.on('ITEM_COLLECTED', (e) => {
+      if (e?.itemId) {
+        this.progressContracts('foraging', e.itemId, e.count || 1);
+        this.progressContracts('expedition', e.itemId, e.count || 1);
+      }
     });
+    this.unsubscribers.push(unItem);
+  }
+
+  public static dispose(): void {
+    this.unsubscribers.forEach(un => un());
+    this.unsubscribers = [];
+    this.listeners = [];
+    this.contracts = [];
   }
 
   public static getContracts(): BountyContract[] {
-    return [...this.contracts];
+    return this.contracts;
+  }
+
+  public static getSettlementName(settlementId: string): string {
+    return SETTLEMENT_REGISTRY[settlementId]?.name || settlementId;
   }
 
   public static acceptContract(contractId: string): boolean {
@@ -146,6 +152,12 @@ export class BountyContractManager {
       contract.status = 'claimed';
       this.notify();
       GameEventBus.emit('CONTRACT_CLAIMED', { contract });
+      if (contract.issuerSettlementId && contract.rewards?.reputation) {
+        GameEventBus.emit('REPUTATION_GAINED', {
+          settlementId: contract.issuerSettlementId,
+          amount: contract.rewards.reputation,
+        });
+      }
       return contract;
     }
     return null;
@@ -189,12 +201,12 @@ export class BountyContractManager {
 
   public static loadState(savedContracts: BountyContract[]): void {
     if (Array.isArray(savedContracts) && savedContracts.length > 0) {
-      this.contracts = savedContracts;
+      this.contracts = JSON.parse(JSON.stringify(savedContracts));
     }
     this.notify();
   }
 
   public static saveState(): BountyContract[] {
-    return [...this.contracts];
+    return JSON.parse(JSON.stringify(this.contracts));
   }
 }

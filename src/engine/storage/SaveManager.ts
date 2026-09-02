@@ -113,6 +113,12 @@ export class SaveManager {
       data.questRewardsClaimed = Array.isArray(data.questRewardsClaimed) ? data.questRewardsClaimed : [];
       data.clearedDungeons = Array.isArray(data.clearedDungeons) ? data.clearedDungeons : [];
       data.settlementProgress = typeof data.settlementProgress === 'object' && data.settlementProgress ? data.settlementProgress : {};
+      data.bountyContracts = Array.isArray(data.bountyContracts) ? data.bountyContracts : [];
+      data.treasureMaps = Array.isArray(data.treasureMaps) ? data.treasureMaps : [];
+      data.worldStability = typeof data.worldStability === 'number' ? data.worldStability : 75;
+      data.activatedMonoliths = Array.isArray(data.activatedMonoliths) ? data.activatedMonoliths : [];
+      data.artifactState = data.artifactState || { unlocked: [], equipped: [null, null, null] };
+      data.dungeonExpedition = data.dungeonExpedition || null;
     }
 
     return data;
@@ -214,6 +220,12 @@ export class SaveManager {
     const anomalyState = raw?.anomalyState || null;
     const questRewardsClaimed = Array.isArray(raw?.questRewardsClaimed) ? raw.questRewardsClaimed : [];
     const clearedDungeons = Array.isArray(raw?.clearedDungeons) ? raw.clearedDungeons : [];
+    const bountyContracts = Array.isArray(raw?.bountyContracts) ? raw.bountyContracts : undefined;
+    const treasureMaps = Array.isArray(raw?.treasureMaps) ? raw.treasureMaps : undefined;
+    const worldStability = typeof raw?.worldStability === 'number' ? raw.worldStability : 75;
+    const activatedMonoliths = Array.isArray(raw?.activatedMonoliths) ? raw.activatedMonoliths : [];
+    const artifactState = raw?.artifactState || undefined;
+    const dungeonExpedition = raw?.dungeonExpedition || undefined;
 
     return {
       version,
@@ -250,6 +262,12 @@ export class SaveManager {
       discoveries,
       quests,
       artifactsFound,
+      artifactState,
+      bountyContracts,
+      treasureMaps,
+      worldStability,
+      activatedMonoliths,
+      dungeonExpedition,
       loreUnlocked,
       defeatedBosses,
       activeEvents,

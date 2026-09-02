@@ -25,6 +25,12 @@ import { GameStatsManager } from '../player/GameStatsManager';
 import { WorldPreset } from '../world/WorldConfig';
 import { FirstPersonViewmodel } from '../player/FirstPersonViewmodel';
 import { CameraMotionSystem } from '../player/CameraMotionSystem';
+import { ArtifactSynergyManager } from '../artifacts/ArtifactSynergyManager';
+import { BountyContractManager } from '../exploration/BountyContractManager';
+import { TreasureMapSystem } from '../exploration/TreasureMapSystem';
+import { WorldStabilitySystem } from '../exploration/WorldStabilitySystem';
+import { DungeonExpeditionManager } from '../dungeon/DungeonExpeditionManager';
+import { RewardService } from '../progression/RewardService';
 
 // Import Systems
 import { SettingsManager } from '../ui/SettingsManager';
@@ -267,12 +273,24 @@ export class GameRuntime {
     this.gameStats = new GameStatsManager(worldData?.stats);
     this.gameStats.initialize();
 
-    // Progression
+    // Progression & Gameplay Systems Lifecycle Initialization
+    RewardService.setRuntime(this);
+    RewardService.initialize(worldData?.questRewardsClaimed);
     DiscoverySystem.initialize(worldData?.discoveries);
-    QuestManager.initialize(worldData?.quests);
+    QuestManager.initialize(worldData?.quests, worldData?.questRewardsClaimed);
     SettlementManager.initialize(worldData?.settlementProgress);
     WorldEventManager.initialize(worldData?.activeEvents);
     MapManager.initialize(worldData?.exploredMapTiles, worldData?.waypoints);
+    ArtifactSynergyManager.initialize(
+      worldData?.artifactState || (worldData?.artifactsFound ? { unlocked: worldData.artifactsFound, equipped: [null, null, null] } : undefined)
+    );
+    BountyContractManager.initialize(worldData?.bountyContracts);
+    TreasureMapSystem.initialize(worldData?.treasureMaps);
+    WorldStabilitySystem.initialize({
+      stability: worldData?.worldStability,
+      activatedMonoliths: worldData?.activatedMonoliths,
+    });
+    DungeonExpeditionManager.initialize(worldData?.dungeonExpedition);
 
     let initialSpawn: [number, number, number] = [0, 80, 0];
 
@@ -493,7 +511,18 @@ export class GameRuntime {
       this.networkBlockUnsubscribe();
       this.networkBlockUnsubscribe = null;
     }
+
+    // Dispose Gameplay Systems & Managers in deterministic order
     QuestManager.dispose();
+    ArtifactSynergyManager.dispose();
+    BountyContractManager.dispose();
+    TreasureMapSystem.dispose();
+    WorldStabilitySystem.dispose();
+    DungeonExpeditionManager.dispose();
+    AetherAnomalyManager.dispose();
+    SettlementManager.dispose();
+    RewardService.dispose();
+
     if (this.viewmodel) {
       this.viewmodel.dispose();
     }

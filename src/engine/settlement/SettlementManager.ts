@@ -314,4 +314,8 @@ export class SettlementManager {
     });
     return data;
   }
+
+  public static dispose(): void {
+    this.states.clear();
+  }
 }

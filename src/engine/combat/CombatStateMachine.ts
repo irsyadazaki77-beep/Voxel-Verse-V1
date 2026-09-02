@@ -67,6 +67,21 @@ export class CombatStateMachine {
   public update(deltaTime: number): void {
     PoiseSystem.update(deltaTime);
 
+    // If player is staggered by poise break, enforce stun state, cancel combos and actions
+    if (PoiseSystem.isPlayerStaggered()) {
+      if (this.state !== 'HIT_STUN') {
+        this.state = 'HIT_STUN';
+        this.stateTimer = 0;
+        this.comboStep = 0;
+        this.comboWindowTimer = 0;
+        this.isBlocking = false;
+        this.parryWindowTimer = 0;
+        this.bowDrawProgress = 0;
+        this.zoomLevel = 1.0;
+      }
+      return;
+    }
+
     if (this.hitStopRemaining > 0) {
       this.hitStopRemaining -= deltaTime;
       if (this.hitStopRemaining > 0) return; // Freeze frame hitstop
@@ -144,6 +159,7 @@ export class CombatStateMachine {
 
   // Initiate Melee Strike
   public triggerMeleeAttack(heldItem: ItemStack | null): boolean {
+    if (PoiseSystem.isPlayerStaggered()) return false;
     if (this.state !== 'IDLE' && this.state !== 'RECOVERY') {
       return false; // Action blocked by ongoing animation or stun
     }
@@ -226,6 +242,7 @@ export class CombatStateMachine {
 
   // Bow & Arrow Draw Management
   public startBowDraw(): boolean {
+    if (PoiseSystem.isPlayerStaggered()) return false;
     if (this.state !== 'IDLE') return false;
     this.state = 'BOW_DRAWING';
     this.stateTimer = 0;
@@ -273,6 +290,7 @@ export class CombatStateMachine {
 
   // Start Shield Block
   public startBlock(): boolean {
+    if (PoiseSystem.isPlayerStaggered()) return false;
     if (this.state !== 'IDLE') return false;
     this.state = 'PARRY_BLOCK';
     this.isBlocking = true;

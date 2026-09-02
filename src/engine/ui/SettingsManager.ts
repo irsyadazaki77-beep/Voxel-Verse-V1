@@ -203,6 +203,15 @@ export class SettingsManager {
       this.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
     }
     this.initialized = true;
+    
+    // Apply CSS variables on load
+    if (typeof document !== 'undefined') {
+      const root = document.documentElement;
+      root.style.setProperty('--ui-scale', this.settings.accessibility.uiScale.toString());
+      root.style.setProperty('--hud-scale', this.settings.accessibility.hudScale.toString());
+      root.style.setProperty('--safe-area-padding', `${this.settings.accessibility.safeAreaPadding}px`);
+    }
+    
     return this.settings;
   }
 
@@ -240,6 +249,17 @@ export class SettingsManager {
   }
 
   private static notify(): void {
+    if (typeof document !== 'undefined') {
+      const root = document.documentElement;
+      root.style.setProperty('--ui-scale', this.settings.accessibility.uiScale.toString());
+      root.style.setProperty('--hud-scale', this.settings.accessibility.hudScale.toString());
+      root.style.setProperty('--safe-area-padding', `${this.settings.accessibility.safeAreaPadding}px`);
+      if (this.settings.accessibility.highContrast) {
+        root.classList.add('high-contrast');
+      } else {
+        root.classList.remove('high-contrast');
+      }
+    }
     this.listeners.forEach(cb => cb(this.settings));
   }
 }

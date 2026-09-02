@@ -10,6 +10,7 @@ export type GameEventType =
   | 'ITEM_COLLECTED'
   | 'BOSS_SPAWNED'
   | 'BOSS_DEFEATED'
+  | 'ARTIFACT_ACQUIRED'
   | 'ARTIFACT_UNLOCKED'
   | 'ARTIFACT_DISCOVERED'
   | 'LORE_FOUND'
@@ -29,6 +30,11 @@ export type GameEventType =
   | 'TREASURE_MAP_DECIPHERED'
   | 'TREASURE_CACHE_DISCOVERED'
   | 'ANOMALY_RESOLVED'
+  | 'ANOMALY_FAILED'
+  | 'SETTLEMENT_RAID_FAILED'
+  | 'CORRUPTION_SPREAD'
+  | 'EXPEDITION_FAILED'
+  | 'REPUTATION_GAINED'
   | 'STABILITY_CHANGED'
   | 'MONOLITH_ACTIVATED';
 
@@ -43,6 +49,7 @@ export interface GameEventPayloads {
   ITEM_COLLECTED: { itemId: string; count: number };
   BOSS_SPAWNED: { bossId: string; type: string; pos: [number, number, number] };
   BOSS_DEFEATED: { bossId: string; bossName: string; pos: [number, number, number] };
+  ARTIFACT_ACQUIRED: { artifactId: string; name?: string; source?: string };
   ARTIFACT_UNLOCKED: { artifactId: string; name: string };
   ARTIFACT_DISCOVERED: { artifactId: string };
   LORE_FOUND: { loreId: string; title: string };
@@ -50,11 +57,13 @@ export interface GameEventPayloads {
   QUEST_COMPLETED: { questId: string; xpReward: number; rewards?: any };
   DUNGEON_CLEARED: { dungeonId?: string; theme?: string; expedition?: any };
   EXPEDITION_STARTED: { dungeonId?: string; theme?: string; expedition?: any };
+  EXPEDITION_FAILED: { dungeonId?: string; theme?: string; expedition?: any };
+  REPUTATION_GAINED: { settlementId: string; amount: number };
   WORLD_EVENT_TRIGGERED: { eventType: string; eventName: string; pos?: [number, number, number] };
   SETTLEMENT_VISITED: { settlementId: string; name: string; pos: [number, number, number] };
   COMBAT_HIT: { hitType: 'hit' | 'crit' | 'blocked'; damage: number; targetPos?: [number, number, number] };
   PLAYER_DAMAGED: { amount: number; source: string };
-  ENTITY_STAGGERED: { entityId: string; duration: number };
+  ENTITY_STAGGERED: { entityId: string; duration: number; isBoss?: boolean };
   PLAYER_STAGGERED: { duration: number };
   CONTRACT_ACCEPTED: { contractId?: string; contract?: any };
   CONTRACT_CLAIMED: { contractId?: string; rewards?: any; contract?: any };
@@ -62,6 +71,9 @@ export interface GameEventPayloads {
   TREASURE_MAP_DECIPHERED: { mapId?: string; targetPos?: [number, number, number]; map?: any };
   TREASURE_CACHE_DISCOVERED: { mapId?: string; loot?: any[]; map?: any };
   ANOMALY_RESOLVED: { anomalyId?: string };
+  ANOMALY_FAILED: { anomalyId?: string };
+  SETTLEMENT_RAID_FAILED: { settlementId?: string };
+  CORRUPTION_SPREAD: { amount?: number; region?: string };
   STABILITY_CHANGED: { stability: number; delta?: number; reason?: string };
   MONOLITH_ACTIVATED: { monolithId?: string; blessing?: string; monolith?: any };
 }

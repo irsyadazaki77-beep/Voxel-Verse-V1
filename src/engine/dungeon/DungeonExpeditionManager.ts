@@ -68,6 +68,61 @@ export class DungeonExpeditionManager {
 
   private static listeners: (() => void)[] = [];
 
+  public static initialize(savedExpedition?: ExpeditionRunState | null): void {
+    this.dispose();
+    if (savedExpedition) {
+      this.loadState(savedExpedition);
+    } else {
+      this.currentExpedition = {
+        isActive: false,
+        dungeonId: '',
+        modifier: null,
+        roomsCleared: 0,
+        totalRooms: 5,
+        lootCollectedCount: 0,
+        bossDefeated: false,
+      };
+    }
+  }
+
+  public static dispose(): void {
+    this.listeners = [];
+    this.currentExpedition = {
+      isActive: false,
+      dungeonId: '',
+      modifier: null,
+      roomsCleared: 0,
+      totalRooms: 5,
+      lootCollectedCount: 0,
+      bossDefeated: false,
+    };
+  }
+
+  public static loadState(state: ExpeditionRunState | null): void {
+    if (state) {
+      this.currentExpedition = JSON.parse(JSON.stringify(state));
+    } else {
+      this.currentExpedition = {
+        isActive: false,
+        dungeonId: '',
+        modifier: null,
+        roomsCleared: 0,
+        totalRooms: 5,
+        lootCollectedCount: 0,
+        bossDefeated: false,
+      };
+    }
+    this.notify();
+  }
+
+  public static getExpeditionState(): ExpeditionRunState {
+    return this.currentExpedition;
+  }
+
+  public static saveState(): ExpeditionRunState | null {
+    return this.currentExpedition.isActive ? JSON.parse(JSON.stringify(this.currentExpedition)) : null;
+  }
+
   public static startExpedition(dungeonId: string, modifierId?: string): ExpeditionRunState {
     const mod = EXPEDITION_MODIFIERS.find(m => m.id === modifierId) || null;
     this.currentExpedition = {
@@ -95,11 +150,24 @@ export class DungeonExpeditionManager {
     }
   }
 
+  public static getActiveModifier(): DungeonModifier | null {
+    return this.currentExpedition.isActive ? this.currentExpedition.modifier : null;
+  }
+
   public static completeExpedition(): void {
     if (this.currentExpedition.isActive) {
       this.currentExpedition.isActive = false;
       this.notify();
       GameEventBus.emit('DUNGEON_CLEARED', { expedition: this.currentExpedition });
+    }
+  }
+
+  public static failExpedition(): void {
+    if (this.currentExpedition.isActive) {
+      const exp = { ...this.currentExpedition };
+      this.currentExpedition.isActive = false;
+      this.notify();
+      GameEventBus.emit('EXPEDITION_FAILED', { expedition: exp });
     }
   }
 

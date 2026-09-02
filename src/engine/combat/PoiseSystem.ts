@@ -1,4 +1,5 @@
 // Poise, Stagger & Riposte Combat System for VoxelVerse 3.0
+// Manages player, hostile monster and boss poise thresholds, stagger state, dynamic regeneration, and riposte vulnerability windows.
 import { GameEventBus } from '../events/GameEventBus';
 
 export interface EntityPoiseState {
@@ -18,25 +19,27 @@ export class PoiseSystem {
     currentPoise: 100,
     maxPoise: 100,
     isStaggered: false,
-    staggerDuration: 1.5,
+    staggerDuration: 0.65, // Fair, tight player stagger window (0.65s)
     staggerTimer: 0,
     lastPoiseDamageTime: 0,
-    poiseRegenDelay: 2.5,
+    poiseRegenDelay: 2.2,
     poiseRegenRate: 35,
   };
 
-  public static getOrCreatePoise(entityId: string, maxPoise: number = 60): EntityPoiseState {
+  public static getOrCreatePoise(entityId: string, maxPoise: number = 60, isBoss: boolean = false): EntityPoiseState {
     let entry = this.entityPoises.get(entityId);
     if (!entry) {
+      const staggerDuration = isBoss ? 2.2 : 1.5;
+      const calculatedMaxPoise = isBoss ? Math.max(180, maxPoise) : maxPoise;
       entry = {
-        currentPoise: maxPoise,
-        maxPoise,
+        currentPoise: calculatedMaxPoise,
+        maxPoise: calculatedMaxPoise,
         isStaggered: false,
-        staggerDuration: 1.8, // 1.8s vulnerable window
+        staggerDuration,
         staggerTimer: 0,
         lastPoiseDamageTime: 0,
-        poiseRegenDelay: 3.0,
-        poiseRegenRate: 25,
+        poiseRegenDelay: isBoss ? 4.0 : 3.0,
+        poiseRegenRate: isBoss ? 40 : 25,
       };
       this.entityPoises.set(entityId, entry);
     }
@@ -46,9 +49,10 @@ export class PoiseSystem {
   public static applyPoiseDamage(
     entityId: string,
     poiseDamage: number,
-    maxPoise: number = 60
+    maxPoise: number = 60,
+    isBoss: boolean = false
   ): { staggered: boolean; remainingPoise: number } {
-    const entry = this.getOrCreatePoise(entityId, maxPoise);
+    const entry = this.getOrCreatePoise(entityId, maxPoise, isBoss);
     entry.lastPoiseDamageTime = Date.now();
 
     if (entry.isStaggered) {
@@ -60,7 +64,7 @@ export class PoiseSystem {
     if (entry.currentPoise <= 0) {
       entry.isStaggered = true;
       entry.staggerTimer = entry.staggerDuration;
-      GameEventBus.emit('ENTITY_STAGGERED', { entityId, duration: entry.staggerDuration });
+      GameEventBus.emit('ENTITY_STAGGERED', { entityId, duration: entry.staggerDuration, isBoss });
       return { staggered: true, remainingPoise: 0 };
     }
 
@@ -101,6 +105,16 @@ export class PoiseSystem {
     };
   }
 
+  public static getEntityPoise(entityId: string): { current: number; max: number; isStaggered: boolean } | null {
+    const entry = this.entityPoises.get(entityId);
+    if (!entry) return null;
+    return {
+      current: entry.currentPoise,
+      max: entry.maxPoise,
+      isStaggered: entry.isStaggered,
+    };
+  }
+
   public static update(deltaTime: number): void {
     const now = Date.now();
 
@@ -121,7 +135,7 @@ export class PoiseSystem {
     }
 
     // Update Entities Poise
-    for (const [entityId, entry] of this.entityPoises.entries()) {
+    for (const [, entry] of this.entityPoises.entries()) {
       if (entry.isStaggered) {
         entry.staggerTimer -= deltaTime;
         if (entry.staggerTimer <= 0) {
@@ -147,5 +161,6 @@ export class PoiseSystem {
     this.entityPoises.clear();
     this.playerPoise.currentPoise = this.playerPoise.maxPoise;
     this.playerPoise.isStaggered = false;
+    this.playerPoise.staggerTimer = 0;
   }
 }

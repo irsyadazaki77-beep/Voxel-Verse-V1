@@ -10,6 +10,12 @@ import { MapManager } from '../map/MapManager';
 import { BlockPlacementEngine } from '../world/BlockPlacementEngine';
 import { FurnaceManager } from '../world/FurnaceManager';
 import { FarmingManager } from '../world/FarmingManager';
+import { ArtifactSynergyManager } from '../artifacts/ArtifactSynergyManager';
+import { BountyContractManager } from '../exploration/BountyContractManager';
+import { TreasureMapSystem } from '../exploration/TreasureMapSystem';
+import { WorldStabilitySystem } from '../exploration/WorldStabilitySystem';
+import { DungeonExpeditionManager } from '../dungeon/DungeonExpeditionManager';
+import { AetherAnomalyManager } from '../anomaly/AetherAnomalyManager';
 
 export class PersistenceSystem implements GameSystem {
   public readonly name = 'PersistenceSystem';
@@ -34,6 +40,8 @@ export class PersistenceSystem implements GameSystem {
     if (!world || !player || !stats) return;
 
     const pPos = player.position;
+    const stabilityState = WorldStabilitySystem.saveState();
+
     const saveData: WorldSaveData = {
       version: CURRENT_SAVE_VERSION,
       id: worldId,
@@ -73,6 +81,15 @@ export class PersistenceSystem implements GameSystem {
       activeEvents: WorldEventManager.serialize(),
       waypoints: MapManager.serializeWaypoints(),
       exploredMapTiles: MapManager.serializeExplored(),
+      artifactsFound: ArtifactSynergyManager.getUnlocked(),
+      artifactState: ArtifactSynergyManager.saveState(),
+      bountyContracts: BountyContractManager.saveState(),
+      treasureMaps: TreasureMapSystem.saveState(),
+      worldStability: stabilityState.stability,
+      activatedMonoliths: stabilityState.activatedMonoliths,
+      dungeonExpedition: DungeonExpeditionManager.saveState(),
+      anomalyState: AetherAnomalyManager.serialize(),
+      questRewardsClaimed: QuestManager.getClaimedRewards(),
     };
 
     SaveManager.saveWorld(saveData);

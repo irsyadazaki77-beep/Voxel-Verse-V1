@@ -5,30 +5,53 @@
     --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
     --font-display: 'Cinzel', serif;
+    
+    /* VoxelVerse Core Design Tokens */
+    --vv-bg: #090d14;
+    --vv-surface: #101722;
+    --vv-elevated: #172231;
+    --vv-border: rgba(255, 255, 255, 0.12);
+    --vv-border-subtle: rgba(255, 255, 255, 0.08);
+    
+    /* Semantic Colors */
+    --vv-primary: #06b6d4; /* Cyan */
+    --vv-aether: #8b5cf6; /* Violet */
+    --vv-success: #10b981; /* Emerald */
+    --vv-warning: #f59e0b; /* Amber */
+    --vv-danger: #ef4444; /* Crimson */
+    --vv-legendary: #fbbf24; /* Gold */
+    --vv-text-main: #f1f5f9;
+    --vv-text-muted: #94a3b8;
 
+    /* Legacy mapping for existing code */
     --panel-bg: rgba(13, 16, 23, 0.92);
     --panel-bg-subtle: rgba(20, 25, 36, 0.85);
-    --panel-border: rgba(255, 255, 255, 0.12);
-    --panel-border-glow: rgba(56, 189, 248, 0.35);
+    --panel-border: var(--vv-border);
+    --panel-border-glow: rgba(6, 182, 212, 0.35);
 
     --slot-bg: rgba(7, 9, 14, 0.7);
     --slot-bg-hover: rgba(255, 255, 255, 0.1);
-    --slot-border: rgba(255, 255, 255, 0.12);
-    --slot-selected: #38bdf8;
+    --slot-border: var(--vv-border);
+    --slot-selected: var(--vv-primary);
 
-    --color-health: #ef4444;
-    --color-hunger: #f59e0b;
+    --color-health: var(--vv-danger);
+    --color-hunger: var(--vv-warning);
     --color-thirst: #0284c7;
-    --color-stamina: #10b981;
-    --color-mana: #8b5cf6;
-    --color-temp: #06b6d4;
-    --color-xp: #a855f7;
+    --color-stamina: var(--vv-success);
+    --color-mana: var(--vv-aether);
+    --color-temp: var(--vv-primary);
+    --color-xp: var(--vv-aether);
+    
+    /* Scaling Tokens */
+    --ui-scale: 1;
+    --hud-scale: 1;
+    --safe-area-padding: 16px;
   }
 
   body {
     font-family: var(--font-sans);
-    background-color: #08090d;
-    color: #f1f5f9;
+    background-color: var(--vv-bg);
+    color: var(--vv-text-main);
     user-select: none;
     -webkit-user-select: none;
     overflow: hidden;

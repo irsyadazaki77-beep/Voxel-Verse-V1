@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+server-realms-db.json
+*.db
+*.sqlite
+.temp/
+*.tmp

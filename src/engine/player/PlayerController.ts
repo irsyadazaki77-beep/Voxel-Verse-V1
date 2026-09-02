@@ -6,6 +6,7 @@ import { VoxelWorld } from '../world/VoxelWorld';
 import { InputManager } from './InputManager';
 import { CameraMotionSystem } from './CameraMotionSystem';
 import { SettingsManager } from '../ui/SettingsManager';
+import { PoiseSystem } from '../combat/PoiseSystem';
 
 export type PlayerState = 'grounded' | 'airborne' | 'swimming' | 'climbing' | 'flying' | 'dead';
 
@@ -286,7 +287,10 @@ export class PlayerController {
 
     if (this.wantsDodge) {
       this.wantsDodge = false;
-      if (!this.isDodging && this.dodgeCooldown <= 0 && (stamina >= 25 || gameMode === 'creative')) {
+      // Staggered player cannot dodge
+      if (PoiseSystem.isPlayerStaggered()) {
+        // blocked
+      } else if (!this.isDodging && this.dodgeCooldown <= 0 && (stamina >= 25 || gameMode === 'creative')) {
         this.isDodging = true;
         this.dodgeTimer = 0.35; // 350ms active dodge roll window
         this.dodgeCooldown = 0.75; // 750ms total cooldown
@@ -389,6 +393,11 @@ export class PlayerController {
       targetSpeed = this.config.crouchSpeed;
     } else if (this.isSprinting) {
       targetSpeed = this.config.sprintSpeed;
+    }
+
+    // Stagger movement penalty (reduced movement speed during poise break)
+    if (PoiseSystem.isPlayerStaggered()) {
+      targetSpeed *= 0.45;
     }
 
     // 4. Movement Input Vector

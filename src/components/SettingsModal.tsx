@@ -1,7 +1,10 @@
 // Settings & Accessibility Interface Modal
 import React, { useState, useEffect } from 'react';
 import { SettingsManager, GameSettings, KeyBindingAction } from '../engine/ui/SettingsManager';
-import { InputManager } from '../engine/input/InputManager';
+import { 
+  Monitor, Volume2, Keyboard, Gamepad2, Settings2, 
+  Eye, Zap, X, AlertTriangle, MonitorSmartphone
+} from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -57,331 +60,402 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     SettingsManager.update({ gameplay: { ...settings.gameplay, ...partial } });
   };
 
+  const applyPreset = (presetType: 'performance' | 'balanced' | 'quality') => {
+    switch (presetType) {
+      case 'performance':
+        updateGraphics({ preset: 'low', renderDistance: 4, postProcessing: false });
+        break;
+      case 'balanced':
+        updateGraphics({ preset: 'medium', renderDistance: 6, postProcessing: false });
+        break;
+      case 'quality':
+        updateGraphics({ preset: 'high', renderDistance: 10, postProcessing: true });
+        break;
+    }
+  };
+
+  const TABS = [
+    { id: 'graphics', label: 'Graphics', icon: Monitor },
+    { id: 'audio', label: 'Audio', icon: Volume2 },
+    { id: 'controls', label: 'Controls', icon: Keyboard },
+    { id: 'gameplay', label: 'Gameplay', icon: Gamepad2 },
+    { id: 'accessibility', label: 'Accessibility', icon: Eye },
+  ] as const;
+
   return (
-    <div id="modal-settings" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in font-sans select-none">
-      <div className="w-full max-w-2xl bg-[#0c0e15] rounded-3xl border border-white/15 p-6 shadow-2xl space-y-6 text-white flex flex-col max-h-[85vh]">
+    <div id="modal-settings" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-8 animate-fade-in font-sans select-none ui-scaled">
+      <div className="w-full max-w-4xl bg-[var(--vv-bg)] border border-[var(--vv-border)] rounded-2xl shadow-2xl flex flex-col h-[85vh] sm:h-[80vh] overflow-hidden text-[var(--vv-text-main)]">
+        
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-white/10">
+        <div className="flex flex-shrink-0 items-center justify-between px-6 py-4 border-b border-[var(--vv-border)] bg-[var(--vv-surface)]">
           <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.6)]"></div>
-            <h2 className="text-lg font-black tracking-wider uppercase">System & Accessibility Settings</h2>
+            <div className="p-2 rounded-xl bg-[var(--vv-primary)]/10 border border-[var(--vv-primary)]/30 text-[var(--vv-primary)]">
+              <Settings2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-wide text-white flex items-center gap-2">
+                System Settings
+              </h2>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-xs font-mono transition-all cursor-pointer"
+            className="p-1.5 rounded-lg bg-[var(--vv-elevated)] hover:bg-[var(--vv-border)] text-[var(--vv-text-muted)] hover:text-white transition-colors"
           >
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex gap-2 overflow-x-auto pb-1 border-b border-white/5 text-xs font-bold">
-          {(['graphics', 'audio', 'controls', 'gameplay', 'accessibility'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === tab
-                  ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
-                  : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+          
+          {/* Sidebar Tabs */}
+          <div className="w-full md:w-56 border-b md:border-b-0 md:border-r border-[var(--vv-border-subtle)] bg-[var(--vv-surface)] flex flex-row md:flex-col overflow-x-auto md:overflow-y-auto shrink-0 p-4 gap-2">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-semibold text-sm whitespace-nowrap ${
+                    isActive 
+                      ? 'bg-[var(--vv-primary)]/10 text-[var(--vv-primary)] border border-[var(--vv-primary)]/20 shadow-inner' 
+                      : 'text-[var(--vv-text-muted)] hover:bg-[var(--vv-elevated)] hover:text-[var(--vv-text-main)] border border-transparent'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-[var(--vv-primary)]' : 'opacity-70'}`} />
+                  <span className={isActive ? 'block' : 'hidden md:block'}>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Tab Content Body */}
-        <div className="flex-1 overflow-y-auto pr-2 space-y-4 text-xs">
-          {/* Graphics Tab */}
-          {activeTab === 'graphics' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5">
-                <div>
-                  <div className="font-bold">Graphics Preset</div>
-                  <div className="text-[10px] text-white/50">Auto-configure visual fidelity settings</div>
-                </div>
-                <div className="flex gap-1.5">
-                  {(['low', 'medium', 'high', 'ultra'] as const).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => updateGraphics({ preset: p })}
-                      className={`px-3 py-1.5 rounded-xl uppercase font-mono text-[10px] font-bold transition-all cursor-pointer ${
-                        settings.graphics.preset === p ? 'bg-sky-500 text-white shadow-md' : 'bg-black/40 text-white/50 hover:bg-white/10'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {/* Content Area */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-[var(--vv-bg)]">
+            <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in duration-200">
+              
+              {/* GRAPHICS TAB */}
+              {activeTab === 'graphics' && (
+                <>
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-[var(--vv-warning)]" /> Recommended Presets
+                    </h3>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button 
+                        onClick={() => applyPreset('performance')}
+                        className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
+                          settings.graphics.preset === 'low' ? 'bg-[var(--vv-warning)]/10 border-[var(--vv-warning)] shadow-inner' : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] hover:border-[var(--vv-border)]'
+                        }`}
+                      >
+                        <Zap className={`w-6 h-6 ${settings.graphics.preset === 'low' ? 'text-[var(--vv-warning)]' : 'text-[var(--vv-text-muted)]'}`} />
+                        <span className={`text-sm font-bold ${settings.graphics.preset === 'low' ? 'text-[var(--vv-warning)]' : 'text-white'}`}>Performance</span>
+                        <span className="text-[10px] text-[var(--vv-text-muted)] text-center hidden sm:block">Max FPS, Low Detail</span>
+                      </button>
+                      <button 
+                        onClick={() => applyPreset('balanced')}
+                        className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
+                          settings.graphics.preset === 'medium' ? 'bg-[var(--vv-primary)]/10 border-[var(--vv-primary)] shadow-inner' : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] hover:border-[var(--vv-border)]'
+                        }`}
+                      >
+                        <MonitorSmartphone className={`w-6 h-6 ${settings.graphics.preset === 'medium' ? 'text-[var(--vv-primary)]' : 'text-[var(--vv-text-muted)]'}`} />
+                        <span className={`text-sm font-bold ${settings.graphics.preset === 'medium' ? 'text-[var(--vv-primary)]' : 'text-white'}`}>Balanced</span>
+                        <span className="text-[10px] text-[var(--vv-text-muted)] text-center hidden sm:block">Good mix of FPS & looks</span>
+                      </button>
+                      <button 
+                        onClick={() => applyPreset('quality')}
+                        className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
+                          settings.graphics.preset === 'high' ? 'bg-[var(--vv-success)]/10 border-[var(--vv-success)] shadow-inner' : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] hover:border-[var(--vv-border)]'
+                        }`}
+                      >
+                        <Eye className={`w-6 h-6 ${settings.graphics.preset === 'high' ? 'text-[var(--vv-success)]' : 'text-[var(--vv-text-muted)]'}`} />
+                        <span className={`text-sm font-bold ${settings.graphics.preset === 'high' ? 'text-[var(--vv-success)]' : 'text-white'}`}>Quality</span>
+                        <span className="text-[10px] text-[var(--vv-text-muted)] text-center hidden sm:block">High Detail, Lower FPS</span>
+                      </button>
+                    </div>
+                  </div>
 
-              <div className="space-y-1">
-                <div className="flex justify-between font-bold">
-                  <span>Render Distance</span>
-                  <span className="font-mono text-sky-400">{settings.graphics.renderDistance} Chunks</span>
-                </div>
-                <input
-                  type="range"
-                  min="2"
-                  max="12"
-                  value={settings.graphics.renderDistance}
-                  onChange={(e) => updateGraphics({ renderDistance: parseInt(e.target.value, 10) })}
-                  className="w-full accent-sky-400 cursor-pointer"
-                />
-              </div>
+                  <div className="space-y-6">
+                    <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2">Advanced Display</h3>
+                    
+                    {/* Render Distance with Cost Indicator */}
+                    <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white">Render Distance</span>
+                          {settings.graphics.renderDistance > 8 && (
+                            <span className="text-[10px] font-bold bg-[var(--vv-danger)]/20 text-[var(--vv-danger)] px-2 py-0.5 rounded border border-[var(--vv-danger)]/30 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> High Cost
+                            </span>
+                          )}
+                        </div>
+                        <span className={`font-mono font-bold ${settings.graphics.renderDistance > 8 ? 'text-[var(--vv-danger)]' : 'text-[var(--vv-primary)]'}`}>
+                          {settings.graphics.renderDistance} Chunks
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="2"
+                        max="12"
+                        value={settings.graphics.renderDistance}
+                        onChange={(e) => updateGraphics({ renderDistance: parseInt(e.target.value, 10), preset: 'custom' })}
+                        className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                      />
+                      <div className="flex justify-between text-[10px] text-[var(--vv-text-muted)] font-mono">
+                        <span>2 (Fast)</span>
+                        <span>12 (Heavy)</span>
+                      </div>
+                    </div>
 
-              <div className="space-y-1">
-                <div className="flex justify-between font-bold">
-                  <span>Field of View (FOV)</span>
-                  <span className="font-mono text-sky-400">{settings.graphics.fov}°</span>
-                </div>
-                <input
-                  type="range"
-                  min="60"
-                  max="110"
-                  value={settings.graphics.fov}
-                  onChange={(e) => updateGraphics({ fov: parseInt(e.target.value, 10) })}
-                  className="w-full accent-sky-400 cursor-pointer"
-                />
-              </div>
+                    <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                      <div className="flex justify-between font-bold text-white">
+                        <span>Field of View (FOV)</span>
+                        <span className="font-mono text-[var(--vv-primary)]">{settings.graphics.fov}°</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="60"
+                        max="110"
+                        value={settings.graphics.fov}
+                        onChange={(e) => updateGraphics({ fov: parseInt(e.target.value, 10), preset: 'custom' })}
+                        className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                      />
+                    </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5 cursor-pointer">
-                  <span className="font-bold">Cascading Shadows</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.graphics.shadows}
-                    onChange={(e) => updateGraphics({ shadows: e.target.checked })}
-                    className="w-4 h-4 accent-sky-400 cursor-pointer"
-                  />
-                </label>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                        <div>
+                          <div className="font-bold text-sm text-white">Dynamic Shadows</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Performance Heavy</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.graphics.shadows}
+                          onChange={(e) => updateGraphics({ shadows: e.target.checked, preset: 'custom' })}
+                          className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
+                        />
+                      </label>
 
-                <label className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5 cursor-pointer">
-                  <span className="font-bold">Water Reflection/Refraction</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.graphics.waterReflections}
-                    onChange={(e) => updateGraphics({ waterReflections: e.target.checked })}
-                    className="w-4 h-4 accent-sky-400 cursor-pointer"
-                  />
-                </label>
-              </div>
-            </div>
-          )}
+                      <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                        <div>
+                          <div className="font-bold text-sm text-white">Post-Processing</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Bloom & Color Grading</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.graphics.postProcessing}
+                          onChange={(e) => updateGraphics({ postProcessing: e.target.checked, preset: 'custom' })}
+                          className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </>
+              )}
 
-          {/* Audio Tab */}
-          {activeTab === 'audio' && (
-            <div className="space-y-4">
-              {(['masterVolume', 'musicVolume', 'environmentVolume', 'creatureVolume', 'combatVolume', 'uiVolume'] as const).map(
-                (volKey) => {
-                  const labels: Record<string, string> = {
-                    masterVolume: 'Master Volume',
-                    musicVolume: 'Ambient Music',
-                    environmentVolume: 'Environment & Weather',
-                    creatureVolume: 'Creatures & Mobs',
-                    combatVolume: 'Combat & Weapon Sounds',
-                    uiVolume: 'UI & Interface Sounds',
-                  };
-
-                  return (
-                    <div key={volKey} className="space-y-1">
-                      <div className="flex justify-between font-bold">
-                        <span>{labels[volKey]}</span>
-                        <span className="font-mono text-sky-400">{Math.round(settings.audio[volKey] * 100)}%</span>
+              {/* AUDIO TAB */}
+              {activeTab === 'audio' && (
+                <div className="space-y-6">
+                  <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2">Volume Mixers</h3>
+                  {(['masterVolume', 'musicVolume', 'sfxVolume', 'ambientVolume'] as const).map(key => (
+                    <div key={key} className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                      <div className="flex justify-between font-bold text-white capitalize">
+                        <span>{key.replace('Volume', '')} Volume</span>
+                        <span className="font-mono text-[var(--vv-primary)]">{Math.round(settings.audio[key] * 100)}%</span>
                       </div>
                       <input
                         type="range"
                         min="0"
                         max="1"
                         step="0.05"
-                        value={settings.audio[volKey]}
-                        onChange={(e) => updateAudio(volKey, parseFloat(e.target.value))}
-                        className="w-full accent-sky-400 cursor-pointer"
+                        value={settings.audio[key]}
+                        onChange={(e) => updateAudio(key, parseFloat(e.target.value))}
+                        className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
                       />
                     </div>
-                  );
-                }
+                  ))}
+                </div>
               )}
-            </div>
-          )}
 
-          {/* Controls Tab */}
-          {activeTab === 'controls' && (
-            <div className="space-y-4">
-              <div className="text-[11px] text-white/50 bg-sky-500/10 border border-sky-500/20 p-2.5 rounded-xl flex items-center justify-between">
-                <span>Active Input Device: <strong className="uppercase text-sky-300 font-mono">{InputManager.getActiveDevice()}</strong></span>
-                <span className="text-[10px] text-white/40">Click any key binding to reassign</span>
-              </div>
-
-              <div className="space-y-1 bg-white/5 p-3.5 rounded-2xl border border-white/5">
-                <div className="flex justify-between font-bold">
-                  <span>Mouse / Look Sensitivity</span>
-                  <span className="font-mono text-sky-400">{settings.controls.mouseSensitivity.toFixed(2)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="3.0"
-                  step="0.05"
-                  value={settings.controls.mouseSensitivity}
-                  onChange={(e) => updateControls({ mouseSensitivity: parseFloat(e.target.value) })}
-                  className="w-full accent-sky-400 cursor-pointer"
-                />
-              </div>
-
-              <label className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5 cursor-pointer">
-                <span className="font-bold">Invert Y-Axis</span>
-                <input
-                  type="checkbox"
-                  checked={settings.controls.invertY}
-                  onChange={(e) => updateControls({ invertY: e.target.checked })}
-                  className="w-4 h-4 accent-sky-400 cursor-pointer"
-                />
-              </label>
-
-              <div className="font-bold text-white/70 text-[11px] uppercase tracking-wider pt-2 border-t border-white/10">Key Bindings</div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {Object.entries(settings.controls.keyBindings).map(([act, code]) => {
-                  const actionKey = act as KeyBindingAction;
-                  const isRebinding = rebindingAction === actionKey;
-
-                  return (
-                    <div
-                      key={actionKey}
-                      onClick={() => setRebindingAction(actionKey)}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                        isRebinding
-                          ? 'bg-amber-500/20 border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
-                          : 'bg-white/5 border-white/5 hover:bg-white/10'
-                      }`}
-                    >
-                      <span className="font-bold text-white/80 capitalize">{actionKey.replace(/([A-Z])/g, ' $1')}</span>
-                      <span className="font-mono text-[10px] px-2.5 py-1 rounded-lg bg-black/60 text-sky-300 border border-white/10">
-                        {isRebinding ? 'Press Key...' : code}
-                      </span>
+              {/* CONTROLS TAB */}
+              {activeTab === 'controls' && (
+                <div className="space-y-6">
+                  <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2">Mouse Settings</h3>
+                  <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                    <div className="flex justify-between font-bold text-white">
+                      <span>Mouse Sensitivity</span>
+                      <span className="font-mono text-[var(--vv-primary)]">{settings.controls.mouseSensitivity.toFixed(2)}</span>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="2.0"
+                      step="0.1"
+                      value={settings.controls.mouseSensitivity}
+                      onChange={(e) => updateControls({ mouseSensitivity: parseFloat(e.target.value) })}
+                      className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                    />
+                  </div>
 
-          {/* Accessibility Tab */}
-          {activeTab === 'accessibility' && (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <div className="flex justify-between font-bold">
-                  <span>UI Scale Factor</span>
-                  <span className="font-mono text-sky-400">{settings.accessibility.uiScale.toFixed(2)}x</span>
+                  <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                    <div className="font-bold text-sm text-white">Invert Y-Axis</div>
+                    <input
+                      type="checkbox"
+                      checked={settings.controls.invertY}
+                      onChange={(e) => updateControls({ invertY: e.target.checked })}
+                      className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
+                    />
+                  </label>
+
+                  <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2 pt-4">Key Bindings</h3>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {Object.entries(settings.controls.keyBindings).map(([action, key]) => (
+                      <div key={action} className="flex justify-between items-center bg-[var(--vv-surface)] p-3 rounded-lg border border-[var(--vv-border-subtle)]">
+                        <span className="uppercase text-xs font-bold text-[var(--vv-text-muted)]">{action.replace('_', ' ')}</span>
+                        <button
+                          onClick={() => setRebindingAction(action as KeyBindingAction)}
+                          className={`px-3 py-1.5 rounded-md font-mono text-xs font-bold transition-colors ${
+                            rebindingAction === action 
+                              ? 'bg-[var(--vv-warning)] text-black animate-pulse' 
+                              : 'bg-black/40 text-white hover:bg-[var(--vv-primary)]/20 hover:text-[var(--vv-primary)] border border-white/10'
+                          }`}
+                        >
+                          {rebindingAction === action ? 'PRESS ANY KEY' : (key as string).replace('Key', '')}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min="0.75"
-                  max="1.5"
-                  step="0.05"
-                  value={settings.accessibility.uiScale}
-                  onChange={(e) => updateAccessibility({ uiScale: parseFloat(e.target.value) })}
-                  className="w-full accent-sky-400 cursor-pointer"
-                />
-              </div>
+              )}
 
-              <div className="space-y-1">
-                <div className="flex justify-between font-bold">
-                  <span>Safe Area Padding</span>
-                  <span className="font-mono text-sky-400">{settings.accessibility.safeAreaPadding}px</span>
+              {/* GAMEPLAY TAB */}
+              {activeTab === 'gameplay' && (
+                <div className="space-y-6">
+                  <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2">Interface & HUD</h3>
+                  
+                  <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                    <div>
+                      <div className="font-bold text-sm text-white">Show Telemetry Overlay</div>
+                      <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">FPS, Coordinates, Engine Stats</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.gameplay.showFps}
+                      onChange={(e) => updateGameplay({ showFps: e.target.checked })}
+                      className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
+                    />
+                  </label>
+
+                  <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2 pt-4">Mechanics</h3>
+                  
+                  <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                    <div className="flex justify-between font-bold text-white">
+                      <span>Auto-Save Interval</span>
+                      <span className="font-mono text-[var(--vv-primary)] uppercase">{settings.gameplay.autoSaveInterval} Mins</span>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      {([1, 5, 10] as const).map(interval => (
+                        <button
+                          key={interval}
+                          onClick={() => updateGameplay({ autoSaveInterval: interval })}
+                          className={`flex-1 py-2 rounded-lg font-bold text-xs transition-colors ${
+                            settings.gameplay.autoSaveInterval === interval 
+                              ? 'bg-[var(--vv-primary)] text-black' 
+                              : 'bg-black/40 text-[var(--vv-text-muted)] hover:bg-[var(--vv-elevated)]'
+                          }`}
+                        >
+                          {interval} Min
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="32"
-                  value={settings.accessibility.safeAreaPadding}
-                  onChange={(e) => updateAccessibility({ safeAreaPadding: parseInt(e.target.value, 10) })}
-                  className="w-full accent-sky-400 cursor-pointer"
-                />
-              </div>
+              )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5 cursor-pointer">
-                  <span className="font-bold">Motion Reduction</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.accessibility.motionReduction}
-                    onChange={(e) => updateAccessibility({ motionReduction: e.target.checked })}
-                    className="w-4 h-4 accent-sky-400 cursor-pointer"
-                  />
-                </label>
+              {/* ACCESSIBILITY TAB */}
+              {activeTab === 'accessibility' && (
+                <div className="space-y-6">
+                  <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2 flex items-center gap-2">
+                    <Eye className="w-5 h-5 text-[var(--vv-primary)]" /> Visual Comfort & Scaling
+                  </h3>
 
-                <label className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5 cursor-pointer">
-                  <span className="font-bold">Audio Subtitles</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.accessibility.subtitles}
-                    onChange={(e) => updateAccessibility({ subtitles: e.target.checked })}
-                    className="w-4 h-4 accent-sky-400 cursor-pointer"
-                  />
-                </label>
-              </div>
+                  <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                    <div className="flex justify-between font-bold text-white">
+                      <span>Global UI Scale</span>
+                      <span className="font-mono text-[var(--vv-primary)]">{Math.round(settings.accessibility.uiScale * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.8"
+                      max="1.5"
+                      step="0.1"
+                      value={settings.accessibility.uiScale}
+                      onChange={(e) => updateAccessibility({ uiScale: parseFloat(e.target.value) })}
+                      className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                    />
+                    <div className="text-[10px] text-[var(--vv-text-muted)] mt-1">Changes size of menus, text, and icons globally.</div>
+                  </div>
 
-              <div className="space-y-1">
-                <div className="flex justify-between font-bold">
-                  <span>Camera Shake Intensity</span>
-                  <span className="font-mono text-sky-400">{Math.round(settings.accessibility.cameraShakeIntensity * 100)}%</span>
+                  <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                    <div className="flex justify-between font-bold text-white">
+                      <span>HUD Scale</span>
+                      <span className="font-mono text-[var(--vv-primary)]">{Math.round(settings.accessibility.hudScale * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="1.5"
+                      step="0.1"
+                      value={settings.accessibility.hudScale}
+                      onChange={(e) => updateAccessibility({ hudScale: parseFloat(e.target.value) })}
+                      className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                    />
+                    <div className="text-[10px] text-[var(--vv-text-muted)] mt-1">Changes size of in-game HUD elements (health, hotbar).</div>
+                  </div>
+
+                  <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                    <div className="flex justify-between font-bold text-white">
+                      <span>Safe Area Padding</span>
+                      <span className="font-mono text-[var(--vv-primary)]">{settings.accessibility.safeAreaPadding}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="64"
+                      step="4"
+                      value={settings.accessibility.safeAreaPadding}
+                      onChange={(e) => updateAccessibility({ safeAreaPadding: parseInt(e.target.value, 10) })}
+                      className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                    />
+                    <div className="text-[10px] text-[var(--vv-text-muted)] mt-1">Distance of HUD from screen edges (useful for ultrawide).</div>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-4 mt-4">
+                    <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                      <div className="font-bold text-sm text-white">High Contrast</div>
+                      <input
+                        type="checkbox"
+                        checked={settings.accessibility.highContrast}
+                        onChange={(e) => updateAccessibility({ highContrast: e.target.checked })}
+                        className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                      <div className="font-bold text-sm text-white">Reduce Motion</div>
+                      <input
+                        type="checkbox"
+                        checked={settings.accessibility.motionReduction}
+                        onChange={(e) => updateAccessibility({ motionReduction: e.target.checked })}
+                        className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
+                      />
+                    </label>
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={settings.accessibility.cameraShakeIntensity}
-                  onChange={(e) => updateAccessibility({ cameraShakeIntensity: parseFloat(e.target.value) })}
-                  className="w-full accent-sky-400 cursor-pointer"
-                />
-              </div>
+              )}
+
             </div>
-          )}
-
-          {/* Gameplay Tab */}
-          {activeTab === 'gameplay' && (
-            <div className="space-y-3">
-              <label className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5 cursor-pointer">
-                <span className="font-bold">Display FPS & Profiler Telemetry</span>
-                <input
-                  type="checkbox"
-                  checked={settings.gameplay.showFps}
-                  onChange={(e) => updateGameplay({ showFps: e.target.checked })}
-                  className="w-4 h-4 accent-sky-400 cursor-pointer"
-                />
-              </label>
-
-              <label className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5 cursor-pointer">
-                <span className="font-bold">HUD Minimap Widget</span>
-                <input
-                  type="checkbox"
-                  checked={settings.gameplay.showMinimap}
-                  onChange={(e) => updateGameplay({ showMinimap: e.target.checked })}
-                  className="w-4 h-4 accent-sky-400 cursor-pointer"
-                />
-              </label>
-            </div>
-          )}
-        </div>
-
-        {/* Footer Actions */}
-        <div className="flex items-center justify-between pt-3 border-t border-white/10">
-          <button
-            onClick={() => SettingsManager.resetToDefault()}
-            className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 rounded-xl font-bold text-xs border border-rose-500/20 transition-all cursor-pointer"
-          >
-            Reset All to Default
-          </button>
-          <button
-            onClick={onClose}
-            className="px-6 py-2.5 bg-sky-500 hover:bg-sky-400 text-white rounded-xl font-bold text-xs shadow-lg transition-all cursor-pointer"
-          >
-            Save & Close
-          </button>
+          </div>
         </div>
       </div>
     </div>

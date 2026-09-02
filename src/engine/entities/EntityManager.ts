@@ -542,6 +542,7 @@ export class EntityManager {
       if (distToPlayer > 80 && state.type !== 'npc') {
         this.entityGroup.remove(mesh);
         this.entities.delete(id);
+        PoiseSystem.removeEntity(id);
         const cx = Math.floor(state.position[0] / 16);
         const cz = Math.floor(state.position[2] / 16);
         this.spatialGrid.get(`${cx},${cz}`)?.delete(id);
@@ -662,6 +663,7 @@ export class EntityManager {
 
       this.entityGroup.remove(mesh);
       this.entities.delete(entityId);
+      PoiseSystem.removeEntity(entityId);
     }
 
     return { damageDealt: damage, killed, entityName: state.name, isCritical };
@@ -891,6 +893,7 @@ export class EntityManager {
       });
     }
     this.entities.clear();
+    PoiseSystem.clear();
 
     for (const gItem of this.groundItems) {
       this.entityGroup.remove(gItem.mesh);

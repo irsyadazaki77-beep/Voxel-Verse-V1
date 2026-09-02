@@ -127,14 +127,32 @@ const HUDVitalsBars = () => {
 
   useEffect(() => {
     return TelemetryStore.subscribe((stats) => {
-      if (healthRef.current) healthRef.current.style.width = `${Math.max(0, Math.min(100, (stats.health / stats.maxHealth) * 100))}%`;
+      // Health
+      const healthRatio = stats.health / stats.maxHealth;
+      if (healthRef.current) healthRef.current.style.width = `${Math.max(0, Math.min(100, healthRatio * 100))}%`;
       if (healthTextRef.current) healthTextRef.current.innerText = `${Math.round(stats.health)}/${stats.maxHealth}`;
+      const healthParent = healthRef.current?.closest('.voxel-panel-subtle') as HTMLElement;
+      if (healthParent) {
+        healthParent.style.opacity = healthRatio >= 1 ? '0.75' : '1';
+      }
       
-      if (hungerRef.current) hungerRef.current.style.width = `${Math.max(0, Math.min(100, (stats.hunger / stats.maxHunger) * 100))}%`;
+      // Hunger
+      const hungerRatio = stats.hunger / stats.maxHunger;
+      if (hungerRef.current) hungerRef.current.style.width = `${Math.max(0, Math.min(100, hungerRatio * 100))}%`;
       if (hungerTextRef.current) hungerTextRef.current.innerText = `${Math.round(stats.hunger)}%`;
+      const hungerParent = hungerRef.current?.closest('.voxel-panel-subtle') as HTMLElement;
+      if (hungerParent) {
+        hungerParent.style.opacity = hungerRatio >= 0.9 ? '0.6' : '1';
+      }
 
-      if (staminaRef.current) staminaRef.current.style.width = `${Math.max(0, Math.min(100, (stats.stamina / stats.maxStamina) * 100))}%`;
+      // Stamina
+      const staminaRatio = stats.stamina / stats.maxStamina;
+      if (staminaRef.current) staminaRef.current.style.width = `${Math.max(0, Math.min(100, staminaRatio * 100))}%`;
       if (staminaTextRef.current) staminaTextRef.current.innerText = `${Math.round(stats.stamina)}%`;
+      const staminaParent = staminaRef.current?.closest('.voxel-panel-subtle') as HTMLElement;
+      if (staminaParent) {
+        staminaParent.style.opacity = staminaRatio >= 1 ? '0.4' : '1';
+      }
 
       if (xpRef.current) {
         const nextXp = stats.level * 100;
@@ -160,17 +178,17 @@ const HUDVitalsBars = () => {
       {/* Vitals Row (Health, Hunger, Stamina) */}
       <div className="grid grid-cols-3 gap-2.5 w-full">
         {/* Health */}
-        <div className="voxel-panel-subtle p-2 space-y-1">
+        <div className="voxel-panel-subtle p-2 space-y-1 transition-opacity duration-500">
           <div className="flex justify-between items-center text-[10px] font-bold">
-            <div className="flex items-center gap-1 text-rose-400">
-              <Heart className="w-3 h-3 fill-rose-400" />
+            <div className="flex items-center gap-1 text-[var(--color-health)]">
+              <Heart className="w-3 h-3 fill-current" />
               <span>HEALTH</span>
             </div>
-            <span className="font-mono text-zinc-300 text-[10px]" ref={healthTextRef}>100/100</span>
+            <span className="font-mono text-[var(--vv-text-main)] text-[10px]" ref={healthTextRef}>100/100</span>
           </div>
-          <div className="h-2 bg-black/60 rounded-full p-[1px] border border-white/10 overflow-hidden">
+          <div className="h-2 bg-black/60 rounded-full p-[1px] border border-[var(--vv-border)] overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-rose-600 to-rose-400 rounded-full transition-all duration-150 shadow-[0_0_8px_rgba(244,63,94,0.6)]"
+              className="h-full bg-[var(--color-health)] rounded-full transition-all duration-150 shadow-[0_0_8px_var(--color-health)]"
               ref={healthRef}
               style={{ width: '100%' }}
             />
@@ -178,17 +196,17 @@ const HUDVitalsBars = () => {
         </div>
 
         {/* Hunger */}
-        <div className="voxel-panel-subtle p-2 space-y-1">
+        <div className="voxel-panel-subtle p-2 space-y-1 transition-opacity duration-500">
           <div className="flex justify-between items-center text-[10px] font-bold">
-            <div className="flex items-center gap-1 text-amber-400">
-              <Utensils className="w-3 h-3 text-amber-400" />
+            <div className="flex items-center gap-1 text-[var(--color-hunger)]">
+              <Utensils className="w-3 h-3" />
               <span>HUNGER</span>
             </div>
-            <span className="font-mono text-zinc-300 text-[10px]" ref={hungerTextRef}>100%</span>
+            <span className="font-mono text-[var(--vv-text-main)] text-[10px]" ref={hungerTextRef}>100%</span>
           </div>
-          <div className="h-2 bg-black/60 rounded-full p-[1px] border border-white/10 overflow-hidden">
+          <div className="h-2 bg-black/60 rounded-full p-[1px] border border-[var(--vv-border)] overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-150 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
+              className="h-full bg-[var(--color-hunger)] rounded-full transition-all duration-150 shadow-[0_0_8px_var(--color-hunger)]"
               ref={hungerRef}
               style={{ width: '100%' }}
             />
@@ -196,17 +214,17 @@ const HUDVitalsBars = () => {
         </div>
 
         {/* Stamina */}
-        <div className="voxel-panel-subtle p-2 space-y-1">
+        <div className="voxel-panel-subtle p-2 space-y-1 transition-opacity duration-500">
           <div className="flex justify-between items-center text-[10px] font-bold">
-            <div className="flex items-center gap-1 text-emerald-400">
-              <Zap className="w-3 h-3 fill-emerald-400 text-emerald-400" />
+            <div className="flex items-center gap-1 text-[var(--color-stamina)]">
+              <Zap className="w-3 h-3 fill-current text-[var(--color-stamina)]" />
               <span>STAMINA</span>
             </div>
-            <span className="font-mono text-zinc-300 text-[10px]" ref={staminaTextRef}>100%</span>
+            <span className="font-mono text-[var(--vv-text-main)] text-[10px]" ref={staminaTextRef}>100%</span>
           </div>
-          <div className="h-2 bg-black/60 rounded-full p-[1px] border border-white/10 overflow-hidden">
+          <div className="h-2 bg-black/60 rounded-full p-[1px] border border-[var(--vv-border)] overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-150 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+              className="h-full bg-[var(--color-stamina)] rounded-full transition-all duration-150 shadow-[0_0_8px_var(--color-stamina)]"
               ref={staminaRef}
               style={{ width: '100%' }}
             />
@@ -216,25 +234,25 @@ const HUDVitalsBars = () => {
 
       {/* Oxygen Bar (when underwater) */}
       <div
-        className="w-full voxel-panel-subtle px-3 py-1 items-center justify-between gap-2 hidden animate-pulse border-cyan-500/40"
+        className="w-full voxel-panel-subtle px-3 py-1 items-center justify-between gap-2 hidden animate-pulse border-[var(--color-temp)]/40"
         ref={oxygenContainerRef}
       >
-        <div className="flex items-center gap-1.5 text-[10px] font-bold text-cyan-400">
+        <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--color-temp)]">
           <Wind className="w-3 h-3" />
           <span>OXYGEN</span>
         </div>
-        <div className="flex-1 h-2 bg-black/60 rounded-full border border-cyan-400/30 overflow-hidden">
-          <div className="h-full bg-cyan-400 rounded-full transition-all" ref={oxygenRef} style={{ width: '100%' }} />
+        <div className="flex-1 h-2 bg-black/60 rounded-full border border-[var(--color-temp)]/30 overflow-hidden">
+          <div className="h-full bg-[var(--color-temp)] rounded-full transition-all" ref={oxygenRef} style={{ width: '100%' }} />
         </div>
-        <span className="text-[10px] font-mono text-cyan-200" ref={oxygenTextRef}>100%</span>
+        <span className="text-[10px] font-mono text-[var(--color-temp)]" ref={oxygenTextRef}>100%</span>
       </div>
 
       {/* XP Bar */}
       <div className="w-full flex items-center gap-2 px-1">
-        <span className="text-[9px] font-mono font-bold text-purple-400" ref={levelTextRef}>Lv. 1</span>
-        <div className="flex-1 h-1.5 bg-black/60 rounded-full border border-white/10 overflow-hidden">
+        <span className="text-[9px] font-mono font-bold text-[var(--color-xp)]" ref={levelTextRef}>Lv. 1</span>
+        <div className="flex-1 h-1.5 bg-black/60 rounded-full border border-[var(--vv-border)] overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-purple-500 to-sky-400 rounded-full transition-all duration-200"
+            className="h-full bg-[var(--color-xp)] rounded-full transition-all duration-200"
             ref={xpRef}
             style={{ width: '0%' }}
           />
@@ -379,7 +397,11 @@ export const HUD: React.FC<HUDProps> = ({
   }
 
   return (
-    <div id="game-hud" className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-10 select-none font-sans">
+    <div 
+      id="game-hud" 
+      className="absolute inset-0 pointer-events-none flex flex-col justify-between z-10 select-none font-sans hud-scaled"
+      style={{ padding: 'var(--safe-area-padding)' }}
+    >
       
       {/* Damage Flash Vignette Overlay */}
       {damageFlash && (
@@ -389,67 +411,63 @@ export const HUD: React.FC<HUDProps> = ({
       {/* Top Bar (Telemetry on Left, Objective in Center, Menu Actions on Right) */}
       <div className="flex justify-between items-start w-full relative z-20">
         {/* Left: Telemetry & Quest Objective */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <VoxelVerseLogo size="sm" variant="icon" animated={false} />
-            <span className="text-[11px] font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-sky-200 to-sky-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-              VOXEL<span className="text-sky-400">VERSE</span>
-            </span>
-          </div>
+        <div className="flex flex-col gap-3">
           {settings.gameplay.showFps && <HUDTelemetryOverlay />}
           
-          {/* Active Quests HUD Panel */}
+          {/* Active Quests HUD Panel - Progressive Disclosure */}
           {activeQuests.length > 0 ? (
-            <div className="voxel-panel-subtle p-3 w-72 max-w-xs border-amber-500/20 text-xs animate-fade-in pointer-events-auto space-y-2 mt-2 bg-black/60">
-              <div className="flex items-center gap-1.5 border-b border-white/5 pb-1 text-amber-300 font-bold uppercase tracking-wider text-[10px]">
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>Active Quests</span>
-              </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {activeQuests.map((q) => (
-                  <div key={q.def.id} className="space-y-1">
-                    <div className="font-bold text-zinc-200 text-[11px] leading-tight">
+            <div className="flex flex-col gap-2 max-w-xs pointer-events-auto">
+              {activeQuests.slice(0, 3).map((q, qIndex) => {
+                const priority = qIndex === 0 ? 'PRIMARY' : qIndex === 1 ? 'SECONDARY' : 'EVENT';
+                return (
+                  <div key={q.def.id} className="voxel-panel-subtle px-3 py-2 border-l-2 border-l-[var(--vv-warning)] bg-[var(--vv-bg)]/60 backdrop-blur-md">
+                    <div className="text-[9px] font-bold text-[var(--vv-warning)] tracking-wider mb-1">{priority}</div>
+                    <div className="font-semibold text-[13px] text-white leading-tight mb-1.5 drop-shadow-md">
                       {q.def.title}
                     </div>
-                    <div className="space-y-1 pl-1.5 border-l border-amber-500/20">
+                    <div className="space-y-1">
                       {q.def.objectives.map((obj: any, idx: number) => {
                         const count = q.progress[idx] || 0;
                         const isDone = count >= obj.requiredCount;
+                        if (isDone) return null; // Hide completed in compact view
                         return (
                           <div 
                             key={`hud-quest-obj-${q.def.id}-${idx}`} 
-                            className={`flex items-start gap-1.5 text-[10px] leading-relaxed transition-colors ${
-                              isDone ? 'text-zinc-500 line-through' : 'text-zinc-400'
-                            }`}
+                            className="flex items-start gap-1.5 text-[11px] leading-relaxed text-[var(--vv-text-main)] drop-shadow-sm"
                           >
-                            <span className={isDone ? 'text-emerald-500' : 'text-amber-400 shrink-0 mt-0.5'}>
-                              {isDone ? '✓' : '•'}
+                            <span className="text-[var(--vv-warning)] shrink-0 mt-[2px] opacity-80">
+                              •
                             </span>
                             <span>
-                              {obj.description} ({count}/{obj.requiredCount})
+                              {obj.description} <span className="opacity-70">({count}/{obj.requiredCount})</span>
                             </span>
                           </div>
                         );
                       })}
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
+              {activeQuests.length > 3 && (
+                <div className="text-[10px] text-[var(--vv-text-muted)] font-bold italic ml-2">
+                  + {activeQuests.length - 3} more objectives
+                </div>
+              )}
             </div>
           ) : objectiveText ? (
-            <div className="voxel-panel-subtle px-3 py-1.5 max-w-xs border-amber-500/30 flex items-center gap-2 animate-fade-in pointer-events-auto">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <div className="text-[11px] text-zinc-200 truncate">
-                <strong className="text-amber-300">Objective:</strong> {objectiveText}
+            <div className="voxel-panel-subtle px-3 py-1.5 max-w-xs border-l-2 border-l-[var(--vv-warning)] flex items-center gap-2 animate-fade-in pointer-events-auto bg-[var(--vv-bg)]/60">
+              <Sparkles className="w-3.5 h-3.5 text-[var(--vv-warning)] shrink-0" />
+              <div className="text-[12px] text-white truncate drop-shadow-md">
+                {objectiveText}
               </div>
             </div>
           ) : null}
 
           {/* Boss Encounter Health Bar */}
           {activeBoss && (
-            <div className="w-84 mt-2 voxel-panel p-3 border-rose-500/40 shadow-[0_0_25px_rgba(244,63,94,0.3)] animate-fade-in pointer-events-auto">
+            <div className="w-84 mt-2 voxel-panel p-3 border-[var(--vv-danger)]/40 shadow-[0_0_25px_rgba(239,68,68,0.3)] animate-fade-in pointer-events-auto">
               <div className="flex justify-between items-center mb-1.5">
-                <span className="text-sm font-black uppercase tracking-wider text-rose-300 font-display">
+                <span className="text-sm font-black uppercase tracking-wider text-[var(--vv-danger)] drop-shadow-md">
                   {activeBoss.name}
                 </span>
                 <span className="text-[10px] font-mono text-rose-200 font-bold">
@@ -458,7 +476,7 @@ export const HUD: React.FC<HUDProps> = ({
               </div>
               <div className="h-3 bg-black/80 rounded-full border border-rose-500/30 overflow-hidden relative p-[1px]">
                 <div 
-                  className="h-full bg-gradient-to-r from-rose-600 via-rose-500 to-amber-400 rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(244,63,94,0.8)]"
+                  className="h-full bg-gradient-to-r from-rose-600 via-rose-500 to-[var(--vv-warning)] rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(239,68,68,0.8)]"
                   style={{ width: `${Math.max(0, Math.min(100, (activeBoss.health / activeBoss.maxHealth) * 100))}%` }}
                 />
               </div>
