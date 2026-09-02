@@ -11,6 +11,7 @@ import { BLOCK_DEFS } from '../world/BlockRegistry';
 import { ITEM_DEFS } from '../items/ItemRegistry';
 import { GameEventBus } from '../events/GameEventBus';
 import { NetworkSession } from '../network/NetworkSession';
+import { AetherNetworkManager } from '../engineering/AetherNetworkManager';
 
 export interface MiningState {
   active: boolean;
@@ -104,6 +105,7 @@ export class InteractionSystem implements GameSystem {
             hit.blockType
           );
           world.setBlock(hit.blockPos[0], hit.blockPos[1], hit.blockPos[2], BlockType.AIR);
+          AetherNetworkManager.getInstance().onBlockRemoved(hit.blockPos);
           NetworkSession.getInstance().sendBlockChange(hit.blockPos[0], hit.blockPos[1], hit.blockPos[2], hit.blockType, BlockType.AIR);
           GameEventBus.emit('BLOCK_MINED', { blockType: hit.blockType, pos: hit.blockPos });
           BlockPlacementEngine.handleBlockDestruction(hit.blockPos, hit.blockType, world);
@@ -276,6 +278,7 @@ export class InteractionSystem implements GameSystem {
               placeEval.placePos[2],
               placeEval.blockTypeToPlace
             );
+            AetherNetworkManager.getInstance().onBlockPlaced(placeEval.placePos, placeEval.blockTypeToPlace);
 
             this.runtime.viewmodel?.triggerSwing('place');
 

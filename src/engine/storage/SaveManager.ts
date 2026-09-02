@@ -226,6 +226,7 @@ export class SaveManager {
     const activatedMonoliths = Array.isArray(raw?.activatedMonoliths) ? raw.activatedMonoliths : [];
     const artifactState = raw?.artifactState || undefined;
     const dungeonExpedition = raw?.dungeonExpedition || undefined;
+    const aetherEngineering = typeof raw?.aetherEngineering === 'object' && raw.aetherEngineering ? raw.aetherEngineering : { machines: {} };
 
     return {
       version,
@@ -278,6 +279,7 @@ export class SaveManager {
       anomalyState,
       questRewardsClaimed,
       clearedDungeons,
+      aetherEngineering,
     };
   }
 

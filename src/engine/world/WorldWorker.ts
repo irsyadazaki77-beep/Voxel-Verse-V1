@@ -108,16 +108,19 @@ if (typeof self !== 'undefined') {
         meshData.solidNormals.buffer,
         meshData.solidColors.buffer,
         meshData.solidUvs.buffer,
+        meshData.solidTileRects.buffer,
         meshData.solidIndices.buffer,
         meshData.transPositions.buffer,
         meshData.transNormals.buffer,
         meshData.transColors.buffer,
         meshData.transUvs.buffer,
+        meshData.transTileRects.buffer,
         meshData.transIndices.buffer,
         meshData.waterPositions.buffer,
         meshData.waterNormals.buffer,
         meshData.waterColors.buffer,
         meshData.waterUvs.buffer,
+        meshData.waterTileRects.buffer,
         meshData.waterIndices.buffer
       ];
       

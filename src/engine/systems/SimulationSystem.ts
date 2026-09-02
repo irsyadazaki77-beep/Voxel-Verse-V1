@@ -4,6 +4,7 @@ import type { GameRuntime } from '../core/GameRuntime';
 import { BlockType } from '../../types';
 import { GameEventBus } from '../events/GameEventBus';
 import { QuestManager } from '../progression/QuestManager';
+import { AetherNetworkManager } from '../engineering/AetherNetworkManager';
 
 export class SimulationSystem implements GameSystem {
   public readonly name = 'SimulationSystem';
@@ -102,6 +103,9 @@ export class SimulationSystem implements GameSystem {
       });
       QuestManager.advanceObjective('visit', biome.name, 1);
     }
+
+    // 5. Update Aether Engineering Network
+    AetherNetworkManager.getInstance().update(dt);
   }
 
   public dispose(): void {

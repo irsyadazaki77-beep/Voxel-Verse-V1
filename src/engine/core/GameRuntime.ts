@@ -15,6 +15,7 @@ import { DiscoverySystem } from '../progression/DiscoverySystem';
 import { QuestManager, QUEST_REGISTRY } from '../progression/QuestManager';
 import { SettlementManager } from '../settlement/SettlementManager';
 import { AetherAnomalyManager } from '../anomaly/AetherAnomalyManager';
+import { AetherNetworkManager } from '../engineering/AetherNetworkManager';
 import { WorldEventManager } from '../events/WorldEventManager';
 import { MapManager } from '../map/MapManager';
 import { InventoryManager } from '../items/InventoryManager';
@@ -214,6 +215,10 @@ export class GameRuntime {
           this.openModal('crafting');
           return;
         }
+        if (AetherNetworkManager.getInstance().getNode(hit.blockPos)) {
+          this.openModal('engineering', hit.blockPos);
+          return;
+        }
       }
 
       // 3. Fallback: Open personal inventory
@@ -291,6 +296,11 @@ export class GameRuntime {
       activatedMonoliths: worldData?.activatedMonoliths,
     });
     DungeonExpeditionManager.initialize(worldData?.dungeonExpedition);
+
+    AetherNetworkManager.getInstance().setWorld(this.world);
+    if (worldData?.aetherEngineering?.machines) {
+      AetherNetworkManager.getInstance().deserialize(worldData.aetherEngineering.machines);
+    }
 
     let initialSpawn: [number, number, number] = [0, 80, 0];
 

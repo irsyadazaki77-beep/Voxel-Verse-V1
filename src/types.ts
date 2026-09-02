@@ -73,15 +73,37 @@ export enum BlockType {
   CROP_CARROT = 64,
   CROP_HERB = 65,
   ANVIL_SMITHING = 66,
+  AETHER_CORE = 77,
+  AETHER_CORE_ADVANCED = 78,
+  LEY_CONDUIT = 79,
+  CRYSTAL_SENSOR = 80,
+  LOGIC_RUNE = 81,
+  DELAY_RUNE = 82,
+  PULSE_RUNE = 83,
+  LATCH_RUNE = 84,
+  AETHER_ACTUATOR = 85,
+  ITEM_FUNNEL = 86,
+  AETHER_STORAGE_RELAY = 87,
+  LEY_HARVESTER = 88,
+  IRRIGATION_NODE = 89,
+  RESONANCE_FABRICATOR = 90,
+  AETHER_SENTINEL_TURRET = 91,
+  AETHER_SPIKE = 92,
+  SHOCK_RUNE = 93,
+  FLAME_VENT = 94,
+  AETHER_LAMP = 95,
+  AETHER_RAIL = 96,
+  AETHER_RAIL_SWITCH = 97,
+  LEY_GENERATOR = 98,
 }
 
 // Block Geometry Shapes supported by engine
-export type BlockShape = 'full' | 'slab' | 'stairs' | 'cross' | 'pillar' | 'torch' | 'fence' | 'door' | 'chest' | 'ladder' | 'fluid' | 'farmland' | 'crop';
+export type BlockShape = 'full' | 'slab' | 'stairs' | 'cross' | 'pillar' | 'torch' | 'fence' | 'door' | 'chest' | 'ladder' | 'fluid' | 'farmland' | 'crop' | 'conduit' | 'rail';
 
 export interface BlockDef {
   id: BlockType;
   name: string;
-  category: 'natural' | 'stone' | 'wood' | 'ore' | 'building' | 'functional' | 'foliage' | 'liquid' | 'magic' | 'farming';
+  category: 'natural' | 'stone' | 'wood' | 'ore' | 'building' | 'functional' | 'foliage' | 'liquid' | 'magic' | 'farming' | 'engineering';
   shape: BlockShape;
   hardness: number; // break time in seconds with hand
   requiredTool?: 'pickaxe' | 'axe' | 'shovel' | 'hoe' | 'none';
@@ -90,6 +112,7 @@ export interface BlockDef {
   solid?: boolean;
   climbable?: boolean;
   gravity?: boolean;
+  movableByActuator?: boolean; // false for bedrock, containers with items, portal cores, etc.
   hazard?: 'fire' | 'lava' | 'poison';
   interactive?: boolean;
   lightEmission?: number; // 0 to 15
@@ -399,6 +422,10 @@ export interface WorldSaveData {
   };
   questRewardsClaimed?: string[];
   clearedDungeons?: string[];
+  aetherEngineering?: {
+    machines?: Record<string, any>;
+    blueprints?: any[];
+  };
 }
 
 // ==========================================

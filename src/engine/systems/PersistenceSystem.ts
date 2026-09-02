@@ -16,6 +16,7 @@ import { TreasureMapSystem } from '../exploration/TreasureMapSystem';
 import { WorldStabilitySystem } from '../exploration/WorldStabilitySystem';
 import { DungeonExpeditionManager } from '../dungeon/DungeonExpeditionManager';
 import { AetherAnomalyManager } from '../anomaly/AetherAnomalyManager';
+import { AetherNetworkManager } from '../engineering/AetherNetworkManager';
 
 export class PersistenceSystem implements GameSystem {
   public readonly name = 'PersistenceSystem';
@@ -90,6 +91,9 @@ export class PersistenceSystem implements GameSystem {
       dungeonExpedition: DungeonExpeditionManager.saveState(),
       anomalyState: AetherAnomalyManager.serialize(),
       questRewardsClaimed: QuestManager.getClaimedRewards(),
+      aetherEngineering: {
+        machines: AetherNetworkManager.getInstance().serialize(),
+      },
     };
 
     SaveManager.saveWorld(saveData);

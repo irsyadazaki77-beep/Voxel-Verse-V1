@@ -60,11 +60,17 @@ export class VoxelWorld {
     
     this.solidMaterial.onBeforeCompile = (shader) => {
       shader.vertexShader = `
+        attribute vec2 localUv;
+        attribute vec4 tileRect;
+        varying vec2 vLocalUv;
+        varying vec4 vTileRect;
         varying vec3 vWorldPos;
         ${shader.vertexShader}
       `.replace(
         '#include <begin_vertex>',
         `
+        vLocalUv = localUv;
+        vTileRect = tileRect;
         #include <begin_vertex>
         vec4 wPos = modelMatrix * vec4(transformed, 1.0);
         vWorldPos = wPos.xyz;
@@ -72,9 +78,10 @@ export class VoxelWorld {
       );
       
       shader.fragmentShader = `
+        varying vec2 vLocalUv;
+        varying vec4 vTileRect;
         varying vec3 vWorldPos;
         
-        // Simple 3D hash function
         float hash(vec3 p) {
           p = fract(p * 0.3183099 + .1);
           p *= 17.0;
@@ -83,16 +90,24 @@ export class VoxelWorld {
         
         ${shader.fragmentShader}
       `.replace(
+        '#include <map_fragment>',
+        `
+        #ifdef USE_MAP
+          vec2 localWrapped = fract(vLocalUv);
+          vec2 atlasUv = mix(vTileRect.xy, vTileRect.zw, localWrapped);
+          vec4 sampledDiffuseColor = texture2D( map, atlasUv );
+          diffuseColor *= sampledDiffuseColor;
+        #endif
+        `
+      ).replace(
         '#include <color_fragment>',
         `
         #include <color_fragment>
         
-        // Block coordinate (snapped to grid)
         vec3 blockCoord = floor(vWorldPos + 0.5);
         float h = hash(blockCoord);
         
-        // Subtle deterministic variation (brightness and saturation)
-        float variation = (h - 0.5) * 0.06; // +/- 3%
+        float variation = (h - 0.5) * 0.06;
         diffuseColor.rgb *= (1.0 + variation);
         `
       );
@@ -112,17 +127,22 @@ export class VoxelWorld {
       shader.uniforms.uTime = { value: 0 };
       this.transMaterial.userData.shader = shader;
       shader.vertexShader = `
+        attribute vec2 localUv;
+        attribute vec4 tileRect;
+        varying vec2 vLocalUv;
+        varying vec4 vTileRect;
         uniform float uTime;
         varying vec3 vWorldPos;
         ${shader.vertexShader}
       `.replace(
         '#include <begin_vertex>',
         `
+        vLocalUv = localUv;
+        vTileRect = tileRect;
         #include <begin_vertex>
         vec4 wPos = modelMatrix * vec4(transformed, 1.0);
         vWorldPos = wPos.xyz;
         
-        // Vegetation wind 2.0: Different phase per world pos
         if (position.y > 0.3) {
           float phase = wPos.x * 2.5 + wPos.z * 2.5;
           float wind = sin(phase + uTime * 2.8) * 0.045 + sin(phase * 0.5 + uTime * 1.5) * 0.02;
@@ -133,6 +153,8 @@ export class VoxelWorld {
       );
       
       shader.fragmentShader = `
+        varying vec2 vLocalUv;
+        varying vec4 vTileRect;
         varying vec3 vWorldPos;
         
         float hash(vec3 p) {
@@ -143,6 +165,16 @@ export class VoxelWorld {
         
         ${shader.fragmentShader}
       `.replace(
+        '#include <map_fragment>',
+        `
+        #ifdef USE_MAP
+          vec2 localWrapped = fract(vLocalUv);
+          vec2 atlasUv = mix(vTileRect.xy, vTileRect.zw, localWrapped);
+          vec4 sampledDiffuseColor = texture2D( map, atlasUv );
+          diffuseColor *= sampledDiffuseColor;
+        #endif
+        `
+      ).replace(
         '#include <color_fragment>',
         `
         #include <color_fragment>
@@ -151,9 +183,7 @@ export class VoxelWorld {
         float variation = (h - 0.5) * 0.08;
         diffuseColor.rgb *= (1.0 + variation);
         
-        // Leaf translucency impression
         if (vWorldPos.y > 0.3) {
-          // Boost brightness slightly
           diffuseColor.rgb *= 1.1;
         }
         `
@@ -175,14 +205,19 @@ export class VoxelWorld {
       shader.uniforms.uTime = { value: 0 };
       this.waterMaterial.userData.shader = shader;
       shader.vertexShader = `
+        attribute vec2 localUv;
+        attribute vec4 tileRect;
+        varying vec2 vLocalUv;
+        varying vec4 vTileRect;
         uniform float uTime;
         varying vec3 vWorldPosition;
         ${shader.vertexShader}
       `.replace(
         '#include <begin_vertex>',
         `
+        vLocalUv = localUv;
+        vTileRect = tileRect;
         #include <begin_vertex>
-        // Water 4.0: Dual sinusoidal wave surface displacement
         float wave1 = sin(transformed.x * 2.2 + uTime * 2.5) * 0.04;
         float wave2 = cos(transformed.z * 2.2 + uTime * 2.0) * 0.04;
         float wave3 = sin((transformed.x + transformed.z) * 1.5 + uTime * 3.0) * 0.025;
@@ -194,29 +229,37 @@ export class VoxelWorld {
       );
       
       shader.fragmentShader = `
+        varying vec2 vLocalUv;
+        varying vec4 vTileRect;
         varying vec3 vWorldPosition;
         ${shader.fragmentShader}
       `.replace(
+        '#include <map_fragment>',
+        `
+        #ifdef USE_MAP
+          vec2 localWrapped = fract(vLocalUv);
+          vec2 atlasUv = mix(vTileRect.xy, vTileRect.zw, localWrapped);
+          vec4 sampledDiffuseColor = texture2D( map, atlasUv );
+          diffuseColor *= sampledDiffuseColor;
+        #endif
+        `
+      ).replace(
         '#include <color_fragment>',
         `
         #include <color_fragment>
         
-        // Water 4.0: Fresnel edge response and depth color
         vec3 viewDir = normalize(cameraPosition - vWorldPosition);
         float fresnel = dot(viewDir, normalize(vNormal));
         fresnel = clamp(1.0 - fresnel, 0.0, 1.0);
         fresnel = pow(fresnel, 3.0);
         
-        // Deep water color (turquoise) vs Shallow water color (cyan)
         vec3 deepColor = vec3(0.05, 0.45, 0.55);
         vec3 shallowColor = vec3(0.2, 0.8, 0.9);
         
-        // Simulate depth based on wave and angle
         vec3 waterColor = mix(shallowColor, deepColor, fresnel * 0.8 + 0.2);
         
-        // Apply tint
         diffuseColor.rgb = mix(diffuseColor.rgb, waterColor, 0.6 + fresnel * 0.4);
-        diffuseColor.a = 0.65 + fresnel * 0.35; // More opaque at grazing angles
+        diffuseColor.a = 0.65 + fresnel * 0.35;
         `
       );
     };

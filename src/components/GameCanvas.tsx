@@ -20,6 +20,7 @@ import { DebugMap } from './DebugMap';
 import { JournalModal } from './JournalModal';
 import { MapModal } from './MapModal';
 import { ContentDebugModal } from './ContentDebugModal';
+import { EngineeringModal } from './EngineeringModal';
 import { NetworkSession } from '../engine/network/NetworkSession';
 import { QuestManager } from '../engine/progression/QuestManager';
 import { SettingsManager } from '../engine/ui/SettingsManager';
@@ -36,7 +37,7 @@ interface GameCanvasProps {
   onExitToMenu: () => void;
 }
 
-export type ModalType = 'none' | 'inventory' | 'crafting' | 'furnace' | 'chest' | 'anvil' | 'dialogue' | 'pause' | 'death' | 'journal' | 'map' | 'contentDebug';
+export type ModalType = 'none' | 'inventory' | 'crafting' | 'furnace' | 'chest' | 'anvil' | 'dialogue' | 'pause' | 'death' | 'journal' | 'map' | 'contentDebug' | 'engineering';
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
   worldId,
@@ -72,6 +73,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [activeChestPos, setActiveChestPos] = useState<[number, number, number] | null>(null);
   const [activeFurnacePos, setActiveFurnacePos] = useState<[number, number, number] | null>(null);
   const [activeAnvilPos, setActiveAnvilPos] = useState<[number, number, number] | null>(null);
+  const [activeEngineeringPos, setActiveEngineeringPos] = useState<[number, number, number] | null>(null);
   const [activeDialogueEntity, setActiveDialogueEntity] = useState<EntityState | null>(null);
   const [activeObjective, setActiveObjective] = useState<string>('');
 
@@ -151,6 +153,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 setActiveFurnacePos(data);
               } else if (modalType === 'anvil') {
                 setActiveAnvilPos(data);
+              } else if (modalType === 'engineering') {
+                setActiveEngineeringPos(data);
               }
               setModal(modalType);
             },
@@ -455,6 +459,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           anvilPos={activeAnvilPos}
           playerInventory={inventoryState}
           setPlayerInventory={setInventoryState}
+          onClose={() => setModal('none')}
+        />
+      )}
+
+      {activeModal === 'engineering' && activeEngineeringPos && (
+        <EngineeringModal
+          pos={activeEngineeringPos}
           onClose={() => setModal('none')}
         />
       )}

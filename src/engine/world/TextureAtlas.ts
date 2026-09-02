@@ -4,12 +4,13 @@ import { BlockType } from '../../types';
 
 export class TextureAtlas {
   public static atlasTexture: THREE.CanvasTexture | null = null;
-  public static readonly ATLAS_COLS = 8;
-  public static readonly ATLAS_ROWS = 8;
+  public static readonly ATLAS_COLS = 16;
+  public static readonly ATLAS_ROWS = 16;
   public static readonly TILE_SIZE = 16;
 
-  // Tile index coordinates in atlas (column, row)
+  // Tile index coordinates in 16x16 atlas (column, row)
   public static readonly TILE_COORDS: Record<string, [number, number]> = {
+    // Row 0: Natural Terrain & Core Blocks
     grass_top: [0, 0],
     grass_side: [1, 0],
     dirt: [2, 0],
@@ -18,7 +19,16 @@ export class TextureAtlas {
     sand: [5, 0],
     gravel: [6, 0],
     clay: [7, 0],
+    snow: [8, 0],
+    snow_side: [9, 0],
+    ice: [10, 0],
+    obsidian: [11, 0],
+    basalt: [12, 0],
+    magma_rock: [13, 0],
+    moss_stone: [14, 0],
+    coral_block: [15, 0],
 
+    // Row 1: Wood, Logs & Foliage
     oak_log_side: [0, 1],
     oak_log_top: [1, 1],
     oak_leaves: [2, 1],
@@ -26,50 +36,86 @@ export class TextureAtlas {
     pine_log_top: [4, 1],
     pine_leaves: [5, 1],
     crystal_log_side: [6, 1],
-    crystal_leaves: [7, 1],
+    crystal_log_top: [7, 1],
+    crystal_leaves: [8, 1],
+    wood_planks: [9, 1],
+    stone_bricks: [10, 1],
+    stone_pillar_top: [11, 1],
+    stone_pillar_side: [12, 1],
+    glass: [13, 1],
+    bookshelf: [14, 1],
+    farmland: [15, 1],
 
-    wood_planks: [0, 2],
-    stone_bricks: [1, 2],
-    glass: [2, 2],
-    copper_ore: [3, 2],
-    iron_ore: [4, 2],
-    gold_ore: [5, 2],
-    mythril_ore: [6, 2],
-    aether_crystal_ore: [7, 2],
+    // Row 2: Ores & Minerals
+    copper_ore: [0, 2],
+    iron_ore: [1, 2],
+    gold_ore: [2, 2],
+    mythril_ore: [3, 2],
+    aether_crystal_ore: [4, 2],
+    coal_ore: [5, 2],
+    copper_block: [6, 2],
+    iron_block: [7, 2],
+    gold_block: [8, 2],
+    mythril_block: [9, 2],
+    ancient_rune: [10, 2],
+    water: [11, 2],
+    lava: [12, 2],
+    torch: [13, 2],
+    lantern: [14, 2],
+    glowstone: [15, 2],
 
-    coal_ore: [0, 3],
-    water: [1, 3],
-    lava: [2, 3],
-    torch: [3, 3],
-    lantern: [4, 3],
-    glowstone: [5, 3],
-    tall_grass: [6, 3],
-    blue_flower: [7, 3],
+    // Row 3: Vegetation, Flowers & Crops
+    tall_grass: [0, 3],
+    blue_flower: [1, 3],
+    red_flower: [2, 3],
+    sun_orchid: [3, 3],
+    mushroom: [4, 3],
+    wheat_stage0: [5, 3],
+    wheat_stage1: [6, 3],
+    wheat_stage2: [7, 3],
+    wheat_stage3: [8, 3],
+    crop_carrot: [9, 3],
+    crop_herb: [10, 3],
+    door_bottom: [11, 3],
+    door_top: [12, 3],
+    bed: [13, 3],
+    anvil: [14, 3],
+    farmland_moist: [15, 3],
 
-    red_flower: [0, 4],
-    sun_orchid: [1, 4],
-    mushroom: [2, 4],
-    snow: [3, 4],
-    snow_side: [4, 4],
-    ice: [5, 4],
-    obsidian: [6, 4],
-    basalt: [7, 4],
+    // Row 4: Containers & Utility Blocks
+    crafting_bench_top: [0, 4],
+    crafting_bench_side: [1, 4],
+    furnace_front: [2, 4],
+    furnace_side: [3, 4],
+    chest_top: [4, 4],
+    chest_side: [5, 4],
+    aether_core: [6, 4],
+    aether_core_advanced: [7, 4],
+    ley_conduit: [8, 4],
+    crystal_sensor: [9, 4],
+    logic_rune: [10, 4],
+    delay_rune: [11, 4],
+    pulse_rune: [12, 4],
+    latch_rune: [13, 4],
+    aether_actuator: [14, 4],
+    item_funnel: [15, 4],
 
-    magma_rock: [0, 5],
-    ancient_rune: [1, 5],
-    crafting_bench_top: [2, 5],
-    crafting_bench_side: [3, 5],
-    furnace_front: [4, 5],
-    furnace_side: [5, 5],
-    chest_top: [6, 5],
-    chest_side: [7, 5],
+    // Row 5: Engineering & Advanced Technology
+    aether_storage_relay: [0, 5],
+    ley_harvester: [1, 5],
+    irrigation_node: [2, 5],
+    resonance_fabricator: [3, 5],
+    aether_sentinel_turret: [4, 5],
+    aether_spike: [5, 5],
+    shock_rune: [6, 5],
+    flame_vent: [7, 5],
+    aether_lamp: [8, 5],
+    aether_rail: [9, 5],
+    aether_rail_switch: [10, 5],
+    ley_generator: [11, 5],
 
-    copper_block: [0, 6],
-    iron_block: [1, 6],
-    gold_block: [2, 6],
-    mythril_block: [3, 6],
-    moss_stone: [4, 6],
-    bookshelf: [5, 6],
+    // Row 15: Special System Fallback
+    missing_texture: [15, 15],
   };
 
   public static getAtlasTexture(): THREE.CanvasTexture {
@@ -450,6 +496,19 @@ export class TextureAtlas {
       ctx.fillRect(ox + 6, oy + 9, 4, 3);
     });
 
+    // 32. Missing Texture Checkerboard (15, 15)
+    drawTile(15, 15, (c, ox, oy) => {
+      fillBg(ox, oy, '#ff00ff');
+      ctx.fillStyle = '#000000';
+      for (let x = 0; x < 16; x += 4) {
+        for (let y = 0; y < 16; y += 4) {
+          if (((x / 4) + (y / 4)) % 2 === 0) {
+            ctx.fillRect(ox + x, oy + y, 4, 4);
+          }
+        }
+      }
+    });
+
     const texture = new THREE.CanvasTexture(canvas);
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
@@ -461,9 +520,15 @@ export class TextureAtlas {
     return texture;
   }
 
-  // Get UV rectangle coordinates [uMin, vMin, uMax, vMax] for a given face
+  // Get UV rectangle coordinates [uMin, vMin, uMax, vMax] for a given tile
   public static getUVs(tileName: string): [number, number, number, number] {
-    const coords = this.TILE_COORDS[tileName] || [3, 0]; // default stone
+    let coords = this.TILE_COORDS[tileName];
+    if (!coords) {
+      if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
+        console.warn(`[TextureAtlas] Unknown tileName '${tileName}', using missing_texture tile.`);
+      }
+      coords = this.TILE_COORDS['missing_texture'] || [15, 15];
+    }
     const tileW = 1.0 / this.ATLAS_COLS;
     const tileH = 1.0 / this.ATLAS_ROWS;
     // Half-texel padding inset to prevent neighbor tile bleeding
@@ -480,6 +545,8 @@ export class TextureAtlas {
   // Resolve tile name for a given block and face normal
   public static getTileForBlock(block: BlockType, face: 'top' | 'bottom' | 'side'): string {
     switch (block) {
+      case BlockType.AIR:
+        return 'missing_texture';
       case BlockType.GRASS:
         if (face === 'top') return 'grass_top';
         if (face === 'bottom') return 'dirt';
@@ -502,6 +569,17 @@ export class TextureAtlas {
         return 'gravel';
       case BlockType.CLAY:
         return 'clay';
+      case BlockType.OBSIDIAN:
+        return 'obsidian';
+      case BlockType.BASALT:
+        return 'basalt';
+      case BlockType.MAGMA_ROCK:
+        return 'magma_rock';
+      case BlockType.MOSS_STONE:
+        return 'moss_stone';
+      case BlockType.CORAL_BLOCK:
+        return 'coral_block';
+
       case BlockType.OAK_LOG:
         return face === 'side' ? 'oak_log_side' : 'oak_log_top';
       case BlockType.OAK_LEAVES:
@@ -511,20 +589,27 @@ export class TextureAtlas {
       case BlockType.PINE_LEAVES:
         return 'pine_leaves';
       case BlockType.CYAN_CRYSTAL_LOG:
-        return 'crystal_log_side';
+        return face === 'side' ? 'crystal_log_side' : 'crystal_log_top';
       case BlockType.CYAN_CRYSTAL_LEAVES:
         return 'crystal_leaves';
       case BlockType.WOOD_PLANKS:
       case BlockType.WOOD_STAIRS:
       case BlockType.WOOD_SLAB:
+      case BlockType.FENCE_WOOD:
         return 'wood_planks';
       case BlockType.STONE_BRICKS:
       case BlockType.STONE_STAIRS:
       case BlockType.STONE_SLAB:
-      case BlockType.STONE_PILLAR:
         return 'stone_bricks';
+      case BlockType.STONE_PILLAR:
+        return face === 'side' ? 'stone_pillar_side' : 'stone_pillar_top';
       case BlockType.GLASS:
         return 'glass';
+      case BlockType.BOOKSHELF:
+        return face === 'side' ? 'bookshelf' : 'wood_planks';
+      case BlockType.FARMLAND:
+        return face === 'top' ? 'farmland' : 'dirt';
+
       case BlockType.COPPER_ORE:
         return 'copper_ore';
       case BlockType.IRON_ORE:
@@ -537,40 +622,120 @@ export class TextureAtlas {
         return 'aether_crystal_ore';
       case BlockType.COAL_ORE:
         return 'coal_ore';
+      case BlockType.COPPER_BLOCK:
+        return 'copper_block';
+      case BlockType.IRON_BLOCK:
+        return 'iron_block';
+      case BlockType.GOLD_BLOCK:
+        return 'gold_block';
+      case BlockType.MYTHRIL_BLOCK:
+        return 'mythril_block';
+      case BlockType.ANCIENT_RUNE_STONE:
+        return 'ancient_rune';
       case BlockType.WATER:
         return 'water';
       case BlockType.LAVA:
         return 'lava';
+      case BlockType.TORCH:
+        return 'torch';
+      case BlockType.LANTERN:
+        return 'lantern';
       case BlockType.GLOWSTONE_CRYSTAL:
         return 'glowstone';
-      case BlockType.CRAFTING_BENCH:
-        if (face === 'top') return 'crafting_bench_top';
-        return 'crafting_bench_side';
-      case BlockType.FURNACE:
-        if (face === 'top' || face === 'bottom') return 'stone';
-        return 'furnace_front';
+
+      case BlockType.TALL_GRASS:
+        return 'tall_grass';
       case BlockType.BLUE_FLOWER:
         return 'blue_flower';
       case BlockType.RED_FLOWER:
         return 'red_flower';
-      case BlockType.TALL_GRASS:
-        return 'tall_grass';
+      case BlockType.SUN_ORCHID:
+        return 'sun_orchid';
+      case BlockType.LUMINESCENT_MUSHROOM:
+        return 'mushroom';
+      case BlockType.CROP_WHEAT_0:
+        return 'wheat_stage0';
+      case BlockType.CROP_WHEAT_1:
+        return 'wheat_stage1';
+      case BlockType.CROP_WHEAT_2:
+        return 'wheat_stage2';
+      case BlockType.CROP_WHEAT_3:
+        return 'wheat_stage3';
+      case BlockType.CROP_CARROT:
+        return 'crop_carrot';
+      case BlockType.CROP_HERB:
+        return 'crop_herb';
+      case BlockType.DOOR_BOTTOM:
+        return 'door_bottom';
+      case BlockType.DOOR_TOP:
+        return 'door_top';
+      case BlockType.BED_FOOT:
+      case BlockType.BED_HEAD:
+        return 'bed';
+      case BlockType.ANVIL_SMITHING:
+        return 'anvil';
+
+      case BlockType.CRAFTING_BENCH:
+        if (face === 'top') return 'crafting_bench_top';
+        if (face === 'bottom') return 'wood_planks';
+        return 'crafting_bench_side';
+      case BlockType.FURNACE:
+        if (face === 'top' || face === 'bottom') return 'stone';
+        return 'furnace_front';
       case BlockType.CHEST:
         if (face === 'top') return 'chest_top';
         return 'chest_side';
-      case BlockType.FARMLAND:
-        return 'dirt';
-      case BlockType.CROP_WHEAT_0:
-      case BlockType.CROP_WHEAT_1:
-      case BlockType.CROP_WHEAT_2:
-      case BlockType.CROP_WHEAT_3:
-      case BlockType.CROP_CARROT:
-      case BlockType.CROP_HERB:
-        return 'tall_grass';
-      case BlockType.ANVIL_SMITHING:
-        return 'iron_block';
+
+      case BlockType.AETHER_CORE:
+        return 'aether_core';
+      case BlockType.AETHER_CORE_ADVANCED:
+        return 'aether_core_advanced';
+      case BlockType.LEY_CONDUIT:
+        return 'ley_conduit';
+      case BlockType.CRYSTAL_SENSOR:
+        return 'crystal_sensor';
+      case BlockType.LOGIC_RUNE:
+        return 'logic_rune';
+      case BlockType.DELAY_RUNE:
+        return 'delay_rune';
+      case BlockType.PULSE_RUNE:
+        return 'pulse_rune';
+      case BlockType.LATCH_RUNE:
+        return 'latch_rune';
+      case BlockType.AETHER_ACTUATOR:
+        return 'aether_actuator';
+      case BlockType.ITEM_FUNNEL:
+        return 'item_funnel';
+      case BlockType.AETHER_STORAGE_RELAY:
+        return 'aether_storage_relay';
+      case BlockType.LEY_HARVESTER:
+        return 'ley_harvester';
+      case BlockType.IRRIGATION_NODE:
+        return 'irrigation_node';
+      case BlockType.RESONANCE_FABRICATOR:
+        return 'resonance_fabricator';
+      case BlockType.AETHER_SENTINEL_TURRET:
+        return 'aether_sentinel_turret';
+      case BlockType.AETHER_SPIKE:
+        return 'aether_spike';
+      case BlockType.SHOCK_RUNE:
+        return 'shock_rune';
+      case BlockType.FLAME_VENT:
+        return 'flame_vent';
+      case BlockType.AETHER_LAMP:
+        return 'aether_lamp';
+      case BlockType.AETHER_RAIL:
+        return 'aether_rail';
+      case BlockType.AETHER_RAIL_SWITCH:
+        return 'aether_rail_switch';
+      case BlockType.LEY_GENERATOR:
+        return 'ley_generator';
+
       default:
-        return 'stone';
+        if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
+          console.warn(`[TextureAtlas] Missing texture mapping for BlockType.${BlockType[block] || block}`);
+        }
+        return 'missing_texture';
     }
   }
 }

@@ -9,6 +9,7 @@ import { ARTIFACT_SYNERGIES } from '../artifacts/ArtifactSynergyManager';
 import { TreasureMapSystem } from '../exploration/TreasureMapSystem';
 import { INITIAL_BOUNTY_CONTRACTS } from '../exploration/BountyContractManager';
 import { BLOCK_DEFS } from '../world/BlockRegistry';
+import { TextureAtlas } from '../world/TextureAtlas';
 
 export interface ValidationSubResult {
   category: string;
@@ -524,7 +525,7 @@ export class RegistryValidator {
   }
 
   /**
-   * 8. Validate BLOCK_DEFS dropItems
+   * 8. Validate BLOCK_DEFS dropItems & TextureAtlas Mappings
    */
   public static validateBlocks(): ValidationSubResult {
     const errors: string[] = [];
@@ -532,13 +533,25 @@ export class RegistryValidator {
     const blockKeys = Object.keys(BLOCK_DEFS);
 
     blockKeys.forEach((bKey) => {
-      const bDef = BLOCK_DEFS[Number(bKey)];
+      const bId = Number(bKey);
+      const bDef = BLOCK_DEFS[bId];
       if (!bDef) return;
 
       if (bDef.dropItem) {
         if (!ITEM_DEFS[bDef.dropItem]) {
           errors.push(`Block '${bDef.name}' (id ${bDef.id}) references non-existent dropItem '${bDef.dropItem}'.`);
         }
+      }
+
+      // Check TextureAtlas mappings for all non-AIR blocks
+      if (bId !== 0) { // BlockType.AIR = 0
+        const faces: ('top' | 'bottom' | 'side')[] = ['top', 'bottom', 'side'];
+        faces.forEach((face) => {
+          const tile = TextureAtlas.getTileForBlock(bId, face);
+          if (tile === 'missing_texture' || !TextureAtlas.TILE_COORDS[tile]) {
+            errors.push(`Block '${bDef.name}' (id ${bId}) has invalid or missing texture tile '${tile}' for face '${face}'.`);
+          }
+        });
       }
     });
 
