@@ -24,6 +24,19 @@ export class SkyEnvironment {
   private currentShadowQuality: string = 'medium';
   private currentProfile: VisualProfile = EnvironmentAtmosphereEngine.getProfile('plains');
 
+  // Reusable Zero-GC scratch objects for hot-path per-frame updates
+  private static readonly _scratchLightDir = new THREE.Vector3();
+  private static readonly _scratchMoonDir = new THREE.Vector3();
+  private static readonly _scratchShadowTarget = new THREE.Vector3();
+  private static readonly _scratchSkyColor = new THREE.Color();
+  private static readonly _scratchFogColor = new THREE.Color();
+  private static readonly _scratchC1 = new THREE.Color();
+  private static readonly _scratchC2 = new THREE.Color();
+  private static readonly _scratchF1 = new THREE.Color();
+  private static readonly _scratchF2 = new THREE.Color();
+  private static readonly _scratchHorizonCol = new THREE.Color();
+  private static readonly _scratchTempCol = new THREE.Color();
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
 
@@ -228,8 +241,8 @@ export class SkyEnvironment {
     const texelSize = (bounds * 2.0) / mapSize;
 
     // Project player position onto light orientation and snap
-    const lightDir = new THREE.Vector3().subVectors(this.sunLight.position, playerPos).normalize();
-    const shadowTarget = playerPos.clone();
+    const lightDir = SkyEnvironment._scratchLightDir.subVectors(this.sunLight.position, playerPos).normalize();
+    const shadowTarget = SkyEnvironment._scratchShadowTarget.copy(playerPos);
     
     // Snap target coordinates in world space along orthogonal axes
     shadowTarget.x = Math.floor(shadowTarget.x / texelSize) * texelSize;
@@ -267,8 +280,8 @@ export class SkyEnvironment {
     this.skyDomeMesh.position.copy(playerPos);
 
     // Dynamic Atmosphere interpolation
-    let skyColor = new THREE.Color();
-    let fogColor = new THREE.Color();
+    const skyColor = SkyEnvironment._scratchSkyColor;
+    const fogColor = SkyEnvironment._scratchFogColor;
     let sunIntensity = profile.sunIntensity;
     let ambientIntensity = profile.ambientIntensity;
     let hemiIntensity = 0.48;
@@ -278,12 +291,12 @@ export class SkyEnvironment {
     if (this.timeOfDay >= 5.0 && this.timeOfDay < 7.5) {
       // Dawn / Sunrise
       const t = (this.timeOfDay - 5.0) / 2.5;
-      const c1 = new THREE.Color(...profile.skyColorSunset);
-      const c2 = new THREE.Color(...profile.skyColorDay);
+      const c1 = SkyEnvironment._scratchC1.setRGB(profile.skyColorSunset[0], profile.skyColorSunset[1], profile.skyColorSunset[2]);
+      const c2 = SkyEnvironment._scratchC2.setRGB(profile.skyColorDay[0], profile.skyColorDay[1], profile.skyColorDay[2]);
       skyColor.copy(c1).lerp(c2, t);
 
-      const f1 = new THREE.Color(...profile.fogColorSunset);
-      const f2 = new THREE.Color(...profile.fogColorDay);
+      const f1 = SkyEnvironment._scratchF1.setRGB(profile.fogColorSunset[0], profile.fogColorSunset[1], profile.fogColorSunset[2]);
+      const f2 = SkyEnvironment._scratchF2.setRGB(profile.fogColorDay[0], profile.fogColorDay[1], profile.fogColorDay[2]);
       fogColor.copy(f1).lerp(f2, t);
 
       sunIntensity = 0.46 * (1.0 - t) + profile.sunIntensity * t;
@@ -295,8 +308,8 @@ export class SkyEnvironment {
       this.hemiLight.groundColor.setHex(0x553322);
     } else if (this.timeOfDay >= 7.5 && this.timeOfDay < 16.5) {
       // Daytime
-      skyColor.setRGB(...profile.skyColorDay);
-      fogColor.setRGB(...profile.fogColorDay);
+      skyColor.setRGB(profile.skyColorDay[0], profile.skyColorDay[1], profile.skyColorDay[2]);
+      fogColor.setRGB(profile.fogColorDay[0], profile.fogColorDay[1], profile.fogColorDay[2]);
       sunIntensity = profile.sunIntensity;
       ambientIntensity = profile.ambientIntensity;
       hemiIntensity = 0.50;
@@ -307,12 +320,12 @@ export class SkyEnvironment {
     } else if (this.timeOfDay >= 16.5 && this.timeOfDay < 19.0) {
       // Golden Hour & Sunset
       const t = (this.timeOfDay - 16.5) / 2.5;
-      const c1 = new THREE.Color(...profile.skyColorDay);
-      const c2 = new THREE.Color(...profile.skyColorSunset);
+      const c1 = SkyEnvironment._scratchC1.setRGB(profile.skyColorDay[0], profile.skyColorDay[1], profile.skyColorDay[2]);
+      const c2 = SkyEnvironment._scratchC2.setRGB(profile.skyColorSunset[0], profile.skyColorSunset[1], profile.skyColorSunset[2]);
       skyColor.copy(c1).lerp(c2, t);
 
-      const f1 = new THREE.Color(...profile.fogColorDay);
-      const f2 = new THREE.Color(...profile.fogColorSunset);
+      const f1 = SkyEnvironment._scratchF1.setRGB(profile.fogColorDay[0], profile.fogColorDay[1], profile.fogColorDay[2]);
+      const f2 = SkyEnvironment._scratchF2.setRGB(profile.fogColorSunset[0], profile.fogColorSunset[1], profile.fogColorSunset[2]);
       fogColor.copy(f1).lerp(f2, t);
 
       sunIntensity = profile.sunIntensity * (1.0 - t * 0.65);
@@ -324,8 +337,8 @@ export class SkyEnvironment {
       this.hemiLight.groundColor.setHex(0x281c34);
     } else {
       // Starry Night
-      skyColor.setRGB(...profile.skyColorNight);
-      fogColor.setRGB(...profile.fogColorNight);
+      skyColor.setRGB(profile.skyColorNight[0], profile.skyColorNight[1], profile.skyColorNight[2]);
+      fogColor.setRGB(profile.fogColorNight[0], profile.fogColorNight[1], profile.fogColorNight[2]);
       
       // Target: Balanced, moody, atmospheric & readable moonlight
       sunIntensity = 0.46; // Clear Moonlight (Directional shaping & silhouette)
@@ -354,14 +367,14 @@ export class SkyEnvironment {
       if (currentWeather.type === 'rain' || currentWeather.type === 'snow') {
         sunIntensity *= (1.0 - weatherIntensity * 0.35);
         ambientIntensity *= (1.0 + weatherIntensity * 0.15); // diffuse scattered bounce
-        skyColor.lerp(new THREE.Color(0x283850), weatherIntensity * 0.5);
-        fogColor.lerp(new THREE.Color(0x30425c), weatherIntensity * 0.6);
+        skyColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x283850), weatherIntensity * 0.5);
+        fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x30425c), weatherIntensity * 0.6);
       } else if (currentWeather.type === 'storm') {
         sunIntensity *= (1.0 - weatherIntensity * 0.6);
         ambientIntensity = Math.max(0.24, ambientIntensity * (1.0 - weatherIntensity * 0.25));
         hemiIntensity = Math.max(0.22, hemiIntensity * (1.0 - weatherIntensity * 0.25));
-        skyColor.lerp(new THREE.Color(0x161d2c), weatherIntensity * 0.75);
-        fogColor.lerp(new THREE.Color(0x1e2738), weatherIntensity * 0.80);
+        skyColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x161d2c), weatherIntensity * 0.75);
+        fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x1e2738), weatherIntensity * 0.80);
       }
     }
 
@@ -371,15 +384,14 @@ export class SkyEnvironment {
       ambientIntensity = THREE.MathUtils.lerp(ambientIntensity, 0.10, caveFactor);
       hemiIntensity = THREE.MathUtils.lerp(hemiIntensity, 0.06, caveFactor);
       sunIntensity = THREE.MathUtils.lerp(sunIntensity, 0.02, caveFactor);
-      fogColor.lerp(new THREE.Color(0x05070d), caveFactor);
+      fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x05070d), caveFactor);
     }
 
     // Blend with Aether Anomaly violet profile if active
     const anomalyIntensity = (AetherAnomalyManager && AetherAnomalyManager.activeIntensity) ? AetherAnomalyManager.activeIntensity : 0;
     if (anomalyIntensity > 0) {
-      const anomalyViolet = new THREE.Color(0x3e185e); // Beautiful violet/indigo tone
-      skyColor.lerp(anomalyViolet, anomalyIntensity);
-      fogColor.lerp(new THREE.Color(0x180829), anomalyIntensity);
+      skyColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x3e185e), anomalyIntensity);
+      fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x180829), anomalyIntensity);
       
       // Drains daylight intensity and increases dark atmospheric light
       sunIntensity *= (1 - anomalyIntensity * 0.65);
@@ -389,10 +401,8 @@ export class SkyEnvironment {
 
     // Water 3.0: Underwater Atmosphere Override when player eyes are submerged
     if (isEyesInWater) {
-      const underwaterAqua = new THREE.Color(0x0b4f6c);
-      const underwaterSky = new THREE.Color(0x073347);
-      skyColor.copy(underwaterSky);
-      fogColor.copy(underwaterAqua);
+      skyColor.setHex(0x073347);
+      fogColor.setHex(0x0b4f6c);
       sunIntensity *= 0.35;
       ambientIntensity = 0.55;
       hemiIntensity = 0.35;
@@ -407,13 +417,13 @@ export class SkyEnvironment {
       skyMat.uniforms.bottomColor.value.copy(fogColor); // use fogColor for horizon to blend seamlessly
 
       // Horizon band color: slightly brighter desaturated cyan-blue for silhouette readability
-      const horizonCol = fogColor.clone().multiplyScalar(1.25);
+      const horizonCol = SkyEnvironment._scratchHorizonCol.copy(fogColor).multiplyScalar(1.25);
       horizonCol.r = Math.min(1.0, horizonCol.r * 0.95 + 0.02);
       horizonCol.g = Math.min(1.0, horizonCol.g * 1.05 + 0.04);
       horizonCol.b = Math.min(1.0, horizonCol.b * 1.15 + 0.08);
       skyMat.uniforms.horizonColor.value.copy(horizonCol);
 
-      const moonDir = new THREE.Vector3().subVectors(this.moonMesh.position, playerPos).normalize();
+      const moonDir = SkyEnvironment._scratchMoonDir.subVectors(this.moonMesh.position, playerPos).normalize();
       skyMat.uniforms.moonDirection.value.copy(moonDir);
 
       const nightFactor = this.isNight ? 1.0 : (this.timeOfDay > 17.0 && this.timeOfDay <= 18.8 ? (this.timeOfDay - 17.0) / 1.8 : (this.timeOfDay >= 4.5 && this.timeOfDay < 6.0 ? (6.0 - this.timeOfDay) / 1.5 : 0.0));
