@@ -39,6 +39,10 @@ export interface TelemetryData {
     bottleneck?: 'CPU' | 'GPU' | 'BALANCED';
     activeEntities?: number;
     activeParticles?: number;
+    sunIntensity?: number;
+    ambientIntensity?: number;
+    hemiIntensity?: number;
+    exposure?: number;
   };
 }
 

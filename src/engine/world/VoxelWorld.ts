@@ -194,9 +194,9 @@ export class VoxelWorld {
       map: atlasTex,
       vertexColors: true,
       transparent: true,
-      opacity: 0.85,
-      roughness: 0.05,
-      metalness: 0.6,
+      opacity: 1.0, // Control opacity in shader
+      roughness: 0.15, // Softer highlight
+      metalness: 0.75, // Good reflection
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -218,9 +218,10 @@ export class VoxelWorld {
         vLocalUv = localUv;
         vTileRect = tileRect;
         #include <begin_vertex>
-        float wave1 = sin(transformed.x * 2.2 + uTime * 2.5) * 0.04;
-        float wave2 = cos(transformed.z * 2.2 + uTime * 2.0) * 0.04;
-        float wave3 = sin((transformed.x + transformed.z) * 1.5 + uTime * 3.0) * 0.025;
+        // Subtle geometric waves to avoid diagonal seam artifacts
+        float wave1 = sin(transformed.x * 2.2 + uTime * 2.5) * 0.02;
+        float wave2 = cos(transformed.z * 2.2 + uTime * 2.0) * 0.02;
+        float wave3 = sin((transformed.x + transformed.z) * 1.5 + uTime * 3.0) * 0.015;
         transformed.y += wave1 + wave2 + wave3;
         
         vec4 wPos = modelMatrix * vec4(transformed, 1.0);
@@ -232,6 +233,7 @@ export class VoxelWorld {
         varying vec2 vLocalUv;
         varying vec4 vTileRect;
         varying vec3 vWorldPosition;
+        uniform float uTime;
         ${shader.fragmentShader}
       `.replace(
         '#include <map_fragment>',
@@ -244,26 +246,55 @@ export class VoxelWorld {
         #endif
         `
       ).replace(
+        '#include <normal_fragment_begin>',
+        `
+        #include <normal_fragment_begin>
+        
+        // Normal perturbation (micro ripples) to break up specular highlights
+        float rippleTime = uTime * 1.5;
+        vec3 p = vWorldPosition * 1.5;
+        float dx = sin(p.z * 1.2 + rippleTime) * 0.04 + cos(p.y * 2.0 - rippleTime) * 0.02;
+        float dy = cos(p.x * 1.2 + rippleTime) * 0.04;
+        float dz = sin(p.x * 1.2 - rippleTime) * 0.04;
+        vec3 perturbWorld = vec3(dx, dy, dz);
+        vec3 perturbView = (viewMatrix * vec4(perturbWorld, 0.0)).xyz;
+        normal = normalize(normal + perturbView);
+        `
+      ).replace(
         '#include <color_fragment>',
         `
         #include <color_fragment>
         
-        vec3 viewDir = normalize(cameraPosition - vWorldPosition);
-        vec3 n = normalize(vNormal);
-        float fresnel = dot(viewDir, n);
+        vec3 vDir = normalize(vViewPosition); // towards camera in view space
+        float fresnel = max(0.0, dot(vDir, normal));
         fresnel = clamp(1.0 - fresnel, 0.0, 1.0);
-        float fCurve = pow(fresnel, 2.6);
+        float fCurve = pow(fresnel, 3.0);
         
-        vec3 deepColor = vec3(0.06, 0.38, 0.58);
-        vec3 shallowColor = vec3(0.22, 0.72, 0.88);
+        // Depth from vertex color (R channel)
+        float depthVal = vColor.r;
+        
+        vec3 deepColor = vec3(0.01, 0.22, 0.45);
+        vec3 shallowColor = vec3(0.18, 0.68, 0.78);
         vec3 nightSkySheen = vec3(0.18, 0.28, 0.45);
         
-        vec3 waterColor = mix(shallowColor, deepColor, fCurve * 0.7 + 0.3);
-        // Nocturnal sky sheen via fresnel grazing angle: prevents water from appearing as a black void
-        waterColor = mix(waterColor, nightSkySheen, fCurve * 0.40);
+        // Depth-based color blending
+        vec3 waterColor = mix(shallowColor, deepColor, smoothstep(0.1, 0.8, depthVal));
         
-        diffuseColor.rgb = mix(diffuseColor.rgb, waterColor, 0.65 + fCurve * 0.35);
-        diffuseColor.a = 0.68 + fCurve * 0.32;
+        // Subtle shoreline foam (G channel)
+        float shoreVal = vColor.g;
+        float foamLines = sin(vWorldPosition.x * 5.0 + uTime * 2.0) * sin(vWorldPosition.z * 5.0 - uTime * 2.5);
+        float foam = shoreVal * smoothstep(0.4, 0.9, foamLines * 0.5 + 0.5) * 0.35;
+        waterColor = mix(waterColor, vec3(0.9, 0.95, 1.0), foam);
+        
+        // Sky sheen for grazing angles
+        waterColor = mix(waterColor, nightSkySheen, fCurve * 0.4);
+        
+        diffuseColor.rgb = mix(diffuseColor.rgb, waterColor, 0.8);
+        
+        // Depth and fresnel based transparency
+        float baseAlpha = mix(0.4, 0.95, depthVal); // Shallow is more transparent
+        diffuseColor.a = baseAlpha + fCurve * (1.0 - baseAlpha);
+        diffuseColor.a = clamp(diffuseColor.a, 0.0, 1.0);
         `
       );
     };

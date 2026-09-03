@@ -29,17 +29,17 @@ export const BIOME_VISUAL_PROFILES: Record<string, VisualProfile> = {
   plains: {
     id: 'plains',
     name: 'Sunswept Plains',
-    skyColorDay: [0.45, 0.72, 0.98],
-    skyColorSunset: [0.95, 0.58, 0.40],
-    skyColorNight: [0.06, 0.09, 0.20],
-    fogColorDay: [0.75, 0.88, 0.98],
-    fogColorSunset: [0.92, 0.65, 0.55],
-    fogColorNight: [0.09, 0.12, 0.24],
-    fogDensity: 0.007,
+    skyColorDay: [0.42, 0.68, 0.95],
+    skyColorSunset: [0.95, 0.55, 0.38],
+    skyColorNight: [0.06, 0.08, 0.18],
+    fogColorDay: [0.68, 0.82, 0.92],
+    fogColorSunset: [0.85, 0.60, 0.50],
+    fogColorNight: [0.08, 0.10, 0.22],
+    fogDensity: 0.0065,
     sunColor: 0xfff6dd,
     sunIntensity: 1.25,
     ambientColor: 0xddeeff,
-    ambientIntensity: 0.40,
+    ambientIntensity: 0.38,
     hemiColor: 0x87ceeb,
     hemiGroundColor: 0x554433,
     waterColor: [0.18, 0.55, 0.88],
@@ -52,17 +52,17 @@ export const BIOME_VISUAL_PROFILES: Record<string, VisualProfile> = {
   forest: {
     id: 'forest',
     name: 'Verdant Forest',
-    skyColorDay: [0.38, 0.68, 0.95],
-    skyColorSunset: [0.90, 0.52, 0.35],
-    skyColorNight: [0.05, 0.08, 0.18],
-    fogColorDay: [0.65, 0.85, 0.82],
-    fogColorSunset: [0.88, 0.60, 0.50],
-    fogColorNight: [0.08, 0.12, 0.20],
-    fogDensity: 0.0085,
+    skyColorDay: [0.35, 0.65, 0.92],
+    skyColorSunset: [0.88, 0.50, 0.32],
+    skyColorNight: [0.05, 0.07, 0.16],
+    fogColorDay: [0.60, 0.78, 0.75],
+    fogColorSunset: [0.82, 0.55, 0.45],
+    fogColorNight: [0.07, 0.10, 0.18],
+    fogDensity: 0.008,
     sunColor: 0xffeedd,
     sunIntensity: 1.20,
     ambientColor: 0xd0e8d0,
-    ambientIntensity: 0.42,
+    ambientIntensity: 0.40,
     hemiColor: 0x66bb88,
     hemiGroundColor: 0x3d3022,
     waterColor: [0.15, 0.50, 0.82],
@@ -75,17 +75,17 @@ export const BIOME_VISUAL_PROFILES: Record<string, VisualProfile> = {
   snow_mountain: {
     id: 'snow_mountain',
     name: 'Glacial Peak',
-    skyColorDay: [0.52, 0.74, 0.98],
-    skyColorSunset: [0.88, 0.62, 0.70],
-    skyColorNight: [0.09, 0.13, 0.28],
-    fogColorDay: [0.82, 0.90, 0.98],
-    fogColorSunset: [0.85, 0.70, 0.78],
-    fogColorNight: [0.13, 0.17, 0.32],
-    fogDensity: 0.010,
+    skyColorDay: [0.48, 0.70, 0.95],
+    skyColorSunset: [0.85, 0.58, 0.65],
+    skyColorNight: [0.08, 0.12, 0.25],
+    fogColorDay: [0.75, 0.82, 0.90],
+    fogColorSunset: [0.80, 0.65, 0.72],
+    fogColorNight: [0.12, 0.15, 0.30],
+    fogDensity: 0.0095,
     sunColor: 0xf4f8ff,
-    sunIntensity: 1.35,
+    sunIntensity: 1.30,
     ambientColor: 0xe0efff,
-    ambientIntensity: 0.45,
+    ambientIntensity: 0.42,
     hemiColor: 0x99ccff,
     hemiGroundColor: 0x445566,
     waterColor: [0.25, 0.65, 0.95],
@@ -98,17 +98,17 @@ export const BIOME_VISUAL_PROFILES: Record<string, VisualProfile> = {
   desert: {
     id: 'desert',
     name: 'Arid Dunes',
-    skyColorDay: [0.55, 0.76, 0.98],
-    skyColorSunset: [0.98, 0.50, 0.25],
-    skyColorNight: [0.07, 0.08, 0.19],
-    fogColorDay: [0.92, 0.85, 0.72],
-    fogColorSunset: [0.95, 0.60, 0.40],
-    fogColorNight: [0.10, 0.11, 0.22],
-    fogDensity: 0.0075,
+    skyColorDay: [0.52, 0.72, 0.95],
+    skyColorSunset: [0.95, 0.48, 0.22],
+    skyColorNight: [0.07, 0.08, 0.18],
+    fogColorDay: [0.85, 0.78, 0.65],
+    fogColorSunset: [0.90, 0.55, 0.35],
+    fogColorNight: [0.09, 0.10, 0.20],
+    fogDensity: 0.007,
     sunColor: 0xfffae0,
-    sunIntensity: 1.45,
+    sunIntensity: 1.40,
     ambientColor: 0xffeedd,
-    ambientIntensity: 0.45,
+    ambientIntensity: 0.42,
     hemiColor: 0xffd999,
     hemiGroundColor: 0x664422,
     waterColor: [0.15, 0.58, 0.85],
@@ -121,17 +121,17 @@ export const BIOME_VISUAL_PROFILES: Record<string, VisualProfile> = {
   crystal: {
     id: 'crystal',
     name: 'Luminescent Valley',
-    skyColorDay: [0.25, 0.65, 0.90],
-    skyColorSunset: [0.60, 0.35, 0.85],
-    skyColorNight: [0.08, 0.12, 0.26],
-    fogColorDay: [0.45, 0.80, 0.92],
-    fogColorSunset: [0.65, 0.45, 0.85],
-    fogColorNight: [0.12, 0.16, 0.34],
-    fogDensity: 0.009,
+    skyColorDay: [0.22, 0.62, 0.88],
+    skyColorSunset: [0.58, 0.32, 0.82],
+    skyColorNight: [0.08, 0.11, 0.24],
+    fogColorDay: [0.40, 0.75, 0.88],
+    fogColorSunset: [0.62, 0.42, 0.82],
+    fogColorNight: [0.11, 0.15, 0.32],
+    fogDensity: 0.0085,
     sunColor: 0xd5f0ff,
     sunIntensity: 1.15,
     ambientColor: 0x88e0ff,
-    ambientIntensity: 0.50,
+    ambientIntensity: 0.48,
     hemiColor: 0x38bdf8,
     hemiGroundColor: 0x223355,
     waterColor: [0.10, 0.75, 0.95],
@@ -144,17 +144,17 @@ export const BIOME_VISUAL_PROFILES: Record<string, VisualProfile> = {
   volcanic: {
     id: 'volcanic',
     name: 'Infernal Crags',
-    skyColorDay: [0.40, 0.25, 0.25],
-    skyColorSunset: [0.75, 0.20, 0.15],
-    skyColorNight: [0.12, 0.06, 0.09],
-    fogColorDay: [0.55, 0.30, 0.25],
-    fogColorSunset: [0.70, 0.25, 0.18],
-    fogColorNight: [0.18, 0.09, 0.10],
-    fogDensity: 0.012,
+    skyColorDay: [0.38, 0.22, 0.22],
+    skyColorSunset: [0.72, 0.18, 0.12],
+    skyColorNight: [0.11, 0.05, 0.08],
+    fogColorDay: [0.50, 0.28, 0.22],
+    fogColorSunset: [0.65, 0.22, 0.16],
+    fogColorNight: [0.16, 0.08, 0.09],
+    fogDensity: 0.011,
     sunColor: 0xff8855,
     sunIntensity: 1.10,
     ambientColor: 0xff6644,
-    ambientIntensity: 0.42,
+    ambientIntensity: 0.40,
     hemiColor: 0xee5533,
     hemiGroundColor: 0x2b1108,
     waterColor: [0.85, 0.25, 0.10],
@@ -167,17 +167,17 @@ export const BIOME_VISUAL_PROFILES: Record<string, VisualProfile> = {
   corrupted: {
     id: 'corrupted',
     name: 'Void Anomaly',
-    skyColorDay: [0.22, 0.15, 0.35],
-    skyColorSunset: [0.45, 0.15, 0.50],
-    skyColorNight: [0.08, 0.05, 0.15],
-    fogColorDay: [0.38, 0.25, 0.48],
-    fogColorSunset: [0.50, 0.22, 0.55],
-    fogColorNight: [0.12, 0.07, 0.20],
-    fogDensity: 0.011,
+    skyColorDay: [0.20, 0.12, 0.32],
+    skyColorSunset: [0.42, 0.12, 0.48],
+    skyColorNight: [0.07, 0.04, 0.14],
+    fogColorDay: [0.35, 0.22, 0.45],
+    fogColorSunset: [0.48, 0.20, 0.52],
+    fogColorNight: [0.11, 0.06, 0.18],
+    fogDensity: 0.010,
     sunColor: 0xcc88ff,
     sunIntensity: 1.05,
     ambientColor: 0xaa55ff,
-    ambientIntensity: 0.40,
+    ambientIntensity: 0.38,
     hemiColor: 0x9944dd,
     hemiGroundColor: 0x1f0f30,
     waterColor: [0.45, 0.12, 0.65],
@@ -187,28 +187,55 @@ export const BIOME_VISUAL_PROFILES: Record<string, VisualProfile> = {
     particleDensity: 0.6,
     emissiveBoost: 1.6,
   },
+  ocean: {
+    id: 'ocean',
+    name: 'Deep Abyssal Ocean',
+    skyColorDay: [0.38, 0.62, 0.92],
+    skyColorSunset: [0.85, 0.52, 0.35],
+    skyColorNight: [0.04, 0.06, 0.15],
+    fogColorDay: [0.52, 0.72, 0.88],
+    fogColorSunset: [0.78, 0.58, 0.48],
+    fogColorNight: [0.06, 0.09, 0.18],
+    fogDensity: 0.0075,
+    sunColor: 0xfff8ee,
+    sunIntensity: 1.20,
+    ambientColor: 0xccddff,
+    ambientIntensity: 0.35,
+    hemiColor: 0x4488ff,
+    hemiGroundColor: 0x112233,
+    waterColor: [0.05, 0.25, 0.65],
+    waterOpacity: 0.95,
+    windSpeed: 3.5,
+    particleType: 'spores',
+    particleDensity: 0.2,
+    emissiveBoost: 1.0,
+  },
 };
 
 export class EnvironmentAtmosphereEngine {
   public static getProfile(biomeId?: string): VisualProfile {
     if (!biomeId) return BIOME_VISUAL_PROFILES.plains;
     const normalized = biomeId.toLowerCase();
-    if (normalized.includes('snow') || normalized.includes('peak') || normalized.includes('ice') || normalized.includes('tundra') || normalized.includes('taiga')) {
+    
+    if (normalized.includes('ocean') || normalized.includes('abyss') || normalized.includes('deep')) {
+      return BIOME_VISUAL_PROFILES.ocean;
+    }
+    if (normalized.includes('snow') || normalized.includes('peak') || normalized.includes('ice') || normalized.includes('tundra') || normalized.includes('taiga') || normalized.includes('alpine') || normalized.includes('glacial')) {
       return BIOME_VISUAL_PROFILES.snow_mountain;
     }
-    if (normalized.includes('forest') || normalized.includes('grove') || normalized.includes('wood') || normalized.includes('canopy')) {
+    if (normalized.includes('forest') || normalized.includes('grove') || normalized.includes('wood') || normalized.includes('canopy') || normalized.includes('jungle') || normalized.includes('swamp') || normalized.includes('meadow')) {
       return BIOME_VISUAL_PROFILES.forest;
     }
-    if (normalized.includes('desert') || normalized.includes('dune') || normalized.includes('sand') || normalized.includes('mesa') || normalized.includes('badlands')) {
+    if (normalized.includes('desert') || normalized.includes('dune') || normalized.includes('sand') || normalized.includes('mesa') || normalized.includes('badlands') || normalized.includes('savanna')) {
       return BIOME_VISUAL_PROFILES.desert;
     }
-    if (normalized.includes('crystal') || normalized.includes('aether') || normalized.includes('luminescent') || normalized.includes('prism')) {
+    if (normalized.includes('crystal') || normalized.includes('aether') || normalized.includes('luminescent') || normalized.includes('prism') || normalized.includes('fungal')) {
       return BIOME_VISUAL_PROFILES.crystal;
     }
     if (normalized.includes('volcan') || normalized.includes('lava') || normalized.includes('infernal') || normalized.includes('crag') || normalized.includes('magma')) {
       return BIOME_VISUAL_PROFILES.volcanic;
     }
-    if (normalized.includes('corrupt') || normalized.includes('void') || normalized.includes('dark') || normalized.includes('abyss')) {
+    if (normalized.includes('corrupt') || normalized.includes('void') || normalized.includes('dark')) {
       return BIOME_VISUAL_PROFILES.corrupted;
     }
     return BIOME_VISUAL_PROFILES.plains;

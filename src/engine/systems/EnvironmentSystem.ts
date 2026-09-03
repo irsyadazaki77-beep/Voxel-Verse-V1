@@ -20,6 +20,7 @@ export class EnvironmentSystem implements GameSystem {
     world.update(deltaTime, camera);
 
     const biome = world.biomeManager.getBiome(player.position.x, player.position.z);
+    // 2. Sync environmental states (Lightning, Biome, Weather)
     sky.update(deltaTime, player.position, biome, player.isEyesInWater, weather ? weather.weather : null);
 
     // Dynamic Weather updates
@@ -27,12 +28,12 @@ export class EnvironmentSystem implements GameSystem {
       weather.update(deltaTime, player.position, (biome?.temperature ?? 0) < 0);
       
       // Lightning strike temporary high-intensity illumination
+      sky.lightningFlashActive = weather.isLightningFlash;
       if (weather.isLightningFlash) {
-        sky.sunLight.intensity = 3.6;
         sky.sunLight.color.setHex(0xebf3ff);
-        sky.ambientLight.intensity = 1.35;
-        sky.hemiLight.intensity = 1.10;
       }
+    } else {
+      sky.lightningFlashActive = false;
     }
 
     // Dynamic Tone Mapping Exposure & Lightweight Eye Adaptation
@@ -43,20 +44,20 @@ export class EnvironmentSystem implements GameSystem {
       const isNight = sky.timeOfDay < 5.0 || sky.timeOfDay >= 19.0;
 
       if (isDay) {
-        targetExposure = 1.05; // Bright clear day
+        targetExposure = 1.0; // Standard day
       } else if (isSunset) {
-        targetExposure = 1.10; // Golden hour (warm bloom)
+        targetExposure = 1.02; // Golden hour (warm bloom)
       } else if (isNight) {
         // Balanced night exposure split by weather condition
         const weatherType = weather?.weather?.type ?? 'clear';
         const weatherInt = weather?.weather?.intensity ?? 0;
         
         if (weatherType === 'storm') {
-          targetExposure = 0.88 + (1.0 - weatherInt) * 0.04; // Storm night: moody but never pitch black
+          targetExposure = 0.85 + (1.0 - weatherInt) * 0.05; // Storm night
         } else if (weatherType === 'rain' || weatherType === 'snow') {
-          targetExposure = 0.94; // Overcast rainy/snowy night
+          targetExposure = 0.90; // Overcast
         } else {
-          targetExposure = 1.02; // Crisp, readable clear starry night
+          targetExposure = 0.98; // Clear starry night
         }
 
         // Apply player night brightness setting (default: 1.0, range 0.8 .. 1.2)
@@ -86,9 +87,9 @@ export class EnvironmentSystem implements GameSystem {
 
       targetExposure += this.eyeAdaptation;
 
-      // Flash exposure boost during lightning strikes
+      // Flash exposure boost during lightning strikes (bounded transient)
       if (weather?.isLightningFlash) {
-        targetExposure += 0.35;
+        targetExposure += 0.22;
       }
 
       // Smooth lerp exposure to target

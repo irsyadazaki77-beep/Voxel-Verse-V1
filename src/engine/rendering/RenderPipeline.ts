@@ -67,23 +67,20 @@ const CinematicPostShader = {
         
         vec3 neighbors = (n + s + e + w) * 0.25;
         vec3 diff = c - neighbors;
-        c = clamp(c + diff * uSharpenStrength, 0.0, 1.0);
+        c = c + diff * uSharpenStrength;
       }
-
-      // Exposure adjustment
-      c *= uExposure;
 
       // Underwater distortion & aquatic tint override
       if (uUnderwater > 0.01) {
         vec2 distortedUv = vUv + vec2(sin(vUv.y * 20.0 + uTime * 3.0) * 0.002, cos(vUv.x * 20.0 + uTime * 2.5) * 0.002);
-        c = texture2D(tDiffuse, distortedUv).rgb * uExposure;
+        c = texture2D(tDiffuse, distortedUv).rgb;
         vec3 aquaTint = vec3(0.15, 0.70, 0.85);
         c = mix(c, c * aquaTint * 1.5, uUnderwater * 0.45);
       }
 
-      // S-curve Contrast (Toe-protected to preserve shadow visibility and prevent black crush)
+      // S-curve Contrast (Toe-protected to preserve shadow visibility)
       vec3 contrasted = (c - 0.5) * uContrast + 0.5;
-      c = max(contrasted, c * 0.45);
+      c = max(contrasted, c * 0.42);
 
       // Saturation
       float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -170,9 +167,9 @@ export class RenderPipeline {
       const [bloomW, bloomH] = this.calculateBloomResolution(this.currentWidth, this.currentHeight);
       this.bloomPass = new UnrealBloomPass(
         new THREE.Vector2(bloomW, bloomH),
-        0.35,  // Strength
-        0.30,  // Radius
-        0.85   // Threshold
+        0.32,  // Strength
+        0.45,  // Radius
+        1.15   // Threshold (raised to avoid fog contamination)
       );
       this.composer.addPass(this.bloomPass);
 
@@ -189,7 +186,7 @@ export class RenderPipeline {
       this.outputPass = new OutputPass();
       this.composer.addPass(this.outputPass);
 
-      // Unified single ACESFilmicToneMapping handled cleanly by OutputPass/Renderer
+      // Unified single ACESFilmicToneMapping handled by OutputPass using renderer settings
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
       this.isPostProcessingActive = true;
     } catch (e) {

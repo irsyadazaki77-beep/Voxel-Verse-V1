@@ -21,6 +21,7 @@ export class SkyEnvironment {
   public skyDomeMesh: THREE.Mesh;
 
   public isNight: boolean = false;
+  public lightningFlashActive: boolean = false;
   private currentShadowQuality: string = 'medium';
   private currentProfile: VisualProfile = EnvironmentAtmosphereEngine.getProfile('plains');
 
@@ -64,13 +65,14 @@ export class SkyEnvironment {
     this.scene.add(this.hemiLight);
 
     // 3. Sun Orb (Voxel Stylized Diamond Box)
-    const sunGeo = new THREE.BoxGeometry(8, 8, 8);
+    const sunGeo = new THREE.BoxGeometry(7, 7, 7);
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xfff3aa });
     this.sunMesh = new THREE.Mesh(sunGeo, sunMat);
+    // Sun should NOT be affected by bloom too much, we raise threshold in pipeline
     this.scene.add(this.sunMesh);
 
     // 4. Moon Orb
-    const moonGeo = new THREE.BoxGeometry(6.5, 6.5, 6.5);
+    const moonGeo = new THREE.BoxGeometry(5.5, 5.5, 5.5);
     const moonMat = new THREE.MeshBasicMaterial({ color: 0xddeeff });
     this.moonMesh = new THREE.Mesh(moonGeo, moonMat);
     this.scene.add(this.moonMesh);
@@ -416,11 +418,11 @@ export class SkyEnvironment {
       skyMat.uniforms.topColor.value.copy(skyColor);
       skyMat.uniforms.bottomColor.value.copy(fogColor); // use fogColor for horizon to blend seamlessly
 
-      // Horizon band color: slightly brighter desaturated cyan-blue for silhouette readability
-      const horizonCol = SkyEnvironment._scratchHorizonCol.copy(fogColor).multiplyScalar(1.25);
-      horizonCol.r = Math.min(1.0, horizonCol.r * 0.95 + 0.02);
-      horizonCol.g = Math.min(1.0, horizonCol.g * 1.05 + 0.04);
-      horizonCol.b = Math.min(1.0, horizonCol.b * 1.15 + 0.08);
+      // Horizon band color: subtly brighter desaturated cyan-blue for silhouette readability
+      const horizonCol = SkyEnvironment._scratchHorizonCol.copy(fogColor).multiplyScalar(1.15);
+      horizonCol.r = Math.min(1.0, horizonCol.r * 0.98 + 0.01);
+      horizonCol.g = Math.min(1.0, horizonCol.g * 1.02 + 0.02);
+      horizonCol.b = Math.min(1.0, horizonCol.b * 1.05 + 0.04);
       skyMat.uniforms.horizonColor.value.copy(horizonCol);
 
       const moonDir = SkyEnvironment._scratchMoonDir.subVectors(this.moonMesh.position, playerPos).normalize();
@@ -436,6 +438,13 @@ export class SkyEnvironment {
     this.sunLight.intensity = sunIntensity;
     this.ambientLight.intensity = ambientIntensity;
     this.hemiLight.intensity = hemiIntensity;
+
+    // Apply lightning flash if provided by environment system
+    if (this.lightningFlashActive) {
+      this.sunLight.intensity = Math.max(this.sunLight.intensity, 3.2);
+      this.ambientLight.intensity = Math.max(this.ambientLight.intensity, 1.25);
+      this.hemiLight.intensity = Math.max(this.hemiLight.intensity, 0.95);
+    }
 
     if (this.scene.fog) {
       this.scene.fog.color.copy(fogColor);

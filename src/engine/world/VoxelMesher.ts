@@ -350,6 +350,21 @@ export class VoxelMesher {
               const tile = TextureAtlas.getTileForBlock(block, 'top');
               const [uMin, vMin, uMax, vMax] = TextureAtlas.getUVs(tile);
 
+              // Calculate depth for visual polish (up to 8 blocks deep)
+              let depthCount = 1;
+              for (let dy = 1; dy <= 8; dy++) {
+                if (getBlock(x, y - dy, z) === BlockType.WATER) depthCount++;
+                else break;
+              }
+              const depthFactor = Math.min(depthCount / 8.0, 1.0);
+
+              // Calculate shoreline proximity (short-circuited for max performance)
+              const isShore = VoxelMesher.isSolidOpaque(getBlock(x - 1, y, z)) ||
+                              VoxelMesher.isSolidOpaque(getBlock(x + 1, y, z)) ||
+                              VoxelMesher.isSolidOpaque(getBlock(x, y, z - 1)) ||
+                              VoxelMesher.isSolidOpaque(getBlock(x, y, z + 1));
+              const shoreFactor = isShore ? 1.0 : 0.0;
+
               data.waterPositions.push(
                 x, y + 0.88, z + 1,
                 x + 1, y + 0.88, z + 1,
@@ -357,7 +372,10 @@ export class VoxelMesher {
                 x, y + 0.88, z
               );
               data.waterNormals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
-              for (let i = 0; i < 4; i++) data.waterColors.push(0.7, 0.85, 1.0);
+              
+              // Encode depth in R, shore in G
+              for (let i = 0; i < 4; i++) data.waterColors.push(depthFactor, shoreFactor, 1.0);
+              
               data.waterUvs.push(0, 0, 1, 0, 1, 1, 0, 1);
               data.waterTileRects.push(
                 uMin, vMin, uMax, vMax,

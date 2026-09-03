@@ -4,10 +4,11 @@ import { GameMode, WorldSaveData } from '../types';
 import { SaveManager, WorldSummary } from '../engine/storage/SaveManager';
 import { WorldPreset } from '../engine/world/WorldConfig';
 import { SettingsModal } from './SettingsModal';
+import { ChangelogModal } from './ChangelogModal';
 import { ErrorBoundary } from './ErrorBoundary';
 import { MenuVoxelDiorama } from './MenuVoxelDiorama';
 import { VoxelVerseLogo } from './VoxelVerseLogo';
-import { Download, Upload, RefreshCw, Trash2, Edit3, Copy, Play, Compass, Globe, Settings as SettingsIcon, Scroll } from 'lucide-react';
+import { Download, Upload, RefreshCw, Trash2, Edit3, Copy, Play, Compass, Globe, Settings as SettingsIcon, Scroll, History } from 'lucide-react';
 
 interface MainMenuProps {
   onStartGame: (
@@ -55,6 +56,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
   // Settings & Modals
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showChangelogModal, setShowChangelogModal] = useState(false);
 
   // File Import Input Ref
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -344,7 +346,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
           <div className="flex items-center gap-3">
             <span className="text-[9px] font-mono px-2 py-0.5 text-white/40 border border-white/10 rounded-full font-bold">
-              v1.0 Edition
+              v0.9.1
             </span>
           </div>
         </div>
@@ -428,14 +430,21 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                     <span>Multiplayer</span>
                   </button>
 
-                  {/* Settings & Credits */}
-                  <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  {/* Settings, Credits & Updates */}
+                  <div className="grid grid-cols-3 gap-2.5 pt-1">
                     <button
                       onClick={() => setShowSettingsModal(true)}
                       className="group py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-2xl font-bold text-xs border border-white/5 transition-all duration-300 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] hover:-translate-y-0.5"
                     >
                       <SettingsIcon className="w-3.5 h-3.5 transition-transform group-hover:rotate-90" />
                       <span>Settings</span>
+                    </button>
+                    <button
+                      onClick={() => setShowChangelogModal(true)}
+                      className="group py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-2xl font-bold text-xs border border-white/5 transition-all duration-300 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] hover:-translate-y-0.5"
+                    >
+                      <History className="w-3.5 h-3.5 transition-transform group-hover:-translate-y-0.5" />
+                      <span>Updates</span>
                     </button>
                     <button
                       onClick={() => setViewState('credits')}
@@ -895,6 +904,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
 
         {/* Settings Modal Component */}
         <SettingsModal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
+
+        {/* Changelog Modal Component */}
+        <ChangelogModal isOpen={showChangelogModal} onClose={() => setShowChangelogModal(false)} />
 
         {/* Footer Info */}
         <div className="relative z-10 flex items-center justify-between px-6 lg:px-12 pb-5 text-[10px] text-white/30 font-mono tracking-widest uppercase">
