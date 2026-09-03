@@ -21,6 +21,7 @@ const CinematicPostShader = {
     uSharpenStrength: { value: 0.25 },
     uUnderwater: { value: 0.0 },
     uColorGradingMode: { value: 1 }, // 0: None, 1: Cinematic, 2: Vibrant, 3: Warm Golden, 4: Cool Twilight
+    uTexelSize: { value: new THREE.Vector2(1.0 / 1920.0, 1.0 / 1080.0) },
   },
   vertexShader: `
     varying vec2 vUv;
@@ -39,6 +40,7 @@ const CinematicPostShader = {
     uniform float uSharpenStrength;
     uniform float uUnderwater;
     uniform int uColorGradingMode;
+    uniform vec2 uTexelSize;
     varying vec2 vUv;
 
     // ACES Filmic Tone Mapping Curve
@@ -52,7 +54,7 @@ const CinematicPostShader = {
     }
 
     void main() {
-      vec2 texel = vec2(1.0 / 1920.0, 1.0 / 1080.0);
+      vec2 texel = uTexelSize;
       
       // Center & 4-tap neighbor sampling for contrast-adaptive sharpening (CAS)
       vec3 c = texture2D(tDiffuse, vUv).rgb;
@@ -79,8 +81,9 @@ const CinematicPostShader = {
         c = mix(c, c * aquaTint * 1.5, uUnderwater * 0.45);
       }
 
-      // S-curve Contrast
-      c = (c - 0.5) * uContrast + 0.5;
+      // S-curve Contrast (Toe-protected to preserve shadow visibility and prevent black crush)
+      vec3 contrasted = (c - 0.5) * uContrast + 0.5;
+      c = max(contrasted, c * 0.45);
 
       // Saturation
       float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -88,9 +91,9 @@ const CinematicPostShader = {
 
       // Color Grading profiles
       if (uColorGradingMode == 1) {
-        // Cinematic: subtle teal/orange split-toning
-        c.r = pow(c.r, 0.95) + 0.02;
-        c.b = pow(c.b, 1.05) - 0.01;
+        // Cinematic: subtle atmospheric split-toning without crushing night blues
+        c.r = pow(max(c.r, 0.0), 0.96) + 0.01;
+        c.b = pow(max(c.b, 0.0), 0.98) + 0.015;
       } else if (uColorGradingMode == 2) {
         // Vibrant
         c = mix(vec3(luma), c, 1.25);
@@ -110,8 +113,8 @@ const CinematicPostShader = {
         c.b -= uWarmth * 0.05;
       }
 
-      // ACES Tone Mapping
-      c = ACESFilm(c);
+      // Preserve linear/graded signal for OutputPass to perform unified ACESFilmicToneMapping
+      c = max(c, vec3(0.0));
 
       gl_FragColor = vec4(c, 1.0);
     }
@@ -134,15 +137,27 @@ export class RenderPipeline {
   private currentWidth = 0;
   private currentHeight = 0;
 
+  // Optimized Bloom Resolution Capping (Preserves 60 FPS on 1080p, 1440p, and 4K)
+  private static readonly MAX_BLOOM_WIDTH = 960;
+  private static readonly MAX_BLOOM_HEIGHT = 540;
+
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.renderer = renderer;
     this.scene = scene;
     this.camera = camera;
 
-    this.currentWidth = window.innerWidth;
-    this.currentHeight = window.innerHeight;
+    this.currentWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+    this.currentHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
 
     this.initPipeline();
+  }
+
+  private calculateBloomResolution(width: number, height: number): [number, number] {
+    const halfW = Math.max(256, Math.round(width * 0.5));
+    const halfH = Math.max(144, Math.round(height * 0.5));
+    const bloomW = Math.min(RenderPipeline.MAX_BLOOM_WIDTH, halfW);
+    const bloomH = Math.min(RenderPipeline.MAX_BLOOM_HEIGHT, halfH);
+    return [bloomW, bloomH];
   }
 
   public initPipeline(): void {
@@ -151,31 +166,36 @@ export class RenderPipeline {
       this.renderPass = new RenderPass(this.scene, this.camera);
       this.composer.addPass(this.renderPass);
 
-      // 1. Selective Bloom Pass (emissive blocks, torches, sun, crystals)
+      // 1. Capped half-resolution bloom pass for optimal fillrate on 1080p, 1440p, and 4K
+      const [bloomW, bloomH] = this.calculateBloomResolution(this.currentWidth, this.currentHeight);
       this.bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(this.currentWidth, this.currentHeight),
+        new THREE.Vector2(bloomW, bloomH),
         0.35,  // Strength
         0.30,  // Radius
         0.85   // Threshold
       );
       this.composer.addPass(this.bloomPass);
 
-      // 2. Custom Color Grading + Sharpening Pass
+      // 2. Custom Color Grading + Inverse Resolution Sharpening Pass
       this.postPass = new ShaderPass(CinematicPostShader);
+      this.postPass.uniforms.uTexelSize.value.set(1.0 / Math.max(1, this.currentWidth), 1.0 / Math.max(1, this.currentHeight));
       this.composer.addPass(this.postPass);
 
       // 3. Anti-Aliasing (SMAA)
       this.aaPass = new SMAAPass();
       this.composer.addPass(this.aaPass);
 
-      // 4. Output Color Space Pass
+      // 4. Output Color Space & Tone Mapping Pass
       this.outputPass = new OutputPass();
       this.composer.addPass(this.outputPass);
 
+      // Unified single ACESFilmicToneMapping handled cleanly by OutputPass/Renderer
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
       this.isPostProcessingActive = true;
     } catch (e) {
       console.warn('[RenderPipeline] Post-processing initialization failed, falling back to direct render:', e);
       this.isPostProcessingActive = false;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
       this.composer = null;
     }
   }
@@ -186,9 +206,11 @@ export class RenderPipeline {
 
     if (!settings.postProcessing) {
       this.isPostProcessingActive = false;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
       return;
     }
 
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.isPostProcessingActive = true;
 
     if (!this.composer) {
@@ -204,9 +226,11 @@ export class RenderPipeline {
       this.bloomPass.enabled = settings.bloom;
       const bloomStrength = (settings as any).bloomStrength ?? 0.35;
       this.bloomPass.strength = bloomStrength;
+      const [bloomW, bloomH] = this.calculateBloomResolution(width, height);
+      (this.bloomPass as any).resolution.set(bloomW, bloomH);
     }
 
-    // Update Post Pass (Color Grading & Sharpening)
+    // Update Post Pass (Color Grading & Dynamic Texel Sharpening)
     if (this.postPass) {
       const modeMap: Record<string, number> = {
         none: 0,
@@ -221,6 +245,7 @@ export class RenderPipeline {
       const sharpen = (settings as any).sharpening !== false;
       const sharpenStr = (settings as any).sharpenStrength ?? 0.25;
       this.postPass.uniforms.uSharpenStrength.value = sharpen ? sharpenStr : 0.0;
+      this.postPass.uniforms.uTexelSize.value.set(1.0 / Math.max(1, width), 1.0 / Math.max(1, height));
     }
 
     // Anti-Aliasing Pass
@@ -249,6 +274,16 @@ export class RenderPipeline {
 
     if (this.composer) {
       this.composer.setSize(width, height);
+
+      // Capped Bloom Resolution to avoid GPU fillrate bottleneck on 1440p and 4K
+      if (this.bloomPass) {
+        const [bloomW, bloomH] = this.calculateBloomResolution(width, height);
+        (this.bloomPass as any).resolution.set(bloomW, bloomH);
+      }
+
+      if (this.postPass) {
+        this.postPass.uniforms.uTexelSize.value.set(1.0 / Math.max(1, width), 1.0 / Math.max(1, height));
+      }
     }
   }
 

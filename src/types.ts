@@ -157,6 +157,7 @@ export interface ItemDef {
   durability?: number;
   repairMaterial?: string; // itemId used to repair
   foodValue?: number; // hunger restored
+  foodRestoration?: number; // alias for foodValue
   saturationValue?: number; // saturation pool restored
   consumeTime?: number; // seconds to consume (default 1.6s)
   staminaRestore?: number;
@@ -293,7 +294,7 @@ export interface BiomeDef {
 
 export interface EntityState {
   id: string;
-  type: 'passive' | 'hostile' | 'neutral' | 'npc' | 'boss';
+  type: 'passive' | 'hostile' | 'neutral' | 'npc' | 'boss' | string;
   name: string;
   position: [number, number, number];
   velocity: [number, number, number];
@@ -319,10 +320,19 @@ export interface EntityState {
   pathTarget?: [number, number, number];
   pathUpdateCooldown?: number;
   modelType: string;
-  scale?: [number, number, number];
+  scale?: [number, number, number] | number;
   drops: { itemId: string; chance: number; count: [number, number] }[];
   dialogue?: string[];
   tradeOffers?: { give: { itemId: string; count: number }; receive: { itemId: string; count: number } }[];
+  isTamed?: boolean;
+  isBoss?: boolean;
+  isBaby?: boolean;
+  trustMeter?: number;
+  lastFedTime?: number;
+  command?: 'follow' | 'stay' | 'wander' | 'FOLLOW' | 'STAY' | 'ROAM' | 'GUARD';
+  lastProductionTime?: number;
+  lastBreedingTime?: number;
+  birthTime?: number;
 }
 
 export interface WeatherState {

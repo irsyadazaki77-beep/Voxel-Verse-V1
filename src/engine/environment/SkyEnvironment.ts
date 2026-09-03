@@ -33,14 +33,14 @@ export class SkyEnvironment {
     this.sunLight.shadow.mapSize.width = 1024;
     this.sunLight.shadow.mapSize.height = 1024;
     this.sunLight.shadow.camera.near = 1.0;
-    this.sunLight.shadow.camera.far = 180;
-    const d = 38;
+    this.sunLight.shadow.camera.far = 160;
+    const d = 35;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
-    this.sunLight.shadow.bias = -0.0002;
-    this.sunLight.shadow.normalBias = 0.035;
+    this.sunLight.shadow.bias = -0.0003;
+    this.sunLight.shadow.normalBias = 0.02;
     this.scene.add(this.sunLight);
 
     // 2. Ambient & Hemisphere Light Fill
@@ -106,6 +106,9 @@ export class SkyEnvironment {
       uniforms: {
         topColor: { value: new THREE.Color(0x66aaff) },
         bottomColor: { value: new THREE.Color(0xffffff) },
+        horizonColor: { value: new THREE.Color(0x142238) },
+        moonDirection: { value: new THREE.Vector3(0, 1, 0) },
+        nightFactor: { value: 0.0 },
         offset: { value: 33 },
         exponent: { value: 0.6 }
       },
@@ -120,12 +123,32 @@ export class SkyEnvironment {
       fragmentShader: `
         uniform vec3 topColor;
         uniform vec3 bottomColor;
+        uniform vec3 horizonColor;
+        uniform vec3 moonDirection;
+        uniform float nightFactor;
         uniform float offset;
         uniform float exponent;
         varying vec3 vWorldPosition;
         void main() {
+          vec3 normPos = normalize(vWorldPosition);
           float h = normalize(vWorldPosition + offset).y;
-          gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+          float t = max(pow(max(h, 0.0), exponent), 0.0);
+
+          vec3 daySky = mix(bottomColor, topColor, t);
+
+          // Night atmosphere: Zenith (topColor), Mid-Sky, and slightly brighter luminous Horizon Band
+          // Horizon band peaks right at horizon (h near 0.0 to 0.25) to provide silhouette separation
+          float horizonBand = exp(-pow(max(h, 0.0) * 4.2, 2.0));
+          vec3 nightSky = mix(bottomColor, topColor, t);
+          nightSky = mix(nightSky, horizonColor, horizonBand * 0.58);
+
+          // Subtle Moon directional glow in sky dome
+          float moonDot = max(0.0, dot(normPos, normalize(moonDirection)));
+          float moonGlow = pow(moonDot, 20.0) * 0.30 * nightFactor;
+          nightSky += vec3(0.55, 0.72, 1.0) * moonGlow;
+
+          vec3 finalSky = mix(daySky, nightSky, nightFactor);
+          gl_FragColor = vec4(finalSky, 1.0);
         }
       `
     };
@@ -151,7 +174,7 @@ export class SkyEnvironment {
 
     this.sunLight.castShadow = true;
     let mapSize = 1024;
-    let bounds = 38;
+    let bounds = 32;
 
     if (quality === 'low') {
       mapSize = 512;
@@ -161,10 +184,10 @@ export class SkyEnvironment {
       bounds = 30;
     } else if (quality === 'high') {
       mapSize = 2048;
-      bounds = 40;
+      bounds = 35;
     } else if (quality === 'ultra') {
-      mapSize = 4096;
-      bounds = 55;
+      mapSize = 2048;
+      bounds = 42;
     }
 
     this.sunLight.shadow.mapSize.width = mapSize;
@@ -216,11 +239,28 @@ export class SkyEnvironment {
     this.sunLight.target.position.copy(shadowTarget);
     this.sunLight.target.updateMatrixWorld();
 
-    this.sunLight.position.set(
-      shadowTarget.x + Math.cos(sunAngle) * dist,
-      Math.max(shadowTarget.y + 12, shadowTarget.y + Math.sin(sunAngle) * dist),
-      shadowTarget.z + Math.sin(sunAngle * 0.5) * 40
-    );
+    // Celestial Directional Light Orientation:
+    // When Sun is above horizon (daytime), light shines from Sun.
+    // When Sun is below horizon (night), light shines from Moon high in the sky!
+    const sunElevation = Math.sin(sunAngle);
+    let lightX: number;
+    let lightY: number;
+    let lightZ: number;
+
+    if (sunElevation >= -0.05) {
+      // Day / Golden Hour / Twilight: Light shines from Sun
+      lightX = shadowTarget.x + Math.cos(sunAngle) * dist;
+      lightY = Math.max(shadowTarget.y + 16, shadowTarget.y + sunElevation * dist);
+      lightZ = shadowTarget.z + Math.sin(sunAngle * 0.5) * 40;
+    } else {
+      // Night: Directional light tracks the MOON high in the night sky!
+      const moonElev = -sunElevation;
+      lightX = shadowTarget.x - Math.cos(sunAngle) * dist;
+      lightY = Math.max(shadowTarget.y + 35, shadowTarget.y + moonElev * dist);
+      lightZ = shadowTarget.z - Math.sin(sunAngle * 0.5) * 40;
+    }
+
+    this.sunLight.position.set(lightX, lightY, lightZ);
 
     this.starsParticles.position.copy(playerPos);
     this.auroraParticles.position.copy(playerPos);
@@ -246,9 +286,9 @@ export class SkyEnvironment {
       const f2 = new THREE.Color(...profile.fogColorDay);
       fogColor.copy(f1).lerp(f2, t);
 
-      sunIntensity = 0.4 + t * 0.85;
-      ambientIntensity = profile.ambientIntensity * (0.6 + t * 0.4);
-      hemiIntensity = 0.35 + t * 0.15;
+      sunIntensity = 0.46 * (1.0 - t) + profile.sunIntensity * t;
+      ambientIntensity = 0.32 * (1.0 - t) + profile.ambientIntensity * t;
+      hemiIntensity = 0.32 + t * 0.16;
       starOpacity = (1.0 - t) * 0.7;
       this.sunLight.color.setHex(0xffaa77);
       this.hemiLight.color.setHex(0xffbb99);
@@ -275,27 +315,36 @@ export class SkyEnvironment {
       const f2 = new THREE.Color(...profile.fogColorSunset);
       fogColor.copy(f1).lerp(f2, t);
 
-      sunIntensity = profile.sunIntensity * (1.0 - t * 0.8);
-      ambientIntensity = profile.ambientIntensity * (1.0 - t * 0.5);
-      hemiIntensity = 0.48 - t * 0.28;
+      sunIntensity = profile.sunIntensity * (1.0 - t * 0.65);
+      ambientIntensity = profile.ambientIntensity * (1.0 - t * 0.25);
+      hemiIntensity = 0.48 - t * 0.16;
       starOpacity = t * 0.9;
       this.sunLight.color.setHex(0xff7744);
       this.hemiLight.color.setHex(0xdd6699);
-      this.hemiLight.groundColor.setHex(0x332244);
+      this.hemiLight.groundColor.setHex(0x281c34);
     } else {
       // Starry Night
       skyColor.setRGB(...profile.skyColorNight);
       fogColor.setRGB(...profile.fogColorNight);
-      sunIntensity = 0.20; // Soft Moonlight
-      ambientIntensity = profile.ambientIntensity * 0.45;
-      hemiIntensity = 0.18;
+      
+      // Target: Balanced, moody, atmospheric & readable moonlight
+      sunIntensity = 0.46; // Clear Moonlight (Directional shaping & silhouette)
+      ambientIntensity = Math.max(0.32, profile.ambientIntensity * 0.82); // Elevated fill to eliminate crushed black
+      hemiIntensity = 0.32; // Sky-to-ground fill
       starOpacity = 1.0;
-      this.sunLight.color.setHex(0x99bbff);
-      this.hemiLight.color.setHex(0x223366);
-      this.hemiLight.groundColor.setHex(0x050510);
+
+      // Cool desaturated blue moonlight (#9BB7FF / 0x9bb7ff)
+      this.sunLight.color.setHex(0x9bb7ff);
+      // Sky bounce: Cool atmospheric indigo-blue
+      this.hemiLight.color.setHex(0x405a88);
+      // Ground bounce: Dark slate-navy (Never pure black 0x050510!)
+      this.hemiLight.groundColor.setHex(0x182234);
 
       if (currentBiome && currentBiome.temperature < -0.2) {
         auroraOpacity = 0.75;
+        // Snow reflectance boost: snow albedo bounces moonlight into shadows
+        ambientIntensity *= 1.20;
+        hemiIntensity *= 1.18;
       }
     }
     
@@ -303,16 +352,16 @@ export class SkyEnvironment {
     if (currentWeather && currentWeather.intensity > 0.05) {
       const weatherIntensity = currentWeather.intensity;
       if (currentWeather.type === 'rain' || currentWeather.type === 'snow') {
-        sunIntensity *= (1.0 - weatherIntensity * 0.4);
-        ambientIntensity *= (1.0 + weatherIntensity * 0.2); // diffuse scattered light
-        skyColor.lerp(new THREE.Color(0x667788), weatherIntensity * 0.5);
-        fogColor.lerp(new THREE.Color(0x778899), weatherIntensity * 0.6);
+        sunIntensity *= (1.0 - weatherIntensity * 0.35);
+        ambientIntensity *= (1.0 + weatherIntensity * 0.15); // diffuse scattered bounce
+        skyColor.lerp(new THREE.Color(0x283850), weatherIntensity * 0.5);
+        fogColor.lerp(new THREE.Color(0x30425c), weatherIntensity * 0.6);
       } else if (currentWeather.type === 'storm') {
-        sunIntensity *= (1.0 - weatherIntensity * 0.8);
-        ambientIntensity *= (1.0 - weatherIntensity * 0.3);
-        hemiIntensity *= (1.0 - weatherIntensity * 0.3);
-        skyColor.lerp(new THREE.Color(0x222233), weatherIntensity * 0.8);
-        fogColor.lerp(new THREE.Color(0x333344), weatherIntensity * 0.85);
+        sunIntensity *= (1.0 - weatherIntensity * 0.6);
+        ambientIntensity = Math.max(0.24, ambientIntensity * (1.0 - weatherIntensity * 0.25));
+        hemiIntensity = Math.max(0.22, hemiIntensity * (1.0 - weatherIntensity * 0.25));
+        skyColor.lerp(new THREE.Color(0x161d2c), weatherIntensity * 0.75);
+        fogColor.lerp(new THREE.Color(0x1e2738), weatherIntensity * 0.80);
       }
     }
 
@@ -356,6 +405,19 @@ export class SkyEnvironment {
     if (skyMat.uniforms) {
       skyMat.uniforms.topColor.value.copy(skyColor);
       skyMat.uniforms.bottomColor.value.copy(fogColor); // use fogColor for horizon to blend seamlessly
+
+      // Horizon band color: slightly brighter desaturated cyan-blue for silhouette readability
+      const horizonCol = fogColor.clone().multiplyScalar(1.25);
+      horizonCol.r = Math.min(1.0, horizonCol.r * 0.95 + 0.02);
+      horizonCol.g = Math.min(1.0, horizonCol.g * 1.05 + 0.04);
+      horizonCol.b = Math.min(1.0, horizonCol.b * 1.15 + 0.08);
+      skyMat.uniforms.horizonColor.value.copy(horizonCol);
+
+      const moonDir = new THREE.Vector3().subVectors(this.moonMesh.position, playerPos).normalize();
+      skyMat.uniforms.moonDirection.value.copy(moonDir);
+
+      const nightFactor = this.isNight ? 1.0 : (this.timeOfDay > 17.0 && this.timeOfDay <= 18.8 ? (this.timeOfDay - 17.0) / 1.8 : (this.timeOfDay >= 4.5 && this.timeOfDay < 6.0 ? (6.0 - this.timeOfDay) / 1.5 : 0.0));
+      skyMat.uniforms.nightFactor.value = THREE.MathUtils.clamp(nightFactor, 0.0, 1.0);
     }
     
     (this.starsParticles.material as THREE.PointsMaterial).opacity = starOpacity;
@@ -377,6 +439,42 @@ export class SkyEnvironment {
         }
       }
     }
+  }
+
+  public updateShadowSettings(enabled: boolean, mapSize: number = 1024): void {
+    this.sunLight.castShadow = enabled;
+    if (enabled) {
+      if (this.sunLight.shadow.mapSize.width !== mapSize) {
+        this.sunLight.shadow.mapSize.width = mapSize;
+        this.sunLight.shadow.mapSize.height = mapSize;
+        if (this.sunLight.shadow.map) {
+          this.sunLight.shadow.map.dispose();
+          this.sunLight.shadow.map = null;
+        }
+      }
+    } else {
+      if (this.sunLight.shadow.map) {
+        this.sunLight.shadow.map.dispose();
+        this.sunLight.shadow.map = null;
+      }
+    }
+  }
+
+  public setTimeOfDay(time: number): void {
+    this.timeOfDay = ((time % 24) + 24) % 24;
+  }
+
+  public cycleTime(): number {
+    const current = this.timeOfDay;
+    let next = 12.0;
+    if (current >= 9.0 && current < 17.5) next = 18.5; // Sunset
+    else if (current >= 17.5 && current < 20.5) next = 21.5; // Early Night
+    else if (current >= 20.5 || current < 1.0) next = 0.0; // Midnight
+    else if (current >= 1.0 && current < 4.5) next = 3.5; // Late Night
+    else if (current >= 4.5 && current < 6.5) next = 5.75; // Dawn
+    else next = 12.0; // Noon
+    this.setTimeOfDay(next);
+    return next;
   }
 
   public dispose(): void {

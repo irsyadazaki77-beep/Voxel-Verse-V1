@@ -9,12 +9,20 @@ export class TelemetrySystem implements GameSystem {
   private runtime: GameRuntime;
   private telemetryTimer: number = 0;
   private readonly telemetryInterval: number = 0.15; // 150ms throttled telemetry updates
+  private frameTimesBuffer: number[] = [];
+  private readonly maxFrameSamples: number = 60;
 
   constructor(runtime: GameRuntime) {
     this.runtime = runtime;
   }
 
   public update(deltaTime: number): void {
+    const frameMs = Math.max(1, deltaTime * 1000);
+    this.frameTimesBuffer.push(frameMs);
+    if (this.frameTimesBuffer.length > this.maxFrameSamples) {
+      this.frameTimesBuffer.shift();
+    }
+
     this.telemetryTimer += deltaTime;
     if (this.telemetryTimer >= this.telemetryInterval) {
       this.updateTelemetry(deltaTime);
@@ -22,8 +30,16 @@ export class TelemetrySystem implements GameSystem {
     }
   }
 
+  private calculate1PctLowFps(): number {
+    if (this.frameTimesBuffer.length < 5) return this.runtime.currentFps || 60;
+    const sorted = [...this.frameTimesBuffer].sort((a, b) => a - b);
+    const p99Index = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.99));
+    const p99FrameMs = sorted[p99Index];
+    return p99FrameMs > 0 ? Math.round(1000 / p99FrameMs) : 60;
+  }
+
   private updateTelemetry(deltaTime: number): void {
-    const { world, player, stats, sky, weather, equipment, activeHotbarIndex, inventory, combatSystem, interactionSystem, renderer } = this.runtime;
+    const { world, player, stats, sky, weather, equipment, activeHotbarIndex, inventory, combatSystem, interactionSystem, renderer, renderQualityManager, entities, particles } = this.runtime;
     if (!world || !player || !stats || !renderer) return;
 
     const currentBiome = world.biomeManager.getBiome(player.position.x, player.position.z);
@@ -36,6 +52,12 @@ export class TelemetrySystem implements GameSystem {
     const activeItem = inventory[activeHotbarIndex];
     const bowChargeRatio = activeItem?.itemId === 'hunting_bow' ? combatSystem?.combatMachine?.bowDrawProgress ?? 0 : 0;
     const breakProgress = interactionSystem?.miningState?.progress ?? 0;
+
+    const fpsLow1Pct = this.calculate1PctLowFps();
+    const dynamicScale = renderQualityManager ? Math.round(renderQualityManager.scale * 100) / 100 : 1.0;
+    const bottleneck = renderQualityManager ? renderQualityManager.state.bottleneck : 'BALANCED';
+    const activeEntities = entities ? entities.getActiveEntityCount() : 0;
+    const activeParticles = particles ? particles.getActiveParticleCount() : 0;
 
     TelemetryStore.update({
       health: stats.health,
@@ -64,6 +86,11 @@ export class TelemetrySystem implements GameSystem {
         drawCalls: renderer.info.render.calls,
         triangles: renderer.info.render.triangles,
         memoryEst: (performance as any).memory ? (performance as any).memory.usedJSHeapSize / 1048576 : 0,
+        fpsLow1Pct,
+        dynamicScale,
+        bottleneck,
+        activeEntities,
+        activeParticles,
       },
       timeOfDay: sky ? sky.timeOfDay : 8.0,
       weatherType: weather ? weather.weather.type : 'clear',

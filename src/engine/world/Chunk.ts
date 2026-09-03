@@ -60,12 +60,22 @@ export class Chunk {
   public waterMesh: THREE.Mesh | null = null;
   public group: THREE.Group;
 
+  // Precalculated world-space AABB for zero-allocation Frustum Culling
+  public readonly worldBounds: THREE.Box3;
+
   constructor(cx: number, cz: number) {
     this.cx = cx;
     this.cz = cz;
     this.blocks = new Uint8Array(CHUNK_VOL);
     this.group = new THREE.Group();
-    this.group.position.set(cx * CHUNK_SIZE_X, 0, cz * CHUNK_SIZE_Z);
+    const minX = cx * CHUNK_SIZE_X;
+    const minZ = cz * CHUNK_SIZE_Z;
+    this.group.position.set(minX, 0, minZ);
+
+    this.worldBounds = new THREE.Box3(
+      new THREE.Vector3(minX, 0, minZ),
+      new THREE.Vector3(minX + CHUNK_SIZE_X, CHUNK_SIZE_Y, minZ + CHUNK_SIZE_Z)
+    );
 
     // Bounding box for accurate Three.js Frustum Culling
     const bbox = new THREE.Box3(

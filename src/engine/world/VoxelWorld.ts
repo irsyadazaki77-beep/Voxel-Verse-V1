@@ -249,17 +249,21 @@ export class VoxelWorld {
         #include <color_fragment>
         
         vec3 viewDir = normalize(cameraPosition - vWorldPosition);
-        float fresnel = dot(viewDir, normalize(vNormal));
+        vec3 n = normalize(vNormal);
+        float fresnel = dot(viewDir, n);
         fresnel = clamp(1.0 - fresnel, 0.0, 1.0);
-        fresnel = pow(fresnel, 3.0);
+        float fCurve = pow(fresnel, 2.6);
         
-        vec3 deepColor = vec3(0.05, 0.45, 0.55);
-        vec3 shallowColor = vec3(0.2, 0.8, 0.9);
+        vec3 deepColor = vec3(0.06, 0.38, 0.58);
+        vec3 shallowColor = vec3(0.22, 0.72, 0.88);
+        vec3 nightSkySheen = vec3(0.18, 0.28, 0.45);
         
-        vec3 waterColor = mix(shallowColor, deepColor, fresnel * 0.8 + 0.2);
+        vec3 waterColor = mix(shallowColor, deepColor, fCurve * 0.7 + 0.3);
+        // Nocturnal sky sheen via fresnel grazing angle: prevents water from appearing as a black void
+        waterColor = mix(waterColor, nightSkySheen, fCurve * 0.40);
         
-        diffuseColor.rgb = mix(diffuseColor.rgb, waterColor, 0.6 + fresnel * 0.4);
-        diffuseColor.a = 0.65 + fresnel * 0.35;
+        diffuseColor.rgb = mix(diffuseColor.rgb, waterColor, 0.65 + fCurve * 0.35);
+        diffuseColor.a = 0.68 + fCurve * 0.32;
         `
       );
     };

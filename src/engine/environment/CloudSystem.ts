@@ -49,7 +49,7 @@ export class CloudSystem {
           (Math.random() - 0.5) * 3,
           (Math.random() - 0.5) * 20
         );
-        mesh.castShadow = true;
+        mesh.castShadow = false;
         mesh.receiveShadow = false;
         clusterGroup.add(mesh);
       }
@@ -61,6 +61,8 @@ export class CloudSystem {
   }
 
   public update(deltaTime: number, playerPos: THREE.Vector3, weather: WeatherState, timeOfDay: number = 12.0): void {
+    if (!this.cloudGroup.visible) return;
+
     // Keep cloud layer centered around player
     this.cloudGroup.position.x = playerPos.x;
     this.cloudGroup.position.z = playerPos.z;

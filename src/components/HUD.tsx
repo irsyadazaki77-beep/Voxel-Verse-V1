@@ -21,7 +21,8 @@ import {
   MessageSquare,
   Crosshair as CrosshairIcon,
   Flame,
-  Volume2
+  Volume2,
+  Activity
 } from 'lucide-react';
 import { TelemetryStore } from '../engine/ui/TelemetryStore';
 import { GameEventBus } from '../engine/events/GameEventBus';
@@ -107,6 +108,188 @@ const HUDTelemetryOverlay = () => {
 
       <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-bold" ref={fpsRef}>
         60 FPS
+      </div>
+    </div>
+  );
+};
+
+const HUDProfilerOverlay = ({ onClose }: { onClose: () => void }) => {
+  const [metrics, setMetrics] = useState(TelemetryStore.state.profilerMetrics);
+  const [fps, setFps] = useState(TelemetryStore.state.fps);
+
+  useEffect(() => {
+    return TelemetryStore.subscribe((stats) => {
+      setMetrics(stats.profilerMetrics);
+      setFps(stats.fps);
+    });
+  }, []);
+
+  const bottleneck = metrics.bottleneck || 'BALANCED';
+  const bottleneckColor = bottleneck === 'GPU' ? 'text-amber-400 border-amber-500/40 bg-amber-500/10' :
+                          bottleneck === 'CPU' ? 'text-rose-400 border-rose-500/40 bg-rose-500/10' :
+                          'text-emerald-400 border-emerald-500/40 bg-emerald-500/10';
+
+  return (
+    <div className="absolute top-16 left-4 z-40 w-[420px] max-w-[90vw] bg-black/85 backdrop-blur-md border border-white/20 shadow-2xl rounded-lg p-3 font-mono text-[11px] text-zinc-200 pointer-events-auto select-none animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
+        <div className="flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5 text-sky-400" />
+          <span className="font-bold text-white tracking-wider text-xs">VOXEL ENGINE PROFILER</span>
+          <span className="text-[10px] text-zinc-400 bg-white/10 px-1 py-0.5 rounded">F3</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${bottleneckColor}`}>
+            {bottleneck}
+          </span>
+          <button 
+            onClick={onClose}
+            className="text-zinc-400 hover:text-white px-1 py-0.5 text-xs rounded hover:bg-white/10 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* Primary Metrics Strip */}
+      <div className="grid grid-cols-3 gap-2 mb-2 bg-white/5 p-2 rounded border border-white/5">
+        <div>
+          <div className="text-[10px] text-zinc-400">FPS / 1% Low</div>
+          <div className="text-sm font-bold text-white flex items-baseline gap-1">
+            <span className={fps >= 55 ? 'text-emerald-400' : fps >= 30 ? 'text-amber-400' : 'text-rose-400'}>
+              {fps}
+            </span>
+            <span className="text-[10px] text-zinc-400">({metrics.fpsLow1Pct ?? fps} low)</span>
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-zinc-400">Frame Time</div>
+          <div className="text-sm font-bold text-white">
+            {(metrics.frameTimeMs || 16.6).toFixed(1)} <span className="text-[10px] text-zinc-400">ms</span>
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-zinc-400">Dynamic Scale</div>
+          <div className="text-sm font-bold text-sky-400">
+            {Math.round((metrics.dynamicScale ?? 1.0) * 100)}%
+          </div>
+        </div>
+      </div>
+
+      {/* Detailed Diagnostics Grid */}
+      <div className="grid grid-cols-2 gap-2 text-[10px]">
+        {/* Timing Budget */}
+        <div className="bg-black/40 border border-white/5 p-2 rounded">
+          <div className="text-zinc-400 font-bold border-b border-white/5 pb-1 mb-1">FRAME TIMING</div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">CPU Sim:</span>
+            <span className="font-bold text-zinc-200">{(metrics.simTimeMs || 0).toFixed(1)} ms</span>
+          </div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">GPU Render:</span>
+            <span className="font-bold text-zinc-200">{(metrics.renderTimeMs || 0).toFixed(1)} ms</span>
+          </div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Target (60fps):</span>
+            <span className="text-zinc-400">16.6 ms</span>
+          </div>
+        </div>
+
+        {/* GPU & Geometry */}
+        <div className="bg-black/40 border border-white/5 p-2 rounded">
+          <div className="text-zinc-400 font-bold border-b border-white/5 pb-1 mb-1">RASTER & GEOMETRY</div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Draw Calls:</span>
+            <span className="font-bold text-zinc-200">{metrics.drawCalls || 0}</span>
+          </div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Triangles:</span>
+            <span className="font-bold text-zinc-200">{(metrics.triangles || 0).toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Memory:</span>
+            <span className="font-bold text-zinc-200">{metrics.memoryEst ? Math.round(metrics.memoryEst) + ' MB' : 'N/A'}</span>
+          </div>
+        </div>
+
+        {/* World Streaming */}
+        <div className="bg-black/40 border border-white/5 p-2 rounded">
+          <div className="text-zinc-400 font-bold border-b border-white/5 pb-1 mb-1">CHUNK STREAMING</div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Active / Cache:</span>
+            <span className="font-bold text-zinc-200">{metrics.activeChunks} / {metrics.cachedChunks}</span>
+          </div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Dirty Chunks:</span>
+            <span className="font-bold text-zinc-200">{metrics.dirtyChunks}</span>
+          </div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Uploads/Frame:</span>
+            <span className="font-bold text-zinc-200">{metrics.meshUploadsPerFrame || 0}</span>
+          </div>
+        </div>
+
+        {/* Entities & Particles */}
+        <div className="bg-black/40 border border-white/5 p-2 rounded">
+          <div className="text-zinc-400 font-bold border-b border-white/5 pb-1 mb-1">SIMULATION & THREADS</div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Active Entities:</span>
+            <span className="font-bold text-zinc-200">{metrics.activeEntities || 0}</span>
+          </div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Active Particles:</span>
+            <span className="font-bold text-zinc-200">{metrics.activeParticles || 0}</span>
+          </div>
+          <div className="flex justify-between py-0.5">
+            <span className="text-zinc-400">Worker Tasks:</span>
+            <span className="font-bold text-zinc-200">{metrics.queuedTasks || 0}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Time & Lighting Debug Controls */}
+      <div className="mt-2 pt-2 border-t border-white/10">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-zinc-400 font-bold text-[10px] tracking-wider">TIME OF DAY & MOONLIGHT TEST (F6)</span>
+        </div>
+        <div className="grid grid-cols-4 gap-1.5">
+          <button
+            onClick={() => {
+              const rt = (window as any).__voxelRuntime;
+              if (rt?.sky) rt.sky.setTimeOfDay(12.0);
+            }}
+            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-amber-300 rounded text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            ☀️ Noon (12:00)
+          </button>
+          <button
+            onClick={() => {
+              const rt = (window as any).__voxelRuntime;
+              if (rt?.sky) rt.sky.setTimeOfDay(18.5);
+            }}
+            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-orange-400 rounded text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            🌅 Sunset (18:30)
+          </button>
+          <button
+            onClick={() => {
+              const rt = (window as any).__voxelRuntime;
+              if (rt?.sky) rt.sky.setTimeOfDay(21.5);
+            }}
+            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-indigo-300 rounded text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            🌙 Night (21:30)
+          </button>
+          <button
+            onClick={() => {
+              const rt = (window as any).__voxelRuntime;
+              if (rt?.sky) rt.sky.setTimeOfDay(0.0);
+            }}
+            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-sky-300 rounded text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            🌌 Midnight (00:00)
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -287,6 +470,38 @@ export const HUD: React.FC<HUDProps> = ({
   const [activeQuests, setActiveQuests] = useState<{ def: any; progress: number[]; state: string }[]>([]);
   const [anomalyStatus, setAnomalyStatus] = useState<'dormant' | 'warning' | 'active' | 'climax' | 'resolved'>('dormant');
   const [anomalyIntensity, setAnomalyIntensity] = useState(0);
+  const [showProfiler, setShowProfiler] = useState(false);
+
+  // F3: Profiling Overlay, F6: Cycle Time of Day for lighting testing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'F3') {
+        e.preventDefault();
+        setShowProfiler(prev => !prev);
+      } else if (e.code === 'F6') {
+        e.preventDefault();
+        const rt = (window as any).__voxelRuntime;
+        if (rt && rt.sky) {
+          const nextTime = rt.sky.cycleTime();
+          const hours = Math.floor(nextTime);
+          const mins = Math.floor((nextTime % 1) * 60);
+          const timeLabel = (hours >= 19 || hours < 5) ? 'Night' : (hours >= 5 && hours < 8) ? 'Dawn' : (hours >= 8 && hours < 17) ? 'Day' : 'Sunset';
+          setNotifications(prev => [
+            ...prev,
+            {
+              id: 'time_cycle_' + Date.now(),
+              title: `Time of Day: ${timeLabel}`,
+              message: `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`,
+              type: 'info',
+              duration: 2500,
+            } as any
+          ]);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     setAnomalyStatus(AetherAnomalyManager.status);
@@ -534,6 +749,16 @@ export const HUD: React.FC<HUDProps> = ({
             </button>
           )}
 
+          <button
+            onClick={() => setShowProfiler(prev => !prev)}
+            title="Toggle Engine Telemetry & Profiler [F3]"
+            className={`px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${showProfiler ? 'border-sky-400 text-sky-300 bg-sky-500/10' : 'text-zinc-200 hover:text-white'}`}
+          >
+            <Activity className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">Stats</span>
+            <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">F3</kbd>
+          </button>
+
           <button 
             onClick={onOpenPause}
             className="px-3.5 py-1.5 voxel-panel hover:border-sky-400/50 text-xs font-bold text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-lg"
@@ -543,6 +768,9 @@ export const HUD: React.FC<HUDProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Engine Profiler Overlay [F3] */}
+      {showProfiler && <HUDProfilerOverlay onClose={() => setShowProfiler(false)} />}
 
       {/* Center Crosshair & Combat Hitmarkers */}
       <div id="hud-crosshair-center" className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">

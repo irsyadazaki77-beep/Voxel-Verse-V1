@@ -123,6 +123,11 @@ export class PlayerController {
   public pendingStaminaDeduction: number = 0;
   public wantsDodge: boolean = false;
 
+  // Static reusable vectors to eliminate per-frame GC allocations
+  private static readonly _tempEyePos = new THREE.Vector3();
+  private static readonly _tempDir = new THREE.Vector3();
+  private static readonly _tempCamPos = new THREE.Vector3();
+
   public keys: KeyState = {
     forward: false,
     backward: false,
@@ -400,17 +405,25 @@ export class PlayerController {
       targetSpeed *= 0.45;
     }
 
-    // 4. Movement Input Vector
-    const moveDir = new THREE.Vector3();
-    if (this.keys.forward) moveDir.z -= 1;
-    if (this.keys.backward) moveDir.z += 1;
-    if (this.keys.left) moveDir.x -= 1;
-    if (this.keys.right) moveDir.x += 1;
+    // 4. Movement Input Vector (Zero-allocation pure math)
+    let inputZ = 0;
+    let inputX = 0;
+    if (this.keys.forward) inputZ -= 1;
+    if (this.keys.backward) inputZ += 1;
+    if (this.keys.left) inputX -= 1;
+    if (this.keys.right) inputX += 1;
 
-    if (moveDir.lengthSq() > 0) {
-      moveDir.normalize();
-      // Rotate by player yaw
-      moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+    let moveX = 0;
+    let moveZ = 0;
+    const lenSq = inputX * inputX + inputZ * inputZ;
+    if (lenSq > 0) {
+      const invLen = 1 / Math.sqrt(lenSq);
+      const normX = inputX * invLen;
+      const normZ = inputZ * invLen;
+      const cosY = Math.cos(this.yaw);
+      const sinY = Math.sin(this.yaw);
+      moveX = normX * cosY + normZ * sinY;
+      moveZ = -normX * sinY + normZ * cosY;
     }
 
     // 5. Horizontal Acceleration & Friction
@@ -419,9 +432,9 @@ export class PlayerController {
 
     if (this.isDodging) {
       // Keep moving at dodge speed without standard movement/friction interference
-    } else if (moveDir.lengthSq() > 0) {
-      this.velocity.x += moveDir.x * targetSpeed * accelFactor * dt;
-      this.velocity.z += moveDir.z * targetSpeed * accelFactor * dt;
+    } else if (lenSq > 0) {
+      this.velocity.x += moveX * targetSpeed * accelFactor * dt;
+      this.velocity.z += moveZ * targetSpeed * accelFactor * dt;
 
       // Limit horizontal velocity magnitude
       const horizSpeed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
@@ -595,7 +608,7 @@ export class PlayerController {
     const effDip = this.cameraMotion ? 0 : this.landingDip;
     const effTilt = this.cameraMotion ? 0 : this.damageTilt;
 
-    const eyePos = new THREE.Vector3(
+    const eyePos = PlayerController._tempEyePos.set(
       this.position.x + shakeX,
       this.position.y + this.currentEyeHeight + effBob - effDip + shakeY,
       this.position.z
@@ -612,7 +625,7 @@ export class PlayerController {
       this.avatarMesh.visible = true;
       const targetDist = 3.6;
       // Desired third person position
-      const dir = new THREE.Vector3(
+      const dir = PlayerController._tempDir.set(
         Math.sin(this.yaw) * Math.cos(this.pitch),
         Math.sin(-this.pitch),
         Math.cos(this.yaw) * Math.cos(this.pitch)
@@ -620,21 +633,21 @@ export class PlayerController {
 
       // Raycast to prevent camera clipping through solid terrain
       const actualDist = this.raycastCameraDistance(world, eyePos, dir, targetDist);
-      const camPos = eyePos.clone().addScaledVector(dir, actualDist);
+      const camPos = PlayerController._tempCamPos.copy(eyePos).addScaledVector(dir, actualDist);
 
       this.camera.position.copy(camPos);
       this.camera.lookAt(eyePos.x, eyePos.y, eyePos.z);
     } else if (this.cameraMode === 'third_person_front') {
       this.avatarMesh.visible = true;
       const targetDist = 3.2;
-      const dir = new THREE.Vector3(
+      const dir = PlayerController._tempDir.set(
         -Math.sin(this.yaw) * Math.cos(this.pitch),
         Math.sin(-this.pitch),
         -Math.cos(this.yaw) * Math.cos(this.pitch)
       ).normalize();
 
       const actualDist = this.raycastCameraDistance(world, eyePos, dir, targetDist);
-      const camPos = eyePos.clone().addScaledVector(dir, actualDist);
+      const camPos = PlayerController._tempCamPos.copy(eyePos).addScaledVector(dir, actualDist);
 
       this.camera.position.copy(camPos);
       this.camera.lookAt(eyePos.x, eyePos.y, eyePos.z);

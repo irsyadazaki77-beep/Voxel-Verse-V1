@@ -150,8 +150,17 @@ export class GameRuntime {
           this.renderPipeline.updateSettings(newSettings.graphics, window.innerWidth, window.innerHeight);
         }
       }
+      if (this.sky) {
+        this.sky.updateShadowSettings(newSettings.graphics.shadows, newSettings.graphics.shadowMapSize || 1024);
+      }
+      if (this.clouds) {
+        this.clouds.cloudGroup.visible = newSettings.graphics.clouds;
+      }
       if (this.particles) {
         this.particles.setQuality(newSettings.graphics.particleQuality);
+      }
+      if (this.worldStreamingSystem) {
+        this.worldStreamingSystem.forceUpdate();
       }
     });
 
@@ -588,6 +597,7 @@ export class GameRuntime {
   };
 
   private update(deltaTime: number): void {
+    const cpuSimStart = performance.now();
     const biome = this.world.biomeManager.getBiome(this.player.position.x, this.player.position.z);
     
     // Core Engine Sub-Ticks outside systems if any (like Furnaces/Farming plots/Map visit etc)
@@ -604,11 +614,8 @@ export class GameRuntime {
     );
     MapManager.visitChunk(Math.floor(this.player.position.x / 16), Math.floor(this.player.position.z / 16));
 
-    const simStart = performance.now();
-
     // 1. Simulation System (Physics, Survival)
     this.simulationSystem.update(deltaTime);
-    this.lastSimTimeMs = performance.now() - simStart;
 
     // 2. Environment System (Sky, Clouds, Weather, Particles)
     this.environmentSystem.update(deltaTime);
@@ -657,6 +664,9 @@ export class GameRuntime {
 
     // 9. Update Multiplayer Network Sessions
     NetworkSession.getInstance().update(deltaTime, this.player.position, this.player.yaw, this.player.velocity);
+
+    // Record complete CPU simulation duration (all engine systems prior to render pass)
+    this.lastSimTimeMs = performance.now() - cpuSimStart;
 
     // 10. Telemetry HUD System
     this.telemetrySystem.update(deltaTime);

@@ -54,6 +54,12 @@ export class EntityManager {
   private static groundItemGeometry: THREE.BufferGeometry | null = null;
   private projectilePool: THREE.Mesh[] = [];
 
+  // Reusable Temporary Vectors to eliminate hot-loop GC churn
+  private static readonly _tempVecA = new THREE.Vector3();
+  private static readonly _tempVecB = new THREE.Vector3();
+  private static readonly _tempDir = new THREE.Vector3();
+  private static readonly _tempUp = new THREE.Vector3(0, 1, 0);
+
   constructor() {
     this.entityGroup = new THREE.Group();
 
@@ -108,8 +114,12 @@ export class EntityManager {
     const mesh = EntityModelBuilder.buildByModelType(modelKey);
 
     if (state.isBaby || state.scale) {
-      const s = state.scale || (state.isBaby ? 0.5 : 1.0);
-      mesh.scale.set(s, s, s);
+      if (Array.isArray(state.scale)) {
+        mesh.scale.set(state.scale[0], state.scale[1], state.scale[2]);
+      } else {
+        const s = typeof state.scale === 'number' ? state.scale : (state.isBaby ? 0.5 : 1.0);
+        mesh.scale.set(s, s, s);
+      }
     }
 
     mesh.position.set(...state.position);
@@ -197,8 +207,12 @@ export class EntityManager {
     if (!(state as any).homePos) {
       (state as any).homePos = [ePos.x, ePos.y, ePos.z];
     }
-    const homePos = new THREE.Vector3(...(state as any).homePos);
-    const distToHome = ePos.distanceTo(homePos);
+    const homeX = (state as any).homePos[0];
+    const homeY = (state as any).homePos[1];
+    const homeZ = (state as any).homePos[2];
+    const dxHome = ePos.x - homeX;
+    const dzHome = ePos.z - homeZ;
+    const distToHomeSq = dxHome * dxHome + dzHome * dzHome;
 
     // Hostile Entity AI State Machine
     if (state.type === 'hostile' || state.type === 'boss') {
@@ -209,10 +223,14 @@ export class EntityManager {
       if (!isBoss && state.health < state.maxHealth * 0.22 && distToPlayer < 14) {
         state.aiState = 'flee';
         state.path = [];
-        const fleeDir = new THREE.Vector3().subVectors(ePos, playerPos).normalize();
-        state.velocity[0] = fleeDir.x * (state.speed * 1.5);
-        state.velocity[2] = fleeDir.z * (state.speed * 1.5);
-        state.rotation = Math.atan2(fleeDir.x, fleeDir.z);
+        const fleeX = ePos.x - playerPos.x;
+        const fleeZ = ePos.z - playerPos.z;
+        const fleeLen = Math.hypot(fleeX, fleeZ) || 1;
+        const normFleeX = fleeX / fleeLen;
+        const normFleeZ = fleeZ / fleeLen;
+        state.velocity[0] = normFleeX * (state.speed * 1.5);
+        state.velocity[2] = normFleeZ * (state.speed * 1.5);
+        state.rotation = Math.atan2(normFleeX, normFleeZ);
         return;
       }
 
@@ -225,18 +243,22 @@ export class EntityManager {
       }
 
       // Proximity Combat Logic
+      const toPlayerX = playerPos.x - ePos.x;
+      const toPlayerZ = playerPos.z - ePos.z;
+      const toPlayerDist2D = Math.hypot(toPlayerX, toPlayerZ) || 1;
+      const normPlayerX = toPlayerX / toPlayerDist2D;
+      const normPlayerZ = toPlayerZ / toPlayerDist2D;
+
       if (distToPlayer <= state.attackRange) {
         state.aiState = 'attack';
         state.path = [];
-        const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
-        state.rotation = Math.atan2(dir.x, dir.z);
+        state.rotation = Math.atan2(normPlayerX, normPlayerZ);
       } else if (distToPlayer <= detectRange) {
         // Transition from Alert -> Chase
         if (state.aiState === 'idle' || state.aiState === 'wander' || state.aiState === 'roam') {
           state.aiState = 'alert';
           state.path = [];
-          const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
-          state.rotation = Math.atan2(dir.x, dir.z);
+          state.rotation = Math.atan2(normPlayerX, normPlayerZ);
         } else {
           state.aiState = 'chase';
           if (distToPlayer > 2.5) {
@@ -245,24 +267,26 @@ export class EntityManager {
               state.path = path;
             } else {
               state.path = [];
-              const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
-              state.velocity[0] = dir.x * state.speed;
-              state.velocity[2] = dir.z * state.speed;
-              state.rotation = Math.atan2(dir.x, dir.z);
+              state.velocity[0] = normPlayerX * state.speed;
+              state.velocity[2] = normPlayerZ * state.speed;
+              state.rotation = Math.atan2(normPlayerX, normPlayerZ);
             }
           }
         }
-      } else if (distToHome > 35) {
+      } else if (distToHomeSq > 1225) { // 35m squared = 1225
         // Too far from spawn origin, return home
         state.aiState = 'return';
-        const path = Pathfinder.findPath(world, ePos, homePos, 20);
+        EntityManager._tempVecB.set(homeX, homeY, homeZ);
+        const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 20);
         if (path && path.length > 0) {
           state.path = path;
         } else {
-          const dir = new THREE.Vector3().subVectors(homePos, ePos).normalize();
-          state.velocity[0] = dir.x * (state.speed * 0.8);
-          state.velocity[2] = dir.z * (state.speed * 0.8);
-          state.rotation = Math.atan2(dir.x, dir.z);
+          const toHomeLen = Math.hypot(dxHome, dzHome) || 1;
+          const normHomeX = -dxHome / toHomeLen;
+          const normHomeZ = -dzHome / toHomeLen;
+          state.velocity[0] = normHomeX * (state.speed * 0.8);
+          state.velocity[2] = normHomeZ * (state.speed * 0.8);
+          state.rotation = Math.atan2(normHomeX, normHomeZ);
         }
       } else {
         // Idle / Roam leisurely in territory
@@ -271,8 +295,8 @@ export class EntityManager {
           if (state.aiState === 'roam') {
             const dx = (Math.random() - 0.5) * 12;
             const dz = (Math.random() - 0.5) * 12;
-            const roamTarget = new THREE.Vector3(homePos.x + dx, homePos.y, homePos.z + dz);
-            const path = Pathfinder.findPath(world, ePos, roamTarget, 12);
+            EntityManager._tempVecB.set(homeX + dx, homeY, homeZ + dz);
+            const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 12);
             if (path) state.path = path;
           }
         }
@@ -283,23 +307,28 @@ export class EntityManager {
       if ((state.health < state.maxHealth && distToPlayer < 20) || distToPlayer < 5) {
         state.aiState = 'flee';
         state.path = [];
-        const fleeDir = new THREE.Vector3().subVectors(ePos, playerPos).normalize();
-        state.velocity[0] = fleeDir.x * (state.speed * 1.7);
-        state.velocity[2] = fleeDir.z * (state.speed * 1.7);
-        state.rotation = Math.atan2(fleeDir.x, fleeDir.z);
+        const fleeX = ePos.x - playerPos.x;
+        const fleeZ = ePos.z - playerPos.z;
+        const fleeLen = Math.hypot(fleeX, fleeZ) || 1;
+        const normFleeX = fleeX / fleeLen;
+        const normFleeZ = fleeZ / fleeLen;
+        state.velocity[0] = normFleeX * (state.speed * 1.7);
+        state.velocity[2] = normFleeZ * (state.speed * 1.7);
+        state.rotation = Math.atan2(normFleeX, normFleeZ);
       } else if (distToPlayer < 10) {
         state.aiState = 'alert';
         state.path = [];
-        const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
-        state.rotation = Math.atan2(dir.x, dir.z);
+        const toPlayerX = playerPos.x - ePos.x;
+        const toPlayerZ = playerPos.z - ePos.z;
+        state.rotation = Math.atan2(toPlayerX, toPlayerZ);
       } else {
         if (Math.random() < 0.12 && (!state.path || state.path.length === 0)) {
           state.aiState = Math.random() < 0.5 ? 'idle' : 'roam';
           if (state.aiState === 'roam') {
             const dx = (Math.random() - 0.5) * 14;
             const dz = (Math.random() - 0.5) * 14;
-            const target = new THREE.Vector3(ePos.x + dx, ePos.y, ePos.z + dz);
-            const path = Pathfinder.findPath(world, ePos, target, 12);
+            EntityManager._tempVecB.set(ePos.x + dx, ePos.y, ePos.z + dz);
+            const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 12);
             if (path) state.path = path;
           }
         }
@@ -310,11 +339,13 @@ export class EntityManager {
       if (distToPlayer < 6) {
         state.aiState = 'idle';
         state.path = [];
-        const dir = new THREE.Vector3().subVectors(playerPos, ePos).normalize();
-        state.rotation = Math.atan2(dir.x, dir.z);
-      } else if (distToHome > 8) {
+        const toPlayerX = playerPos.x - ePos.x;
+        const toPlayerZ = playerPos.z - ePos.z;
+        state.rotation = Math.atan2(toPlayerX, toPlayerZ);
+      } else if (distToHomeSq > 64) {
         state.aiState = 'return';
-        const path = Pathfinder.findPath(world, ePos, homePos, 10);
+        EntityManager._tempVecB.set(homeX, homeY, homeZ);
+        const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 10);
         if (path) state.path = path;
       }
     }
@@ -425,9 +456,10 @@ export class EntityManager {
       p.position.addScaledVector(p.velocity, dt);
       p.mesh.position.copy(p.position);
       
-      if (p.velocity.lengthSq() > 0.1) {
-        const dir = p.velocity.clone().normalize();
-        p.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      const velSq = p.velocity.lengthSq();
+      if (velSq > 0.1) {
+        EntityManager._tempDir.copy(p.velocity).normalize();
+        p.mesh.quaternion.setFromUnitVectors(EntityManager._tempUp, EntityManager._tempDir);
       }
 
       // Check collision with blocks
@@ -438,17 +470,41 @@ export class EntityManager {
         continue;
       }
 
-      // Entity Collision
+      // Entity Collision using Spatial Grid (3x3 chunk cells lookup, 0-allocation)
       if (p.fromPlayer) {
         let hit = false;
-        for (const [id, { state }] of this.entities.entries()) {
-          const ePos = new THREE.Vector3(...state.position);
-          if (p.position.distanceTo(ePos.add(new THREE.Vector3(0, 1, 0))) < 1.4) {
-            this.attackEntity(id, p.damage, new THREE.Vector3().subVectors(ePos, p.velocity));
-            hit = true;
-            break;
+        const pcx = Math.floor(p.position.x / 16);
+        const pcz = Math.floor(p.position.z / 16);
+
+        for (let ox = -1; ox <= 1 && !hit; ox++) {
+          for (let oz = -1; oz <= 1 && !hit; oz++) {
+            const cellKey = `${pcx + ox},${pcz + oz}`;
+            const cell = this.spatialGrid.get(cellKey);
+            if (!cell || cell.size === 0) continue;
+
+            for (const id of cell) {
+              const entry = this.entities.get(id);
+              if (!entry || entry.state.aiState === 'dead') continue;
+              const state = entry.state;
+              const ex = state.position[0];
+              const ey = state.position[1] + 1.0;
+              const ez = state.position[2];
+
+              const dx = p.position.x - ex;
+              const dy = p.position.y - ey;
+              const dz = p.position.z - ez;
+              const distSq = dx * dx + dy * dy + dz * dz;
+
+              if (distSq < 1.96) { // 1.4m hit radius squared
+                EntityManager._tempVecA.set(ex - p.velocity.x, ey - p.velocity.y, ez - p.velocity.z);
+                this.attackEntity(id, p.damage, EntityManager._tempVecA);
+                hit = true;
+                break;
+              }
+            }
           }
         }
+
         if (hit) {
           this.releaseProjectileMesh(p.mesh);
           this.projectiles.splice(i, 1);
@@ -464,10 +520,12 @@ export class EntityManager {
 
     // Update Entities
     for (const [id, { state, mesh }] of this.entities.entries()) {
-      const distToPlayerRaw = Math.abs(state.position[0] - playerPos.x) + Math.abs(state.position[2] - playerPos.z);
+      const dxPlayer = state.position[0] - playerPos.x;
+      const dzPlayer = state.position[2] - playerPos.z;
+      const distToPlayerSq2D = dxPlayer * dxPlayer + dzPlayer * dzPlayer;
       
-      // Entity Sleeping & Culling (Frustum & Distance based)
-      if (distToPlayerRaw > 64) {
+      // Entity Sleeping & Culling (> 64m => distSq > 4096)
+      if (distToPlayerSq2D > 4096) {
         mesh.visible = false;
         continue; // Skip AI and physics for sleeping entities
       }
@@ -475,16 +533,17 @@ export class EntityManager {
 
       if (state.aiState === 'dead') continue;
 
-      const ePos = new THREE.Vector3(...state.position);
-      const distToPlayer = ePos.distanceTo(playerPos);
+      const distToPlayer = Math.sqrt(distToPlayerSq2D);
 
-      // Distance-based update throttling (staggered updates)
-      const updateInterval = distToPlayer < 20 ? 100 : (distToPlayer < 40 ? 500 : 2000);
+      // Distance-based update throttling (staggered AI updates)
+      // Close (<16m): 100ms, Mid (16-36m): 400ms, Far (36-64m): 1400ms
+      const updateInterval = distToPlayerSq2D < 256 ? 100 : (distToPlayerSq2D < 1296 ? 400 : 1400);
       const lastUpdate = state.pathUpdateCooldown || 0;
 
       if (now - lastUpdate > updateInterval) {
         state.pathUpdateCooldown = now;
-        this.updateEntityAI(state, ePos, playerPos, distToPlayer, world, isNight);
+        EntityManager._tempVecA.set(state.position[0], state.position[1], state.position[2]);
+        this.updateEntityAI(state, EntityManager._tempVecA, playerPos, distToPlayer, world, isNight);
       }
 
       if (state.aiState === 'attack' && state.type === 'hostile') {
@@ -497,59 +556,75 @@ export class EntityManager {
       }
 
       if (state.path && state.path.length > 0) {
-        const target = new THREE.Vector3(...state.path[0]);
-        const distToTarget2D = Math.hypot(ePos.x - target.x, ePos.z - target.z);
+        const targetX = state.path[0][0];
+        const targetY = state.path[0][1];
+        const targetZ = state.path[0][2];
+        const toTargetX = targetX - state.position[0];
+        const toTargetZ = targetZ - state.position[2];
+        const distToTarget2D = Math.hypot(toTargetX, toTargetZ);
+
         if (distToTarget2D < 0.4) {
           state.path.shift();
         } else {
-          const dir = new THREE.Vector3(target.x - ePos.x, 0, target.z - ePos.z).normalize();
-          if (target.y > ePos.y + 0.5 && state.velocity[1] === 0) {
+          const invDist = distToTarget2D > 0 ? 1 / distToTarget2D : 0;
+          const dirX = toTargetX * invDist;
+          const dirZ = toTargetZ * invDist;
+
+          if (targetY > state.position[1] + 0.5 && state.velocity[1] === 0) {
               state.velocity[1] = 6.5; // Jump
           }
-          state.velocity[0] = dir.x * state.speed;
-          state.velocity[2] = dir.z * state.speed;
-          state.rotation = Math.atan2(dir.x, dir.z);
+          state.velocity[0] = dirX * state.speed;
+          state.velocity[2] = dirZ * state.speed;
+          state.rotation = Math.atan2(dirX, dirZ);
         }
       } else if (state.aiState !== 'flee' && state.aiState !== 'chase') {
         state.velocity[0] *= 0.8;
         state.velocity[2] *= 0.8;
       }
 
-      // Apply Gravity & Movement
-      state.velocity[1] -= 18.0 * dt; // Gravity
-      state.position[0] += state.velocity[0] * dt;
-      state.position[1] += state.velocity[1] * dt;
-      state.position[2] += state.velocity[2] * dt;
+      // Check if stationary at distance to skip expensive voxel raycasts
+      const isStationaryAtDistance = distToPlayerSq2D > 1024 &&
+        Math.abs(state.velocity[0]) < 0.05 &&
+        Math.abs(state.velocity[2]) < 0.05 &&
+        state.velocity[1] === 0;
 
-      // Ground Snap Collision (Voxel Aware)
-      const cx = Math.floor(state.position[0]);
-      const cz = Math.floor(state.position[2]);
-      const groundY = world.getSpawnHeight(cx, cz);
-      
-      if (state.position[1] <= groundY) {
-        state.position[1] = groundY;
-        if (state.velocity[1] < 0) state.velocity[1] = 0;
-      }
+      if (!isStationaryAtDistance) {
+        // Apply Gravity & Movement
+        state.velocity[1] -= 18.0 * dt; // Gravity
+        state.position[0] += state.velocity[0] * dt;
+        state.position[1] += state.velocity[1] * dt;
+        state.position[2] += state.velocity[2] * dt;
 
-      // Wall Collision X
-      if (state.velocity[0] !== 0) {
-          const blockX = world.getBlock(Math.floor(state.position[0] + Math.sign(state.velocity[0]) * 0.4), Math.floor(state.position[1] + 0.5), cz);
-          if (blockX !== 0) {
-              state.velocity[0] = 0;
-          }
-      }
-      
-      // Wall Collision Z
-      if (state.velocity[2] !== 0) {
-          const blockZ = world.getBlock(cx, Math.floor(state.position[1] + 0.5), Math.floor(state.position[2] + Math.sign(state.velocity[2]) * 0.4));
-          if (blockZ !== 0) {
-              state.velocity[2] = 0;
-          }
+        // Ground Snap Collision (Voxel Aware)
+        const cx = Math.floor(state.position[0]);
+        const cz = Math.floor(state.position[2]);
+        const groundY = world.getSpawnHeight(cx, cz);
+        
+        if (state.position[1] <= groundY) {
+          state.position[1] = groundY;
+          if (state.velocity[1] < 0) state.velocity[1] = 0;
+        }
+
+        // Wall Collision X
+        if (state.velocity[0] !== 0) {
+            const blockX = world.getBlock(Math.floor(state.position[0] + Math.sign(state.velocity[0]) * 0.4), Math.floor(state.position[1] + 0.5), cz);
+            if (blockX !== 0) {
+                state.velocity[0] = 0;
+            }
+        }
+        
+        // Wall Collision Z
+        if (state.velocity[2] !== 0) {
+            const blockZ = world.getBlock(cx, Math.floor(state.position[1] + 0.5), Math.floor(state.position[2] + Math.sign(state.velocity[2]) * 0.4));
+            if (blockZ !== 0) {
+                state.velocity[2] = 0;
+            }
+        }
       }
 
       // Update 3D Mesh
-      const oldCx = Math.floor(ePos.x / 16);
-      const oldCz = Math.floor(ePos.z / 16);
+      const oldCx = Math.floor(mesh.position.x / 16);
+      const oldCz = Math.floor(mesh.position.z / 16);
       
       mesh.position.set(state.position[0], state.position[1], state.position[2]);
       
@@ -570,7 +645,7 @@ export class EntityManager {
       }
 
       // Despawn distant entities
-      if (distToPlayer > 80 && state.type !== 'npc') {
+      if (distToPlayerSq2D > 6400 && state.type !== 'npc') { // 80m squared = 6400
         this.entityGroup.remove(mesh);
         this.entities.delete(id);
         PoiseSystem.removeEntity(id);
@@ -587,11 +662,18 @@ export class EntityManager {
       gItem.mesh.rotation.y += dt * 2.0;
       gItem.mesh.position.y = gItem.position.y + Math.sin(gItem.life * 3) * 0.1;
 
-      // Magnet toward player if within 2.5m
-      const dist = gItem.position.distanceTo(playerPos);
-      if (dist < 2.5) {
-        const pull = new THREE.Vector3().subVectors(playerPos, gItem.position).normalize().multiplyScalar(dt * 8.0);
-        gItem.position.add(pull);
+      // Magnet toward player if within 2.5m (distSq < 6.25, zero-allocation)
+      const gdx = playerPos.x - gItem.position.x;
+      const gdy = playerPos.y - gItem.position.y;
+      const gdz = playerPos.z - gItem.position.z;
+      const gDistSq = gdx * gdx + gdy * gdy + gdz * gdz;
+
+      if (gDistSq < 6.25 && gDistSq > 0.01) {
+        const invDist = 1 / Math.sqrt(gDistSq);
+        const pullFactor = dt * 8.0 * invDist;
+        gItem.position.x += gdx * pullFactor;
+        gItem.position.y += gdy * pullFactor;
+        gItem.position.z += gdz * pullFactor;
         gItem.mesh.position.copy(gItem.position);
       }
     }
@@ -955,5 +1037,9 @@ export class EntityManager {
       EntityManager.groundItemGeometry.dispose();
       EntityManager.groundItemGeometry = null;
     }
+  }
+
+  public getActiveEntityCount(): number {
+    return this.entities.size;
   }
 }

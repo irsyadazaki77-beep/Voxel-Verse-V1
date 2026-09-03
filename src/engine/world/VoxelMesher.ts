@@ -58,7 +58,8 @@ export class VoxelMesher {
   }
 
   private static aoToFactor(ao: number): number {
-    return 0.45 + (ao / 3.0) * 0.55;
+    // Balanced AO response: preserves geometric depth while keeping corners readable in darkness
+    return 0.58 + (ao / 3.0) * 0.42;
   }
 
   // Fast Block Property Checkers
@@ -305,7 +306,7 @@ export class VoxelMesher {
             positions.push(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3);
             normals.push(...norm, ...norm, ...norm, ...norm);
 
-            const dirShade = isTop ? 1.0 : isBottom ? 0.62 : (isFront || isBack) ? 0.82 : 0.88;
+            const dirShade = isTop ? 1.0 : isBottom ? 0.68 : (isFront || isBack) ? 0.85 : 0.90;
             const f0 = VoxelMesher.aoToFactor(cell.ao0) * dirShade;
             const f1 = VoxelMesher.aoToFactor(cell.ao1) * dirShade;
             const f2 = VoxelMesher.aoToFactor(cell.ao2) * dirShade;

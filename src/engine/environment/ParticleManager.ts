@@ -53,22 +53,45 @@ export class ParticleManager {
   private qualityMultiplier: number = 1.0;
 
   public setQuality(quality: 'low' | 'medium' | 'high'): void {
-    if (quality === 'low') this.qualityMultiplier = 0.5;
-    else if (quality === 'medium') this.qualityMultiplier = 0.8;
+    if (quality === 'low') this.qualityMultiplier = 0.3;
+    else if (quality === 'medium') this.qualityMultiplier = 0.7;
     else this.qualityMultiplier = 1.0;
+  }
+
+  private getMaxActiveLimit(): number {
+    try {
+      const g = SettingsManager.get().graphics;
+      if (!g.particles) return 0;
+      if (g.preset === 'low' || g.particleQuality === 'low') return 120;
+      if (g.preset === 'medium' || g.particleQuality === 'medium') return 350;
+    } catch {
+      // fallback
+    }
+    return this.maxParticles;
   }
 
   private getQualityMultiplier(): number {
     try {
-      const preset = SettingsManager.get().graphics.preset;
-      if (preset === 'low') return 0.4;
-      if (preset === 'medium') return 0.7;
-      if (preset === 'high') return 1.0;
-      if (preset === 'ultra') return 1.4;
+      const g = SettingsManager.get().graphics;
+      if (!g.particles) return 0;
+      if (g.preset === 'low' || g.particleQuality === 'low') return 0.25;
+      if (g.preset === 'medium' || g.particleQuality === 'medium') return 0.65;
+      if (g.preset === 'high') return 1.0;
+      if (g.preset === 'ultra') return 1.4;
     } catch {
       // fallback
     }
     return this.qualityMultiplier;
+  }
+
+  private evictOldestParticle(): void {
+    if (this.particles.length === 0) return;
+    const oldest = this.particles[0];
+    const last = this.particles.pop()!;
+    if (this.particles.length > 0) {
+      this.particles[0] = last;
+    }
+    this.particlePool.push(oldest);
   }
 
   private getPooledParticle(): ActiveParticle {
@@ -88,25 +111,25 @@ export class ParticleManager {
     };
   }
 
-  // Spawn Block Break Debris Burst
   public spawnBlockBreakParticles(pos: THREE.Vector3, blockType: BlockType): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0) return;
     const def = BLOCK_DEFS[blockType];
     const baseColor = def ? def.color : [0.5, 0.5, 0.5];
-    const mult = this.getQualityMultiplier();
-    const count = Math.max(4, Math.round(16 * mult));
+    const maxCap = this.getMaxActiveLimit();
+    const count = Math.max(2, Math.round(16 * mult));
 
     for (let i = 0; i < count; i++) {
-      if (this.particles.length >= this.maxParticles) {
-        const oldest = this.particles.shift();
-        if (oldest) this.particlePool.push(oldest);
+      if (this.particles.length >= maxCap) {
+        this.evictOldestParticle();
       }
 
       const p = this.getPooledParticle();
-      p.position.copy(pos).add(new THREE.Vector3(
-        (Math.random() - 0.5) * 0.7,
-        Math.random() * 0.7,
-        (Math.random() - 0.5) * 0.7
-      ));
+      p.position.set(
+        pos.x + (Math.random() - 0.5) * 0.7,
+        pos.y + Math.random() * 0.7,
+        pos.z + (Math.random() - 0.5) * 0.7
+      );
       p.velocity.set(
         (Math.random() - 0.5) * 4.8,
         2.6 + Math.random() * 3.8,
@@ -130,32 +153,37 @@ export class ParticleManager {
   // Spawn Combat Hit Sparks (e.g. Weapon strike / Critical Hit)
   public spawnCombatSparks(pos: THREE.Vector3, isCritical: boolean = false): void {
     const mult = this.getQualityMultiplier();
-    const count = isCritical ? Math.round(22 * mult) : Math.round(10 * mult);
+    if (mult <= 0) return;
+    const maxCap = this.getMaxActiveLimit();
+    const count = isCritical ? Math.max(3, Math.round(22 * mult)) : Math.max(2, Math.round(10 * mult));
 
     for (let i = 0; i < count; i++) {
-      if (this.particles.length >= this.maxParticles) {
-        const oldest = this.particles.shift();
-        if (oldest) this.particlePool.push(oldest);
+      if (this.particles.length >= maxCap) {
+        this.evictOldestParticle();
       }
-
-      const color = isCritical
-        ? new THREE.Color(0xfbbf24).lerp(new THREE.Color(0xff4444), Math.random())
-        : new THREE.Color(0xffffff).lerp(new THREE.Color(0x38bdf8), Math.random() * 0.5);
 
       const speed = isCritical ? 6.5 : 4.0;
       
       const p = this.getPooledParticle();
-      p.position.copy(pos).add(new THREE.Vector3(
-        (Math.random() - 0.5) * 0.4,
-        (Math.random() - 0.5) * 0.4,
-        (Math.random() - 0.5) * 0.4
-      ));
+      p.position.set(
+        pos.x + (Math.random() - 0.5) * 0.4,
+        pos.y + (Math.random() - 0.5) * 0.4,
+        pos.z + (Math.random() - 0.5) * 0.4
+      );
       p.velocity.set(
         (Math.random() - 0.5) * speed,
         1.5 + Math.random() * speed,
         (Math.random() - 0.5) * speed
       );
-      p.color.copy(color);
+      
+      if (isCritical) {
+        const t = Math.random();
+        p.color.setRGB(1.0, 0.74 - t * 0.47, 0.14 + t * 0.13);
+      } else {
+        const t = Math.random() * 0.5;
+        p.color.setRGB(1.0 - t * 0.78, 1.0 - t * 0.26, 1.0 - t * 0.03);
+      }
+
       p.size = isCritical ? 1.2 : 0.8;
       p.life = 0;
       p.maxLife = 0.35 + Math.random() * 0.25;
@@ -168,16 +196,18 @@ export class ParticleManager {
 
   // Spawn Footstep Dust/Snow/Sand Particles
   public spawnFootstepParticle(pos: THREE.Vector3, blockType: BlockType): void {
-    if (this.particles.length >= this.maxParticles) {
-      const oldest = this.particles.shift();
-      if (oldest) this.particlePool.push(oldest);
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0 || (mult < 0.5 && Math.random() > 0.4)) return;
+    const maxCap = this.getMaxActiveLimit();
+    if (this.particles.length >= maxCap) {
+      this.evictOldestParticle();
     }
 
     const def = BLOCK_DEFS[blockType];
     const col = def ? def.color : [0.6, 0.6, 0.6];
 
     const p = this.getPooledParticle();
-    p.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.3, 0.05, (Math.random() - 0.5) * 0.3));
+    p.position.set(pos.x + (Math.random() - 0.5) * 0.3, pos.y + 0.05, pos.z + (Math.random() - 0.5) * 0.3);
     p.velocity.set((Math.random() - 0.5) * 0.8, 0.8 + Math.random() * 0.6, (Math.random() - 0.5) * 0.8);
     p.color.setRGB(col[0], col[1], col[2]);
     p.size = 0.6;
@@ -192,15 +222,16 @@ export class ParticleManager {
   // Spawn Water Splash Particles
   public spawnWaterSplash(pos: THREE.Vector3): void {
     const mult = this.getQualityMultiplier();
-    const count = Math.round(12 * mult);
+    if (mult <= 0) return;
+    const maxCap = this.getMaxActiveLimit();
+    const count = Math.max(2, Math.round(12 * mult));
     for (let i = 0; i < count; i++) {
-      if (this.particles.length >= this.maxParticles) {
-        const oldest = this.particles.shift();
-        if (oldest) this.particlePool.push(oldest);
+      if (this.particles.length >= maxCap) {
+        this.evictOldestParticle();
       }
 
       const p = this.getPooledParticle();
-      p.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.1, (Math.random() - 0.5) * 0.5));
+      p.position.set(pos.x + (Math.random() - 0.5) * 0.5, pos.y + 0.1, pos.z + (Math.random() - 0.5) * 0.5);
       p.velocity.set((Math.random() - 0.5) * 3.2, 3.2 + Math.random() * 2.8, (Math.random() - 0.5) * 3.2);
       p.color.setRGB(0.4, 0.78, 0.98);
       p.size = 0.75;
@@ -215,14 +246,16 @@ export class ParticleManager {
 
   // Spawn Underwater Air Bubbles
   public spawnUnderwaterBubbles(pos: THREE.Vector3): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0 || (mult < 0.5 && Math.random() > 0.15)) return;
     if (Math.random() > 0.4) return;
-    if (this.particles.length >= this.maxParticles) {
-      const oldest = this.particles.shift();
-      if (oldest) this.particlePool.push(oldest);
+    const maxCap = this.getMaxActiveLimit();
+    if (this.particles.length >= maxCap) {
+      this.evictOldestParticle();
     }
 
     const p = this.getPooledParticle();
-    p.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 4));
+    p.position.set(pos.x + (Math.random() - 0.5) * 4, pos.y + (Math.random() - 0.5) * 2, pos.z + (Math.random() - 0.5) * 4);
     p.velocity.set((Math.random() - 0.5) * 0.3, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 0.3);
     p.color.setRGB(0.48, 0.82, 0.98);
     p.size = 0.4;
@@ -236,15 +269,17 @@ export class ParticleManager {
 
   // Spawn Ambient Torch Embers & Volcanic Ash
   public spawnAmbientEmbers(pos: THREE.Vector3, isVolcanic: boolean = false): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0 || mult < 0.4) return; // Skip ambient torch emitters on Low graphics
     if (Math.random() > 0.3) return;
-    if (this.particles.length >= this.maxParticles) {
-      const oldest = this.particles.shift();
-      if (oldest) this.particlePool.push(oldest);
+    const maxCap = this.getMaxActiveLimit();
+    if (this.particles.length >= maxCap) {
+      this.evictOldestParticle();
     }
 
     const isAsh = isVolcanic;
     const p = this.getPooledParticle();
-    p.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 12, Math.random() * 6, (Math.random() - 0.5) * 12));
+    p.position.set(pos.x + (Math.random() - 0.5) * 12, pos.y + Math.random() * 6, pos.z + (Math.random() - 0.5) * 12);
     p.velocity.set((Math.random() - 0.5) * 0.5, 0.5 + Math.random() * 0.8, (Math.random() - 0.5) * 0.5);
     if (isAsh) {
       p.color.setRGB(0.25, 0.22, 0.22);
@@ -262,14 +297,16 @@ export class ParticleManager {
 
   // Spawn Luminescent / Magic Spores in Crystal Biomes
   public spawnMagicSpores(pos: THREE.Vector3, colorHex: number = 0x38bdf8): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0 || mult < 0.4) return; // Skip ambient spores on Low graphics
     if (Math.random() > 0.4) return;
-    if (this.particles.length >= this.maxParticles) {
-      const oldest = this.particles.shift();
-      if (oldest) this.particlePool.push(oldest);
+    const maxCap = this.getMaxActiveLimit();
+    if (this.particles.length >= maxCap) {
+      this.evictOldestParticle();
     }
 
     const p = this.getPooledParticle();
-    p.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 16, Math.random() * 8, (Math.random() - 0.5) * 16));
+    p.position.set(pos.x + (Math.random() - 0.5) * 16, pos.y + Math.random() * 8, pos.z + (Math.random() - 0.5) * 16);
     p.velocity.set((Math.random() - 0.5) * 0.4, 0.3 + Math.random() * 0.5, (Math.random() - 0.5) * 0.4);
     p.color.setHex(colorHex);
     p.size = 0.6;
@@ -281,14 +318,44 @@ export class ParticleManager {
     this.particles.push(p);
   }
 
-  public update(deltaTime: number): void {
-    // 1. Recycle dead particles
+  public getActiveParticleCount(): number {
+    return this.particles.length;
+  }
+
+  public update(deltaTime: number, playerPos?: THREE.Vector3): void {
+    if (this.particles.length === 0) {
+      if (this.particleMesh.count !== 0) {
+        this.particleMesh.count = 0;
+        this.particleMesh.instanceMatrix.needsUpdate = true;
+      }
+      return;
+    }
+
+    const dt = Math.min(deltaTime, 0.1);
+    const maxCap = this.getMaxActiveLimit();
+    while (this.particles.length > maxCap) {
+      this.evictOldestParticle();
+    }
+
+    // 1. Recycle dead particles using O(1) swap-and-pop
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
-      p.life += deltaTime;
+      p.life += dt;
+
+      // Distance culling: accelerated decay if too far from player
+      if (playerPos) {
+        const dx = p.position.x - playerPos.x;
+        const dz = p.position.z - playerPos.z;
+        if (dx * dx + dz * dz > 50 * 50) {
+          p.life += dt * 3.0; // Decay 4x faster when out of view
+        }
+      }
 
       if (p.life >= p.maxLife) {
-        this.particles.splice(i, 1);
+        const last = this.particles.pop()!;
+        if (i < this.particles.length) {
+          this.particles[i] = last;
+        }
         this.particlePool.push(p);
       }
     }
@@ -299,8 +366,8 @@ export class ParticleManager {
       const p = this.particles[i];
 
       // Physics update
-      p.velocity.y -= p.gravity * deltaTime;
-      p.position.addScaledVector(p.velocity, deltaTime);
+      p.velocity.y -= p.gravity * dt;
+      p.position.addScaledVector(p.velocity, dt);
 
       // Scale & Opacity decay
       const progress = p.life / p.maxLife;

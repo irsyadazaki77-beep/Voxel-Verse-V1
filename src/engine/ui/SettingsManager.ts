@@ -12,7 +12,7 @@ export interface AudioSettings {
 
 export interface GraphicsSettings {
   preset: 'low' | 'medium' | 'high' | 'ultra' | 'custom' | 'auto';
-  resolutionMode: 'auto' | 'native' | '1080p' | '1440p' | '4k' | 'custom';
+  resolutionMode: 'auto' | 'native' | '1080p' | '1440p' | '2k' | '4k' | 'custom';
   renderScale: number; // 0.5 .. 2.0
   renderDistance: number; // 2..16 chunks
   shadows: boolean;
@@ -39,6 +39,7 @@ export interface GraphicsSettings {
   cloudQuality: 'low' | 'medium' | 'high';
   particles: boolean;
   cameraMode: 'first_person' | 'third_person_back' | 'third_person_front';
+  nightBrightness: number; // 0.8 .. 1.2, default 1.0
 }
 
 export type KeyBindingAction =
@@ -137,6 +138,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
     cloudQuality: 'high',
     particles: true,
     cameraMode: 'first_person',
+    nightBrightness: 1.0,
   },
   controls: {
     keyBindings: {

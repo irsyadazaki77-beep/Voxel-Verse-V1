@@ -35,6 +35,8 @@ export class ChunkWorkerPool {
   private workers: (Worker | null)[] = [];
   private workerBusy: boolean[] = [];
   private taskQueue: WorkerTask[] = [];
+  private taskKeySet: Set<string> = new Set();
+  private isQueueDirty: boolean = false;
   public currentSessionToken: number = 1;
   private cpuFallbackGenerator: WorldGeneratorCore | null = null;
   private taskTimeouts: Map<string, any> = new Map();
@@ -173,33 +175,45 @@ export class ChunkWorkerPool {
   public setSessionToken(token: number): void {
     this.currentSessionToken = token;
     this.taskQueue = [];
+    this.taskKeySet.clear();
+    this.isQueueDirty = false;
     this.taskTimeouts.forEach((timeout) => clearTimeout(timeout));
     this.taskTimeouts.clear();
   }
 
   public enqueueTask(task: WorkerTask): void {
-    const exists = this.taskQueue.some(t => t.cx === task.cx && t.cz === task.cz && t.sessionToken === task.sessionToken && t.type === task.type);
-    if (exists) return;
+    const key = `${task.type}_${task.cx}_${task.cz}_${task.sessionToken}`;
+    if (this.taskKeySet.has(key)) return;
 
+    this.taskKeySet.add(key);
     this.taskQueue.push(task);
-    this.sortQueue();
+    this.isQueueDirty = true;
 
-    // Priority convention: higher numeric priority = more important.
-    // Array is sorted descending (index 0 is highest priority).
-    // Pop lowest priority elements from the end if queue exceeds limit.
+    // Prune if exceeded max capacity
     const maxQueueSize = 250;
-    while (this.taskQueue.length > maxQueueSize) {
-      this.taskQueue.pop(); 
+    if (this.taskQueue.length > maxQueueSize) {
+      this.sortQueue();
+      while (this.taskQueue.length > maxQueueSize) {
+        const dropped = this.taskQueue.pop();
+        if (dropped) {
+          this.taskKeySet.delete(`${dropped.type}_${dropped.cx}_${dropped.cz}_${dropped.sessionToken}`);
+        }
+      }
     }
 
     this.processQueue();
   }
 
   public cancelTasksOutofRange(playerCX: number, playerCZ: number, maxRadius: number): void {
+    const maxRadSq = maxRadius * maxRadius;
     this.taskQueue = this.taskQueue.filter(t => {
       const dx = t.cx - playerCX;
       const dz = t.cz - playerCZ;
-      return dx * dx + dz * dz <= maxRadius * maxRadius;
+      const keep = dx * dx + dz * dz <= maxRadSq;
+      if (!keep) {
+        this.taskKeySet.delete(`${t.type}_${t.cx}_${t.cz}_${t.sessionToken}`);
+      }
+      return keep;
     });
   }
 
@@ -212,14 +226,20 @@ export class ChunkWorkerPool {
       // If priorities equal, prioritize meshing over generation
       return a.type === 'mesh' ? -1 : (b.type === 'mesh' ? 1 : 0);
     });
+    this.isQueueDirty = false;
   }
 
   private processQueue(): void {
     if (this.taskQueue.length === 0) return;
 
+    if (this.isQueueDirty) {
+      this.sortQueue();
+    }
+
     for (let i = 0; i < this.workers.length; i++) {
       if (!this.workerBusy[i] && this.taskQueue.length > 0) {
         const task = this.taskQueue.shift()!;
+        this.taskKeySet.delete(`${task.type}_${task.cx}_${task.cz}_${task.sessionToken}`);
 
         if (task.sessionToken !== this.currentSessionToken) {
           continue;
@@ -333,5 +353,7 @@ export class ChunkWorkerPool {
     this.workers = [];
     this.workerBusy = [];
     this.taskQueue = [];
+    this.taskKeySet.clear();
+    this.isQueueDirty = false;
   }
 }

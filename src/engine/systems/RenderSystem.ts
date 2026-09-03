@@ -86,7 +86,8 @@ export class RenderSystem implements GameSystem {
     this.runtime.lastRenderTimeMs = renderTime;
 
     if (this.runtime.renderQualityManager && this.runtime.settings?.graphics) {
-      this.runtime.renderQualityManager.trackFrameTime(renderTime, this.runtime.settings.graphics);
+      const totalFrameMs = Math.max(renderTime, deltaTime * 1000);
+      this.runtime.renderQualityManager.trackFrameTime(totalFrameMs, renderTime, this.runtime.settings.graphics);
     }
   }
 

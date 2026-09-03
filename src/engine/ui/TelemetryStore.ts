@@ -34,6 +34,11 @@ export interface TelemetryData {
     drawCalls: number;
     triangles: number;
     memoryEst: number;
+    fpsLow1Pct?: number;
+    dynamicScale?: number;
+    bottleneck?: 'CPU' | 'GPU' | 'BALANCED';
+    activeEntities?: number;
+    activeParticles?: number;
   };
 }
 
@@ -55,7 +60,25 @@ export class TelemetryStore {
     timeOfDay: 8.0, weatherType: 'clear',
     breakProgress: 0,
     bowChargeRatio: 0,
-    profilerMetrics: { activeChunks: 0, cachedChunks: 0, queuedTasks: 0, generatingTasks: 0, dirtyChunks: 0, meshUploadsPerFrame: 0, frameTimeMs: 0, simTimeMs: 0, renderTimeMs: 0, drawCalls: 0, triangles: 0, memoryEst: 0 }
+    profilerMetrics: { 
+      activeChunks: 0, 
+      cachedChunks: 0, 
+      queuedTasks: 0, 
+      generatingTasks: 0, 
+      dirtyChunks: 0, 
+      meshUploadsPerFrame: 0, 
+      frameTimeMs: 0, 
+      simTimeMs: 0, 
+      renderTimeMs: 0, 
+      drawCalls: 0, 
+      triangles: 0, 
+      memoryEst: 0,
+      fpsLow1Pct: 60,
+      dynamicScale: 1.0,
+      bottleneck: 'BALANCED',
+      activeEntities: 0,
+      activeParticles: 0
+    }
   };
   
   public static subscribe(listener: Listener): () => void {

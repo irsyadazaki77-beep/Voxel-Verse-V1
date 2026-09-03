@@ -34,13 +34,18 @@ export class ChunkScheduler {
     this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
 
     for (const chunk of this.world.chunks.values()) {
-      const minX = chunk.cx * CHUNK_SIZE_X;
-      const minZ = chunk.cz * CHUNK_SIZE_Z;
-      this.tempBox.min.set(minX, 0, minZ);
-      this.tempBox.max.set(minX + CHUNK_SIZE_X, CHUNK_SIZE_Y, minZ + CHUNK_SIZE_Z);
-
-      chunk.group.visible = this.frustum.intersectsBox(this.tempBox);
+      chunk.group.visible = this.frustum.intersectsBox(chunk.worldBounds);
     }
+  }
+
+  private lastCacheCleanTime: number = 0;
+  private static readonly NEIGHBOR_OFFSETS: readonly [number, number][] = [
+    [-1, 0], [1, 0], [0, -1], [0, 1],
+    [-1, -1], [1, -1], [-1, 1], [1, 1]
+  ];
+
+  public get dirtyChunkCount(): number {
+    return this.dirtyQueue.size;
   }
 
   public update(
@@ -55,41 +60,50 @@ export class ChunkScheduler {
 
     const loadRadius = renderDistance;
     const unloadRadius = renderDistance + 2; // Hysteresis to prevent thrashing
-
-    const activeKeys = new Set<string>();
+    const loadRadiusSq = loadRadius * loadRadius + 1;
+    const unloadRadiusSq = unloadRadius * unloadRadius;
 
     // 1. Identify chunks within Load Radius and calculate Priority
+    let tasksEnqueuedThisFrame = 0;
+    const maxNewTasksPerCall = 4; // Prevent worker starvation / CPU spike
+
     for (let dx = -loadRadius; dx <= loadRadius; dx++) {
       for (let dz = -loadRadius; dz <= loadRadius; dz++) {
+        // Enforce frame budget check during chunk discovery
+        if (performance.now() - startTime >= frameBudgetMs) {
+          break;
+        }
+
         const distSq = dx * dx + dz * dz;
-        if (distSq <= loadRadius * loadRadius + 1) {
+        if (distSq <= loadRadiusSq) {
           const cx = playerCX + dx;
           const cz = playerCZ + dz;
           const key = `${cx},${cz}`;
-          activeKeys.add(key);
-
-          // Calculate Priority (Camera Direction Boost)
-          const dirX = dx === 0 && dz === 0 ? 0 : dx / Math.sqrt(distSq);
-          const dirZ = dx === 0 && dz === 0 ? 0 : dz / Math.sqrt(distSq);
-          const dot = dirX * cameraDir.x + dirZ * cameraDir.z;
-
-          let priority = 1000 - distSq * 10;
-          if (dot > 0) priority += dot * 250; // Boost chunks in front of camera
-          if (dx === 0 && dz === 0) priority += 2000; // Player current chunk top priority
 
           if (!this.world.chunks.has(key)) {
-            // Check Warm Cache first
+            // Check Warm Cache first (fast synchronous recovery)
             if (this.warmCache.has(key)) {
               const cached = this.warmCache.get(key)!;
               this.warmCache.delete(key);
               this.world.chunks.set(key, cached.chunk);
               this.world.worldGroup.add(cached.chunk.group);
-            } else {
+            } else if (tasksEnqueuedThisFrame < maxNewTasksPerCall) {
+              // Calculate Priority (Camera Direction Boost)
+              const invDist = distSq > 0 ? 1 / Math.sqrt(distSq) : 0;
+              const dirX = dx * invDist;
+              const dirZ = dz * invDist;
+              const dot = dirX * cameraDir.x + dirZ * cameraDir.z;
+
+              let priority = 1000 - distSq * 10;
+              if (dot > 0) priority += dot * 250; // Boost chunks in front of camera
+              if (dx === 0 && dz === 0) priority += 2000; // Player current chunk top priority
+
               // Create new Chunk & Enqueue Async Worker Task
               const chunk = new Chunk(cx, cz);
               chunk.state = ChunkState.QUEUED;
               this.world.chunks.set(key, chunk);
               this.world.worldGroup.add(chunk.group);
+              tasksEnqueuedThisFrame++;
 
               const modBlocksObj = this.getModifiedBlocksObject(cx, cz);
 
@@ -112,17 +126,16 @@ export class ChunkScheduler {
                     this.dirtyQueue.add(key);
 
                     // Re-mesh adjacent neighbor chunks to resolve border face culling seams
-                    const neighborKeys = [
-                      `${cx - 1},${cz}`,
-                      `${cx + 1},${cz}`,
-                      `${cx},${cz - 1}`,
-                      `${cx},${cz + 1}`,
-                    ];
-                    for (const nKey of neighborKeys) {
-                      const nChunk = this.world.chunks.get(nKey);
+                    const n1 = `${cx - 1},${cz}`;
+                    const n2 = `${cx + 1},${cz}`;
+                    const n3 = `${cx},${cz - 1}`;
+                    const n4 = `${cx},${cz + 1}`;
+                    const neighbors = [n1, n2, n3, n4];
+                    for (let i = 0; i < neighbors.length; i++) {
+                      const nChunk = this.world.chunks.get(neighbors[i]);
                       if (nChunk && nChunk.state !== ChunkState.QUEUED && nChunk.state !== ChunkState.UNLOADED) {
                         nChunk.setDirty();
-                        this.dirtyQueue.add(nKey);
+                        this.dirtyQueue.add(neighbors[i]);
                       }
                     }
                   }
@@ -137,13 +150,12 @@ export class ChunkScheduler {
     // Cancel queued tasks for chunks that are now out of range
     this.workerPool.cancelTasksOutofRange(playerCX, playerCZ, unloadRadius);
 
-    // 2. Unload Chunks outside Unload Radius (with Hysteresis)
+    // 2. Unload Chunks outside Unload Radius (with Hysteresis) - Zero string split
     for (const [key, chunk] of this.world.chunks.entries()) {
-      const [cx, cz] = key.split(',').map(Number);
-      const dx = cx - playerCX;
-      const dz = cz - playerCZ;
+      const dx = chunk.cx - playerCX;
+      const dz = chunk.cz - playerCZ;
 
-      if (dx * dx + dz * dz > unloadRadius * unloadRadius) {
+      if (dx * dx + dz * dz > unloadRadiusSq) {
         this.world.worldGroup.remove(chunk.group);
         this.world.chunks.delete(key);
         this.dirtyQueue.delete(key);
@@ -153,46 +165,56 @@ export class ChunkScheduler {
       }
     }
 
-    // Clean warm cache items older than 10s
+    // Clean warm cache items older than 10s (Throttled check every 1500ms)
     const now = Date.now();
-    for (const [key, cached] of this.warmCache.entries()) {
-      if (now - cached.unloadTime > 10000) {
-        cached.chunk.dispose();
-        this.warmCache.delete(key);
+    if (now - this.lastCacheCleanTime > 1500) {
+      this.lastCacheCleanTime = now;
+      for (const [key, cached] of this.warmCache.entries()) {
+        if (now - cached.unloadTime > 10000) {
+          cached.chunk.dispose();
+          this.warmCache.delete(key);
+        }
       }
     }
 
-    // 3. Process Remesh / Dirty Queue to Worker
+    // 3. Process Remesh / Dirty Queue to Worker (Stepwise & Budget-capped)
     let uploads = 0;
-    for (const key of Array.from(this.dirtyQueue)) {
+    let meshingTasksEnqueued = 0;
+    const maxMeshTasksPerCall = 3;
+
+    for (const key of this.dirtyQueue) {
+      if (meshingTasksEnqueued >= maxMeshTasksPerCall || (performance.now() - startTime >= frameBudgetMs)) {
+        break;
+      }
+
       const chunk = this.world.chunks.get(key);
       if (chunk && chunk.isDirty && chunk.state !== ChunkState.QUEUED && chunk.state !== ChunkState.GENERATING && chunk.state !== ChunkState.MESHING) {
-        
-        // Prepare neighbor buffers
-        const [cx, cz] = key.split(',').map(Number);
-        const neighborKeys = [
-          `${cx - 1}_${cz}`, `${cx + 1}_${cz}`, `${cx}_${cz - 1}`, `${cx}_${cz + 1}`,
-          `${cx - 1}_${cz - 1}`, `${cx + 1}_${cz - 1}`, `${cx - 1}_${cz + 1}`, `${cx + 1}_${cz + 1}`
-        ];
-        
+        const cx = chunk.cx;
+        const cz = chunk.cz;
+
+        // Prepare neighbor buffers using zero-allocation coordinate offsets
         const neighborBuffers: Record<string, ArrayBuffer> = {};
-        for (const nKey of neighborKeys) {
-          const [nx, nz] = nKey.split('_').map(Number);
+        for (let i = 0; i < ChunkScheduler.NEIGHBOR_OFFSETS.length; i++) {
+          const [ox, oz] = ChunkScheduler.NEIGHBOR_OFFSETS[i];
+          const nx = cx + ox;
+          const nz = cz + oz;
           const nChunk = this.world.chunks.get(`${nx},${nz}`);
           if (nChunk && nChunk.blocks) {
-            neighborBuffers[nKey] = nChunk.blocks.buffer;
+            neighborBuffers[`${nx}_${nz}`] = nChunk.blocks.buffer;
           }
         }
 
         chunk.state = ChunkState.MESHING;
         chunk.isDirty = false;
         this.dirtyQueue.delete(key);
+        meshingTasksEnqueued++;
 
         const dx = cx - playerCX;
         const dz = cz - playerCZ;
         const distSq = dx * dx + dz * dz;
-        const dirX = dx === 0 && dz === 0 ? 0 : dx / Math.sqrt(distSq || 1);
-        const dirZ = dx === 0 && dz === 0 ? 0 : dz / Math.sqrt(distSq || 1);
+        const invDist = distSq > 0 ? 1 / Math.sqrt(distSq) : 0;
+        const dirX = dx * invDist;
+        const dirZ = dz * invDist;
         const dot = dirX * cameraDir.x + dirZ * cameraDir.z;
 
         let meshPriority = Math.max(10, 1200 - distSq * 20);

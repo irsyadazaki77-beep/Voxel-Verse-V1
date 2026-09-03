@@ -60,16 +60,83 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     SettingsManager.update({ gameplay: { ...settings.gameplay, ...partial } });
   };
 
-  const applyPreset = (presetType: 'performance' | 'balanced' | 'quality') => {
+  const applyPreset = (presetType: 'performance' | 'balanced' | '2k_smooth' | 'ultra_4k') => {
     switch (presetType) {
       case 'performance':
-        updateGraphics({ preset: 'low', renderDistance: 4, postProcessing: false });
+        updateGraphics({
+          preset: 'low',
+          resolutionMode: 'auto',
+          renderScale: 0.85,
+          renderDistance: 4,
+          postProcessing: false,
+          antiAliasing: false,
+          antiAliasingMode: 'off',
+          shadows: false,
+          shadowQuality: 'low',
+          shadowMapSize: 512,
+          bloom: false,
+          sharpening: false,
+          ambientOcclusion: false,
+          waterReflections: false,
+          waterQuality: 'low',
+          vegetationDensity: 'low',
+          particleQuality: 'low',
+          clouds: false,
+          cloudQuality: 'low',
+          dynamicResolution: true,
+          targetFps: 60,
+        });
         break;
       case 'balanced':
-        updateGraphics({ preset: 'medium', renderDistance: 6, postProcessing: false });
+        updateGraphics({
+          preset: 'medium',
+          resolutionMode: 'auto',
+          renderDistance: 6,
+          postProcessing: true,
+          antiAliasingMode: 'fxaa',
+          shadows: true,
+          shadowMapSize: 1024,
+          dynamicResolution: true,
+        });
         break;
-      case 'quality':
-        updateGraphics({ preset: 'high', renderDistance: 10, postProcessing: true });
+      case '2k_smooth':
+        updateGraphics({
+          preset: 'high',
+          resolutionMode: '1440p',
+          renderDistance: 8,
+          postProcessing: true,
+          antiAliasing: true,
+          antiAliasingMode: 'smaa',
+          shadows: true,
+          shadowQuality: 'high',
+          shadowMapSize: 2048,
+          bloom: true,
+          bloomStrength: 0.35,
+          colorGrading: 'cinematic',
+          sharpening: true,
+          sharpenStrength: 0.25,
+          dynamicResolution: true,
+          targetFps: 60,
+        });
+        break;
+      case 'ultra_4k':
+        updateGraphics({
+          preset: 'ultra',
+          resolutionMode: '4k',
+          renderDistance: 12,
+          postProcessing: true,
+          antiAliasing: true,
+          antiAliasingMode: 'smaa',
+          shadows: true,
+          shadowQuality: 'ultra',
+          shadowMapSize: 4096,
+          bloom: true,
+          bloomStrength: 0.45,
+          colorGrading: 'cinematic',
+          sharpening: true,
+          sharpenStrength: 0.3,
+          dynamicResolution: true,
+        });
         break;
     }
   };
@@ -161,28 +228,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         <span className={`text-xs font-bold ${settings.graphics.preset === 'medium' ? 'text-[var(--vv-primary)]' : 'text-white'}`}>Balanced</span>
                       </button>
                       <button 
-                        onClick={() => applyPreset('quality')}
+                        onClick={() => applyPreset('2k_smooth')}
                         className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                           settings.graphics.preset === 'high' ? 'bg-[var(--vv-success)]/10 border-[var(--vv-success)] shadow-inner' : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] hover:border-[var(--vv-border)]'
                         }`}
                       >
                         <Eye className={`w-5 h-5 ${settings.graphics.preset === 'high' ? 'text-[var(--vv-success)]' : 'text-[var(--vv-text-muted)]'}`} />
-                        <span className={`text-xs font-bold ${settings.graphics.preset === 'high' ? 'text-[var(--vv-success)]' : 'text-white'}`}>Quality</span>
+                        <span className={`text-xs font-bold ${settings.graphics.preset === 'high' ? 'text-[var(--vv-success)]' : 'text-white'}`}>2K QHD</span>
                       </button>
                       <button 
-                        onClick={() => {
-                          updateGraphics({
-                            preset: 'ultra',
-                            resolutionMode: '4k',
-                            shadowQuality: 'ultra',
-                            shadowMapSize: 4096,
-                            antiAliasingMode: 'smaa',
-                            postProcessing: true,
-                            bloom: true,
-                            colorGrading: 'cinematic',
-                            renderDistance: 12,
-                          });
-                        }}
+                        onClick={() => applyPreset('ultra_4k')}
                         className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                           settings.graphics.preset === 'ultra' ? 'bg-purple-500/10 border-purple-500 shadow-inner' : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] hover:border-[var(--vv-border)]'
                         }`}
@@ -194,7 +249,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   </div>
 
                   <div className="space-y-6">
-                    <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2">4K Resolution & Render Pipeline</h3>
+                    <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2">2K & 4K Resolution Pipeline</h3>
                     
                     {/* Resolution Mode Dropdown */}
                     <div className="grid sm:grid-cols-2 gap-4">
@@ -207,8 +262,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         >
                           <option value="auto">Auto (Responsive DPR)</option>
                           <option value="native">Native Screen Resolution</option>
-                          <option value="1080p">1080p (1920x1080)</option>
-                          <option value="1440p">1440p QHD (2560x1440)</option>
+                          <option value="1080p">1080p Full HD (1920x1080)</option>
+                          <option value="1440p">1440p 2K QHD (2560x1440)</option>
                           <option value="4k">4K UHD (3840x2160)</option>
                           <option value="custom">Custom Scale</option>
                         </select>
@@ -301,6 +356,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         onChange={(e) => updateGraphics({ fov: parseInt(e.target.value, 10), preset: 'custom' })}
                         className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
                       />
+                    </div>
+
+                    {/* Night Visibility / Moonlight Balance */}
+                    <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="font-bold text-white text-sm">Night Visibility & Balance</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)]">Balances moonlight exposure & nocturnal visibility</div>
+                        </div>
+                        <span className="font-mono font-bold text-[var(--vv-primary)] text-sm">
+                          {Math.round((settings.graphics.nightBrightness ?? 1.0) * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="80"
+                        max="120"
+                        step="5"
+                        value={Math.round((settings.graphics.nightBrightness ?? 1.0) * 100)}
+                        onChange={(e) => updateGraphics({ nightBrightness: parseInt(e.target.value, 10) / 100, preset: 'custom' })}
+                        className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                      />
+                      <div className="flex justify-between text-[10px] text-[var(--vv-text-muted)] font-mono">
+                        <span>80% (Moody Deep)</span>
+                        <span>100% (Balanced)</span>
+                        <span>120% (High Visibility)</span>
+                      </div>
                     </div>
 
                     <div className="grid sm:grid-cols-2 gap-4">

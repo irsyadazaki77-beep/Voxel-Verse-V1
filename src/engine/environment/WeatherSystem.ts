@@ -123,6 +123,7 @@ export class WeatherSystem {
     rainMat.opacity = THREE.MathUtils.lerp(rainMat.opacity, isRaining ? 0.78 : 0, dt * 2.0);
 
     if (rainMat.opacity > 0.05) {
+      this.rainParticles.visible = true;
       const pos = this.rainParticles.geometry.attributes.position.array as Float32Array;
       const speed = this.weather.type === 'storm' ? 34 : 22;
       for (let i = 0; i < pos.length; i += 3) {
@@ -137,6 +138,8 @@ export class WeatherSystem {
         }
       }
       this.rainParticles.geometry.attributes.position.needsUpdate = true;
+    } else {
+      this.rainParticles.visible = false;
     }
 
     // Update Snow
@@ -145,6 +148,7 @@ export class WeatherSystem {
     snowMat.opacity = THREE.MathUtils.lerp(snowMat.opacity, isSnowing ? 0.88 : 0, dt * 2.0);
 
     if (snowMat.opacity > 0.05) {
+      this.snowParticles.visible = true;
       const pos = this.snowParticles.geometry.attributes.position.array as Float32Array;
       for (let i = 0; i < pos.length; i += 3) {
         pos[i] += windDx + Math.sin(Date.now() * 0.002 + i) * 0.03;
@@ -158,6 +162,8 @@ export class WeatherSystem {
         }
       }
       this.snowParticles.geometry.attributes.position.needsUpdate = true;
+    } else {
+      this.snowParticles.visible = false;
     }
   }
 

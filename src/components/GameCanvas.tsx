@@ -162,6 +162,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           });
 
           runtimeRef.current = runtime;
+          (window as any).__voxelRuntime = runtime;
 
           if (isMultiplayer) {
             setLoadingStage("Connecting to Authoritative Realm Server...");
@@ -204,6 +205,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     loadData();
 
     return () => {
+      delete (window as any).__voxelRuntime;
       if (runtimeRef.current) {
         runtimeRef.current.stop();
         runtimeRef.current = null;
