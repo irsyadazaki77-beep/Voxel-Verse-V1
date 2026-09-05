@@ -265,8 +265,8 @@ export class VoxelWorld {
         `
         #include <color_fragment>
         
-        vec3 vDir = normalize(vViewPosition); // towards camera in view space
-        float fresnel = max(0.0, dot(vDir, normal));
+        vec3 vDir = normalize(-vViewPosition); // towards camera in view space
+        float fresnel = max(0.0, dot(vDir, normalize(vNormal)));
         fresnel = clamp(1.0 - fresnel, 0.0, 1.0);
         float fCurve = pow(fresnel, 3.0);
         
