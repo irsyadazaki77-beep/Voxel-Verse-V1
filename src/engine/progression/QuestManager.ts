@@ -2,7 +2,6 @@
 import { QuestDef, QuestObjective, QuestState, ItemStack } from '../../types';
 import { GameEventBus } from '../events/GameEventBus';
 import { CraftingSystem } from '../items/CraftingSystem';
-
 import { SETTLEMENT_REGISTRY, SettlementManager } from '../settlement/SettlementManager';
 import { NotificationManager } from '../ui/NotificationManager';
 
@@ -10,15 +9,15 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
   q_first_steps: {
     id: 'q_first_steps',
     title: 'Pioneering the Haven',
-    giverName: 'Torvald the Nomadic Merchant',
+    giverName: 'Torvald (Saudagar Pengelana)',
     giverSettlement: 'Haven Camp',
     category: 'storyline',
     tier: 'tier1_haven',
-    description: 'Fell ancient timber, fashion basic wooden implements, and discover the surrounding wilderness.',
+    description: 'Tebang kayu rimba, buat perkakas dasar, dan temukan situs suci permukiman perintis.',
     objectives: [
       { type: 'craft', description: 'Craft a Wooden Pickaxe at a Crafting Bench', targetId: 'wooden_pickaxe', requiredCount: 1 },
-      { type: 'collect', description: 'Gather 8 River Cobblestone', targetId: 'cobblestone', requiredCount: 8 },
-      { type: 'discover', description: 'Discover an Ancient Shrine or Explorer Cabin', targetId: 'shrine', requiredCount: 1 },
+      { type: 'collect', description: 'Kumpulkan 8 Batu Kali (River Cobblestone)', targetId: 'cobblestone', requiredCount: 8 },
+      { type: 'discover', description: 'Temukan Bangunan Suci atau Pondok Pengelana', targetId: 'shrine', requiredCount: 1 },
     ],
     rewards: {
       xp: 50,
@@ -27,18 +26,19 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
         { itemId: 'bread', count: 6 },
       ],
       unlockedRecipe: 'copper_pickaxe',
+      reputation: { settlementId: 'haven_camp', amount: 15 },
     },
   },
   q_hunting_stalkers: {
     id: 'q_hunting_stalkers',
-    title: 'Shadows in the Mist',
+    title: 'Bayang-Bayang Malam Suncrest',
     giverName: 'Elder Bryan of Suncrest',
     giverSettlement: 'Suncrest Hamlet',
     category: 'hunting',
     tier: 'tier2_frontier',
-    description: 'Nocturnal Shadow Stalkers menace the perimeter during dark hours. Hunt them down to safeguard the settlement.',
+    description: 'Makhluk bayangan malam mengancam batas perimeter desa pertanian Suncrest. Halau mereka demi keamanan warga.',
     objectives: [
-      { type: 'kill', description: 'Slay 3 Shadow Stalkers', targetId: 'stalker', requiredCount: 3 },
+      { type: 'kill', description: 'Tumpas 3 Shadow Stalkers', targetId: 'stalker', requiredCount: 3 },
     ],
     rewards: {
       xp: 120,
@@ -46,46 +46,213 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
         { itemId: 'iron_ingot', count: 4 },
         { itemId: 'healing_potion', count: 2 },
       ],
+      reputation: { settlementId: 'suncrest_hamlet', amount: 20 },
     },
     prerequisites: ['q_first_steps'],
   },
+  
+  // Nusantara Living Settlement Regional Quests
+  q_repair_subak: {
+    id: 'q_repair_subak',
+    title: 'Restorasi Saluran Tirta Subak Bali',
+    giverName: 'Pekaseh Wayan (Pengelola Subak)',
+    giverSettlement: 'Banjar Tirta Subak',
+    category: 'exploration',
+    tier: 'tier3_ancient',
+    description: 'Bantu Pekaseh Wayan merawat talang air berundak dan mengumpulkan benih beras suci untuk musim tanam pura.',
+    objectives: [
+      { type: 'collect', description: 'Kumpulkan 12 Beras Suci Teras Subak', targetId: 'subak_terrace_rice', requiredCount: 12 },
+      { type: 'craft', description: 'Buat 4 Talang Air Irigasi Subak (Terrace Waterway)', targetId: 'terrace_waterway', requiredCount: 4 },
+    ],
+    rewards: {
+      xp: 220,
+      items: [
+        { itemId: 'gaharu_incense', count: 6 },
+        { itemId: 'paras_stone_carving', count: 4 },
+      ],
+      reputation: { settlementId: 'banjar_subak', amount: 30 },
+      unlockedRecipe: 'cultural_aether_lantern',
+    },
+    prerequisites: ['q_first_steps'],
+  },
+
+  q_trade_jawa: {
+    id: 'q_trade_jawa',
+    title: 'Lumbung Pangan & Pamor Majapahit',
+    giverName: 'Ki Lurah Tejo (Sesepuh Jawa)',
+    giverSettlement: 'Dusun Wilwatikta',
+    category: 'gathering',
+    tier: 'tier2_frontier',
+    description: 'Siapkan pasokan Beras Wangi dan Gerabah Merah untuk perbekalan lumbung desa Wilwatikta.',
+    objectives: [
+      { type: 'collect', description: 'Kumpulkan 16 Beras Wangi Organik', targetId: 'beras_wangi', requiredCount: 16 },
+      { type: 'collect', description: 'Kumpulkan 4 Gerabah Tanah Liat Merah', targetId: 'terracotta_pottery', requiredCount: 4 },
+    ],
+    rewards: {
+      xp: 200,
+      items: [
+        { itemId: 'kain_batik_tulis', count: 2 },
+        { itemId: 'teak_woodcraft', count: 2 },
+      ],
+      reputation: { settlementId: 'desa_majapahit', amount: 30 },
+    },
+    prerequisites: ['q_first_steps'],
+  },
+
+  q_river_borneo: {
+    id: 'q_river_borneo',
+    title: 'Jalur Getah Damar & Kayu Ulin',
+    giverName: 'Damang Batu (Tetua Huma Betang)',
+    giverSettlement: 'Huma Betang Kahayan',
+    category: 'gathering',
+    tier: 'tier2_frontier',
+    description: 'Bantu para penjelajah rimba mengumpulkan getah damar dan balok kayu ulin tahan air untuk perbaikan rumah panggung Betang.',
+    objectives: [
+      { type: 'collect', description: 'Kumpulkan 8 Getah Damar Rimba Murni', targetId: 'damar_resin', requiredCount: 8 },
+      { type: 'collect', description: 'Kumpulkan 6 Peti Balok Kayu Ulin', targetId: 'ulin_timber_crate', requiredCount: 6 },
+    ],
+    rewards: {
+      xp: 240,
+      items: [
+        { itemId: 'sumpit_blowpipe', count: 1 },
+        { itemId: 'arowana_scales', count: 3 },
+      ],
+      reputation: { settlementId: 'kampung_dayak', amount: 30 },
+    },
+    prerequisites: ['q_first_steps'],
+  },
+
+  q_spices_minang: {
+    id: 'q_spices_minang',
+    title: 'Rempah Gunung Lembah Harau',
+    giverName: 'Datuk Maruhum (Penghulu Minang)',
+    giverSettlement: 'Nagari Lembah Harau',
+    category: 'gathering',
+    tier: 'tier2_frontier',
+    description: 'Lembah Harau terkenal dengan rempah kayu manis dan seduhan daun kawa. Kumpulkan komoditas ini untuk memperluas pasar nagari.',
+    objectives: [
+      { type: 'collect', description: 'Kumpulkan 10 Kulit Manis Gunung Singgalang', targetId: 'kayu_manis_harau', requiredCount: 10 },
+      { type: 'collect', description: 'Kumpulkan 8 Rempah Racik Lembah Harau', targetId: 'rendang_spices', requiredCount: 8 },
+    ],
+    rewards: {
+      xp: 220,
+      items: [
+        { itemId: 'silver_filigree', count: 2 },
+        { itemId: 'songket_emas', count: 1 },
+      ],
+      reputation: { settlementId: 'nagari_minang', amount: 30 },
+    },
+    prerequisites: ['q_first_steps'],
+  },
+
+  q_ancestral_toraja: {
+    id: 'q_ancestral_toraja',
+    title: 'Pusaka Ukir Tebing Karst Toraja',
+    giverName: "Ne' Gandeng (Tetua Tongkonan)",
+    giverSettlement: 'Rante Kete Kesu',
+    category: 'exploration',
+    tier: 'tier3_ancient',
+    description: 'Petik biji kopi lereng Sesean dan tempa ukiran Pa\'ssura untuk melengkapi persemayaman leluhur di tebing batu karst.',
+    objectives: [
+      { type: 'collect', description: 'Kumpulkan 12 Kopi Arabika Lereng Sesean', targetId: 'toraja_arabica', requiredCount: 12 },
+      { type: 'collect', description: 'Kumpulkan 3 Papan Ukir Pa\'ssura Toraja', targetId: 'passura_woodcraft', requiredCount: 3 },
+    ],
+    rewards: {
+      xp: 260,
+      items: [
+        { itemId: 'tedong_horn_relic', count: 2 },
+        { itemId: 'daging_sei_asap', count: 6 },
+      ],
+      reputation: { settlementId: 'desa_kete_kesu', amount: 30 },
+    },
+    prerequisites: ['q_first_steps'],
+  },
+
+  q_sago_papua: {
+    id: 'q_sago_papua',
+    title: 'Ketahanan Pangan Honai Lembah Baliem',
+    giverName: 'Mama Yosina (Saudagar Noken)',
+    giverSettlement: 'Kurulu Silimo',
+    category: 'gathering',
+    tier: 'tier3_ancient',
+    description: 'Kumpulkan pati sagu rumbia dan ubi ungu untuk menghangatkan honai keluarga selama kabut dingin gletser.',
+    objectives: [
+      { type: 'collect', description: 'Kumpulkan 16 Tepung Sagu Pohon Rumbia', targetId: 'sago_flour', requiredCount: 16 },
+      { type: 'collect', description: 'Kumpulkan 12 Ubi Ungu Lembah Baliem', targetId: 'valley_sweet_potato', requiredCount: 12 },
+    ],
+    rewards: {
+      xp: 280,
+      items: [
+        { itemId: 'maro_bark_cloth', count: 2 },
+        { itemId: 'aether_amber_resin', count: 2 },
+      ],
+      reputation: { settlementId: 'kampung_baliem', amount: 35 },
+    },
+    prerequisites: ['q_first_steps'],
+  },
+
+  q_salt_sasak: {
+    id: 'q_salt_sasak',
+    title: 'Garam Surya & Jagung Sabana Sade',
+    giverName: 'Amaq Lokok (Tetua Bale Sasak)',
+    giverSettlement: 'Bale Tani Sade',
+    category: 'gathering',
+    tier: 'tier2_frontier',
+    description: 'Kumpulkan garam kristal tambak karang dan jagung kering ladang sabana untuk persiapan pelayaran antar-pulau.',
+    objectives: [
+      { type: 'collect', description: 'Kumpulkan 16 Garam Kristal Tambak Karang', targetId: 'solar_sea_salt', requiredCount: 16 },
+      { type: 'collect', description: 'Kumpulkan 12 Jagung Pipil Sabana Kering', targetId: 'dryland_maize', requiredCount: 12 },
+    ],
+    rewards: {
+      xp: 210,
+      items: [
+        { itemId: 'ikan_cakalang_asap', count: 4 },
+        { itemId: 'coastal_pearl', count: 1 },
+      ],
+      reputation: { settlementId: 'desa_sasak', amount: 30 },
+    },
+    prerequisites: ['q_first_steps'],
+  },
+
   q_delve_crypt: {
     id: 'q_delve_crypt',
-    title: 'Echoes of the Sunken Crypt',
+    title: 'Gema Kuil Bawah Tanah & Sentinels',
     giverName: 'Warden Alistair the Scout',
     giverSettlement: 'Outpost Bastion',
     category: 'dungeon',
     tier: 'tier3_ancient',
-    description: 'Descend into a subterranean crypt or abandoned mine, disarm the ancient traps, and plunder the inner treasure vault.',
+    description: 'Masuki ruang bawah tanah kuno, lewati jebakan aether, dan taklukkan Ruin Sentinel penjaga pusaka.',
     objectives: [
-      { type: 'discover', description: 'Locate a Subterranean Dungeon entrance', targetId: 'dungeon', requiredCount: 1 },
-      { type: 'kill', description: 'Defeat a Ruin Sentinel mini-boss', targetId: 'ruin_sentinel', requiredCount: 1 },
+      { type: 'discover', description: 'Temukan Pintu Masuk Subterranean Dungeon', targetId: 'dungeon', requiredCount: 1 },
+      { type: 'kill', description: 'Kalahkan Ruin Sentinel Mini-Boss', targetId: 'ruin_sentinel', requiredCount: 1 },
     ],
     rewards: {
-      xp: 250,
+      xp: 350,
       items: [
-        { itemId: 'mythril_ingot', count: 3 },
+        { itemId: 'mythril_ingot', count: 4 },
         { itemId: 'eye_of_aether', count: 1 },
       ],
+      reputation: { settlementId: 'ferrite_outpost', amount: 35 },
       artifactHint: 'The Eye of Aether unlocks hidden vision and leyline insights.',
     },
     prerequisites: ['q_hunting_stalkers'],
   },
+
   q_slay_sovereign: {
     id: 'q_slay_sovereign',
     title: 'Confronting the Void Sovereign',
     giverName: 'Archivist Kenneth',
     category: 'boss',
     tier: 'tier5_void',
-    description: 'Venture into the Void-Scarred Cataclysm and purge the Shadow Sovereign from the realm.',
+    description: 'Masuki retakan Void-Scarred Cataclysm dan segel Shadow Sovereign untuk kedamaian seluruh kepulauan Nusantara.',
     objectives: [
-      { type: 'boss', description: 'Defeat the Shadow Sovereign', targetId: 'boss_void_sovereign', requiredCount: 1 },
+      { type: 'boss', description: 'Kalahkan the Shadow Sovereign', targetId: 'boss_void_sovereign', requiredCount: 1 },
     ],
     rewards: {
-      xp: 1000,
+      xp: 1200,
       items: [
         { itemId: 'void_walker_ring', count: 1 },
-        { itemId: 'aether_crystal', count: 8 },
+        { itemId: 'aether_crystal', count: 12 },
       ],
     },
     prerequisites: ['q_delve_crypt'],
@@ -153,7 +320,7 @@ export class QuestManager {
       'stalker': ['stalker', 'shadow_stalker'],
       'ruin_sentinel': ['ruin_sentinel', 'boss_ruin_sentinel'],
       'boss_void_sovereign': ['boss_void_sovereign', 'void_sovereign', 'boss_void_sovereign_1'],
-      'shrine': ['shrine', 'ancient_shrine', 'explorer_cabin'],
+      'shrine': ['shrine', 'ancient_shrine', 'explorer_cabin', 'pura_shrine', 'altar'],
       'dungeon': ['dungeon', 'dungeon_entrance', 'subterranean_dungeon']
     };
     const list = ALIASES[objTarget];
@@ -161,7 +328,6 @@ export class QuestManager {
   }
 
   private static setupEventListeners(): void {
-    // Unsubscribe from any previous listeners to avoid duplicates
     this.dispose();
 
     this.eventUnsubscribes.push(
@@ -260,7 +426,6 @@ export class QuestManager {
     if (qDef.rewards.reputation) {
       SettlementManager.addReputation(qDef.rewards.reputation.settlementId, qDef.rewards.reputation.amount);
     } else if (qDef.giverSettlement) {
-      // Default reputation bonus for settlement giver
       const settlementKey = qDef.giverSettlement.toLowerCase().replace(/\s+/g, '_');
       if (SETTLEMENT_REGISTRY[settlementKey]) {
         SettlementManager.addReputation(settlementKey, 20);
@@ -268,8 +433,8 @@ export class QuestManager {
     }
 
     NotificationManager.push({
-      title: 'Quest Completed!',
-      message: `${qDef.title}: +${qDef.rewards.xp} XP awarded!`,
+      title: 'Misi Selesai!',
+      message: `${qDef.title}: +${qDef.rewards.xp} XP & Hadiah Berhasil Diraih!`,
       priority: 'HIGH',
       icon: '📜',
       durationMs: 7000,

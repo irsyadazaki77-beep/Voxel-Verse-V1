@@ -53,6 +53,12 @@ export class DungeonGenerator {
       pillarBlock = BlockType.OBSIDIAN;
       accentBlock = BlockType.BASALT;
       lightBlock = BlockType.LAVA;
+    } else if (theme === 'aether_temple') {
+      wallBlock = BlockType.CRYSTAL_BRICK;
+      floorBlock = BlockType.VOIDGLASS;
+      pillarBlock = BlockType.AETHER_STONE;
+      accentBlock = BlockType.MECHANUM_PLATE;
+      lightBlock = BlockType.AETHER_LAMP;
     }
 
     // 1. Entrance Room (7x5x7)

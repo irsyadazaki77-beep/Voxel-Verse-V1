@@ -412,6 +412,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         />
                       </label>
                     </div>
+
+                    {settings.graphics.postProcessing && (
+                      <div className="grid sm:grid-cols-2 gap-4 animate-slide-down">
+                        <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                          <div>
+                            <div className="font-bold text-sm text-white">Selective Bloom</div>
+                            <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Emissive Block Glow</div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={settings.graphics.bloom}
+                            onChange={(e) => updateGraphics({ bloom: e.target.checked, preset: 'custom' })}
+                            className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
+                          />
+                        </label>
+
+                        <div className="flex flex-col bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] gap-2">
+                          <label className="flex items-center justify-between cursor-pointer">
+                            <div>
+                              <div className="font-bold text-sm text-white">Ambient Occlusion (SSAO)</div>
+                              <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Real-time soft shadows in crevices</div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={settings.graphics.ambientOcclusion}
+                              onChange={(e) => updateGraphics({ ambientOcclusion: e.target.checked, preset: 'custom' })}
+                              className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
+                            />
+                          </label>
+                          {settings.graphics.ambientOcclusion && (
+                            <select
+                              value={settings.graphics.ambientOcclusionQuality || 'medium'}
+                              onChange={(e) => updateGraphics({ ambientOcclusionQuality: e.target.value as any, preset: 'custom' })}
+                              className="mt-1 w-full bg-black/40 border border-[var(--vv-border)] rounded-lg p-1.5 text-xs text-white font-mono focus:outline-none"
+                            >
+                              <option value="low">AO Quality: Low</option>
+                              <option value="medium">AO Quality: Medium</option>
+                              <option value="high">AO Quality: High (SSAO)</option>
+                            </select>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

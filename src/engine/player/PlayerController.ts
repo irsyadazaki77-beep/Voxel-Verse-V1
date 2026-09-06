@@ -102,7 +102,7 @@ export class PlayerController {
   private jumpBufferTimer: number = 0; // seconds
 
   // Fall damage calculation
-  private highestFallY: number = 0;
+  public highestFallY: number = 0;
   public lastFallDistance: number = 0;
 
   // Camera animations & landing impact dip
@@ -127,6 +127,10 @@ export class PlayerController {
   private static readonly _tempEyePos = new THREE.Vector3();
   private static readonly _tempDir = new THREE.Vector3();
   private static readonly _tempCamPos = new THREE.Vector3();
+  private static readonly _axisX = new THREE.Vector3(1, 0, 0);
+  private static readonly _axisY = new THREE.Vector3(0, 1, 0);
+  private static readonly _tempMoveDir = new THREE.Vector3();
+  private readonly _cachedAABB: THREE.Box3 = new THREE.Box3();
 
   public keys: KeyState = {
     forward: false,
@@ -302,18 +306,18 @@ export class PlayerController {
         this.pendingStaminaDeduction = 25;
 
         // Determine dodge direction
-        const moveDir = new THREE.Vector3();
+        const moveDir = PlayerController._tempMoveDir.set(0, 0, 0);
         if (this.keys.forward) moveDir.z -= 1;
         if (this.keys.backward) moveDir.z += 1;
         if (this.keys.left) moveDir.x -= 1;
         if (this.keys.right) moveDir.x += 1;
 
         if (moveDir.lengthSq() > 0) {
-          moveDir.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+          moveDir.normalize().applyAxisAngle(PlayerController._axisY, this.yaw);
           this.dodgeDir.copy(moveDir);
         } else {
           // If stationary, dodge backward relative to look direction
-          this.dodgeDir.set(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+          this.dodgeDir.set(0, 0, 1).applyAxisAngle(PlayerController._axisY, this.yaw);
         }
 
         this.velocity.x = this.dodgeDir.x * this.config.sprintSpeed * 1.8;
@@ -799,10 +803,11 @@ export class PlayerController {
     }
   }
 
-  public getForwardVector(): THREE.Vector3 {
-    const dir = new THREE.Vector3(0, 0, -1);
-    dir.applyAxisAngle(new THREE.Vector3(1, 0, 0), this.pitch);
-    dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+  public getForwardVector(target?: THREE.Vector3): THREE.Vector3 {
+    const dir = target || new THREE.Vector3();
+    dir.set(0, 0, -1);
+    dir.applyAxisAngle(PlayerController._axisX, this.pitch);
+    dir.applyAxisAngle(PlayerController._axisY, this.yaw);
     return dir.normalize();
   }
 
@@ -816,9 +821,8 @@ export class PlayerController {
 
   public getAABB(): THREE.Box3 {
     const hw = this.width / 2;
-    return new THREE.Box3(
-      new THREE.Vector3(this.position.x - hw, this.position.y, this.position.z - hw),
-      new THREE.Vector3(this.position.x + hw, this.position.y + this.currentHeight, this.position.z + hw)
-    );
+    this._cachedAABB.min.set(this.position.x - hw, this.position.y, this.position.z - hw);
+    this._cachedAABB.max.set(this.position.x + hw, this.position.y + this.currentHeight, this.position.z + hw);
+    return this._cachedAABB;
   }
 }

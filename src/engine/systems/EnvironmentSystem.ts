@@ -16,12 +16,10 @@ export class EnvironmentSystem implements GameSystem {
     const { sky, weather, clouds, particles, player, world, camera, settings } = this.runtime;
     if (!sky || !player || !world) return;
 
-    // 1. World visual update loop (water wave animation, vegetation wind displacement uTime & frustum culling)
-    world.update(deltaTime, camera);
-
     const biome = world.biomeManager.getBiome(player.position.x, player.position.z);
-    // 2. Sync environmental states (Lightning, Biome, Weather)
-    sky.update(deltaTime, player.position, biome, player.isEyesInWater, weather ? weather.weather : null);
+    const region = world.biomeManager.getRegionManager ? world.biomeManager.getRegionManager().getDominantRegion(player.position.x, player.position.z) : null;
+    // 2. Sync environmental states (Lightning, Biome, Weather, Cultural Region)
+    sky.update(deltaTime, player.position, biome, player.isEyesInWater, weather ? weather.weather : null, region?.id);
 
     // Dynamic Weather updates
     if (weather) {
@@ -35,6 +33,24 @@ export class EnvironmentSystem implements GameSystem {
     } else {
       sky.lightningFlashActive = false;
     }
+
+    // 1. World visual update loop with Environment 4.0 Telemetry
+    const wQuality = (settings?.graphics?.waterQuality === 'ultra') ? 3
+      : (settings?.graphics?.waterQuality === 'high') ? 2
+      : (settings?.graphics?.waterQuality === 'low') ? 0
+      : 1;
+
+    world.update(deltaTime, camera, {
+      skyZenithColor: sky.currentSkyZenithColor,
+      skyHorizonColor: sky.currentSkyHorizonColor,
+      sunDirection: sky.currentSunDirection,
+      sunColor: sky.currentSunColor,
+      moonDirection: sky.currentMoonDirection,
+      moonColor: sky.currentMoonColor,
+      rainIntensity: weather ? weather.weather.intensity : 0,
+      waterQuality: wQuality,
+      cloudDrift: clouds ? clouds.cloudDrift : 0,
+    });
 
     // Dynamic Tone Mapping Exposure & Lightweight Eye Adaptation
     if (this.runtime.renderer) {
@@ -99,7 +115,13 @@ export class EnvironmentSystem implements GameSystem {
     }
 
     if (clouds) {
-      clouds.update(deltaTime, player.position, weather ? weather.weather : { type: 'clear', intensity: 0, windAngle: 0.5, windSpeed: 2.0, durationLeft: 0 }, sky.timeOfDay);
+      clouds.update(
+        deltaTime,
+        player.position,
+        weather ? weather.weather : { type: 'clear', intensity: 0, windAngle: 0.5, windSpeed: 2.0, durationLeft: 0 },
+        sky.timeOfDay,
+        sky.currentSunDirection
+      );
     }
     if (particles) {
       if (player.isEyesInWater) {

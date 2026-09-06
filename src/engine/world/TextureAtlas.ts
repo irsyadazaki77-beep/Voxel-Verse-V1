@@ -114,6 +114,50 @@ export class TextureAtlas {
     aether_rail_switch: [10, 5],
     ley_generator: [11, 5],
 
+    // Row 6: Aether Expanse
+    aether_stone: [0, 6],
+    voidglass: [1, 6],
+    crystal_brick: [2, 6],
+    mechanum_plate: [3, 6],
+    skyroot_log_side: [4, 6],
+    skyroot_log_top: [5, 6],
+    skyroot_leaves: [6, 6],
+    skyroot_planks: [7, 6],
+    aether_grass_top: [8, 6],
+    aether_grass_side: [9, 6],
+    aether_dirt: [10, 6],
+    aether_gate_frame: [11, 6],
+    aether_portal: [12, 6],
+
+    // Row 7: Nusantara Architecture Kits (Part 1)
+    teak_log_side: [0, 7],
+    teak_log_top: [1, 7],
+    teak_planks: [2, 7],
+    ulin_log_side: [3, 7],
+    ulin_log_top: [4, 7],
+    ulin_planks: [5, 7],
+    woven_bamboo: [6, 7],
+    bamboo_stalk: [7, 7],
+    terracotta_tile: [8, 7],
+    ijuk_thatch: [9, 7],
+    alang_thatch: [10, 7],
+    carved_andesite: [11, 7],
+    volcanic_brick: [12, 7],
+    carved_beam: [13, 7],
+    wooden_shutter: [14, 7],
+    bamboo_fence: [15, 7],
+
+    // Row 8: Nusantara Architecture Kits (Part 2)
+    split_gate_stone: [0, 8],
+    aether_lantern: [1, 8],
+    aether_conduit_floor: [2, 8],
+    terrace_waterway: [3, 8],
+    rice_chest_top: [4, 8],
+    rice_chest_side: [5, 8],
+    batik_carpet: [6, 8],
+    stone_alang_pillar: [7, 8],
+    aether_altar_core: [8, 8],
+
     // Row 15: Special System Fallback
     missing_texture: [15, 15],
   };
@@ -496,6 +540,347 @@ export class TextureAtlas {
       ctx.fillRect(ox + 6, oy + 9, 4, 3);
     });
 
+    // --- AETHER EXPANSE TEXTURES ---
+    
+    // aether_stone [0, 6]
+    drawTile(0, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#2d4059');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          const rand = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+          const fract = rand - Math.floor(rand);
+          if (fract > 0.8) setPx(ox, oy, x, y, '#42618a');
+          if (fract < 0.2) setPx(ox, oy, x, y, '#1e2b3c');
+        }
+      }
+    });
+
+    // voidglass [1, 6]
+    drawTile(1, 6, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = 'rgba(40, 20, 80, 0.6)';
+      ctx.fillRect(ox, oy, 16, 16);
+      ctx.fillStyle = 'rgba(100, 50, 180, 0.8)';
+      ctx.strokeRect(ox + 0.5, oy + 0.5, 15, 15);
+      setPx(ox, oy, 3, 3, '#c084fc');
+      setPx(ox, oy, 4, 3, '#c084fc');
+      setPx(ox, oy, 3, 4, '#c084fc');
+    });
+
+    // aether_grass_top [8, 6]
+    drawTile(8, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#0d9488'); // Teal grass
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * y) % 3 === 0) setPx(ox, oy, x, y, '#14b8a6');
+          if ((x + y) % 5 === 0) setPx(ox, oy, x, y, '#0f766e');
+        }
+      }
+    });
+
+    // aether_grass_side [9, 6]
+    drawTile(9, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#475569'); // slate dirt
+      ctx.fillStyle = '#0d9488'; // teal grass overlap
+      for (let x = 0; x < 16; x++) {
+        const drop = 2 + Math.floor(Math.sin(x * 43) * 2.5);
+        ctx.fillRect(ox + x, oy, 1, drop);
+      }
+    });
+
+    // aether_dirt [10, 6]
+    drawTile(10, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#475569');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x + y) % 2 === 0) setPx(ox, oy, x, y, '#334155');
+        }
+      }
+    });
+    
+    // aether_portal [12, 6]
+    drawTile(12, 6, (c, ox, oy) => {
+      fillBg(ox, oy, 'rgba(6, 182, 212, 0.7)'); // Cyan glowing portal
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          const anim = Math.sin(x * 3.1 + y * 2.2);
+          if (anim > 0.5) setPx(ox, oy, x, y, '#22d3ee');
+          if (anim < -0.5) setPx(ox, oy, x, y, '#0891b2');
+        }
+      }
+    });
+
+    // ==========================================
+    // NUSANTARA ARCHITECTURE TILES (ROWS 7 & 8)
+    // ==========================================
+    // teak_log_side [0, 7]
+    drawTile(0, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#5a381f');
+      for (let y = 0; y < 16; y++) {
+        setPx(ox, oy, 3, y, '#3e2412');
+        setPx(ox, oy, 8, y, '#3e2412');
+        setPx(ox, oy, 13, y, '#4a2c15');
+      }
+    });
+
+    // teak_log_top [1, 7]
+    drawTile(1, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#734c2b');
+      ctx.fillStyle = '#4a2c15';
+      ctx.fillRect(ox + 4, oy + 4, 8, 8);
+      ctx.fillStyle = '#2f1a0b';
+      ctx.fillRect(ox + 7, oy + 7, 2, 2);
+    });
+
+    // teak_planks [2, 7]
+    drawTile(2, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#7d5430');
+      for (let x = 0; x < 16; x++) {
+        setPx(ox, oy, x, 3, '#523419');
+        setPx(ox, oy, x, 7, '#523419');
+        setPx(ox, oy, x, 11, '#523419');
+        setPx(ox, oy, x, 15, '#523419');
+      }
+    });
+
+    // ulin_log_side [3, 7]
+    drawTile(3, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#36271c');
+      for (let y = 0; y < 16; y++) {
+        setPx(ox, oy, 4, y, '#241810');
+        setPx(ox, oy, 11, y, '#241810');
+      }
+    });
+
+    // ulin_log_top [4, 7]
+    drawTile(4, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#402f23');
+      ctx.fillStyle = '#261b13';
+      ctx.fillRect(ox + 5, oy + 5, 6, 6);
+    });
+
+    // ulin_planks [5, 7]
+    drawTile(5, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#4d3728');
+      for (let x = 0; x < 16; x++) {
+        setPx(ox, oy, x, 5, '#2e1f15');
+        setPx(ox, oy, x, 11, '#2e1f15');
+      }
+      setPx(ox, oy, 2, 2, '#1a110a');
+      setPx(ox, oy, 13, 2, '#1a110a');
+    });
+
+    // woven_bamboo [6, 7]
+    drawTile(6, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#c9b067');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x + y) % 4 === 0) setPx(ox, oy, x, y, '#9e8441');
+          if ((x - y + 16) % 4 === 0) setPx(ox, oy, x, y, '#e3d08f');
+        }
+      }
+    });
+
+    // bamboo_stalk [7, 7]
+    drawTile(7, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#5b9136');
+      for (let x = 0; x < 16; x++) {
+        setPx(ox, oy, x, 7, '#3e6921');
+        setPx(ox, oy, x, 14, '#3e6921');
+      }
+      for (let y = 0; y < 16; y++) {
+        setPx(ox, oy, 3, y, '#70ab46');
+        setPx(ox, oy, 7, y, '#467527');
+        setPx(ox, oy, 11, y, '#70ab46');
+      }
+    });
+
+    // terracotta_tile [8, 7]
+    drawTile(8, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#b84e2a');
+      for (let y = 0; y < 16; y += 4) {
+        for (let x = 0; x < 16; x++) {
+          setPx(ox, oy, x, y, '#782b12');
+          setPx(ox, oy, x, y + 1, '#d4653f');
+        }
+      }
+    });
+
+    // ijuk_thatch [9, 7]
+    drawTile(9, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#242224');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 3 + y * 7) % 5 === 0) setPx(ox, oy, x, y, '#121112');
+          if ((x * 5 + y * 2) % 7 === 0) setPx(ox, oy, x, y, '#3c393d');
+        }
+      }
+    });
+
+    // alang_thatch [10, 7]
+    drawTile(10, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#c2a860');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 2 + y * 5) % 4 === 0) setPx(ox, oy, x, y, '#9e8544');
+          if ((x * 4 + y) % 3 === 0) setPx(ox, oy, x, y, '#dbca8c');
+        }
+      }
+    });
+
+    // carved_andesite [11, 7]
+    drawTile(11, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#575a5e');
+      ctx.strokeStyle = '#3e4144';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#7a7e85';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+
+    // volcanic_brick [12, 7]
+    drawTile(12, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#a13c23');
+      for (let x = 0; x < 16; x++) {
+        setPx(ox, oy, x, 7, '#591e10');
+        setPx(ox, oy, x, 15, '#591e10');
+      }
+      setPx(ox, oy, 7, 0, '#591e10');
+      setPx(ox, oy, 7, 1, '#591e10');
+      setPx(ox, oy, 7, 2, '#591e10');
+      setPx(ox, oy, 7, 3, '#591e10');
+      setPx(ox, oy, 7, 4, '#591e10');
+      setPx(ox, oy, 7, 5, '#591e10');
+      setPx(ox, oy, 7, 6, '#591e10');
+      setPx(ox, oy, 14, 8, '#591e10');
+      setPx(ox, oy, 14, 9, '#591e10');
+      setPx(ox, oy, 14, 10, '#591e10');
+      setPx(ox, oy, 14, 11, '#591e10');
+      setPx(ox, oy, 14, 12, '#591e10');
+      setPx(ox, oy, 14, 13, '#591e10');
+      setPx(ox, oy, 14, 14, '#591e10');
+    });
+
+    // carved_beam [13, 7]
+    drawTile(13, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#8a2e1e');
+      ctx.fillStyle = '#c79238';
+      ctx.fillRect(ox + 3, oy + 3, 4, 4);
+      ctx.fillRect(ox + 9, oy + 9, 4, 4);
+      setPx(ox, oy, 5, 5, '#1e110d');
+      setPx(ox, oy, 11, 11, '#1e110d');
+    });
+
+    // wooden_shutter [14, 7]
+    drawTile(14, 7, (c, ox, oy) => {
+      fillBg(ox, oy, '#6b4629');
+      for (let y = 2; y < 15; y += 3) {
+        for (let x = 2; x < 14; x++) {
+          setPx(ox, oy, x, y, '#2e190b');
+          setPx(ox, oy, x, y + 1, '#8c5e39');
+        }
+      }
+    });
+
+    // bamboo_fence [15, 7]
+    drawTile(15, 7, (c, ox, oy) => {
+      fillBg(ox, oy, 'transparent');
+      ctx.fillStyle = '#bfa456';
+      ctx.fillRect(ox + 3, oy + 0, 3, 16);
+      ctx.fillRect(ox + 10, oy + 0, 3, 16);
+      ctx.fillStyle = '#8f7734';
+      ctx.fillRect(ox + 0, oy + 4, 16, 2);
+      ctx.fillRect(ox + 0, oy + 11, 16, 2);
+    });
+
+    // split_gate_stone [0, 8]
+    drawTile(0, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#4b4e52');
+      ctx.fillStyle = '#343638';
+      ctx.fillRect(ox + 0, oy + 0, 4, 16);
+      ctx.fillStyle = '#6b7078';
+      ctx.fillRect(ox + 5, oy + 4, 8, 8);
+    });
+
+    // aether_lantern [1, 8]
+    drawTile(1, 8, (c, ox, oy) => {
+      fillBg(ox, oy, 'transparent');
+      ctx.fillStyle = '#3f3f46';
+      ctx.fillRect(ox + 4, oy + 2, 8, 2);
+      ctx.fillRect(ox + 4, oy + 12, 8, 2);
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(ox + 5, oy + 4, 6, 8);
+      ctx.fillStyle = '#cffafe';
+      ctx.fillRect(ox + 7, oy + 6, 2, 4);
+    });
+
+    // aether_conduit_floor [2, 8]
+    drawTile(2, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#3a424a');
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(ox + 7, oy + 0, 2, 16);
+      ctx.fillRect(ox + 0, oy + 7, 16, 2);
+      ctx.fillStyle = '#67e8f9';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+
+    // terrace_waterway [3, 8]
+    drawTile(3, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#63533e');
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 3, oy + 0, 10, 16);
+      ctx.fillStyle = '#bae6fd';
+      ctx.fillRect(ox + 6, oy + 3, 4, 10);
+    });
+
+    // rice_chest_top [4, 8]
+    drawTile(4, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#8f6133');
+      ctx.fillStyle = '#d97706';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+
+    // rice_chest_side [5, 8]
+    drawTile(5, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#734c25');
+      ctx.fillStyle = '#3b2512';
+      ctx.fillRect(ox + 0, oy + 0, 16, 2);
+      ctx.fillRect(ox + 0, oy + 14, 16, 2);
+      ctx.fillStyle = '#d97706';
+      ctx.fillRect(ox + 7, oy + 6, 2, 4);
+    });
+
+    // batik_carpet [6, 8]
+    drawTile(6, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#b45309');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 2 + y * 2) % 6 === 0) setPx(ox, oy, x, y, '#fde68a');
+          if ((x + y) % 3 === 0) setPx(ox, oy, x, y, '#78350f');
+        }
+      }
+    });
+
+    // stone_alang_pillar [7, 8]
+    drawTile(7, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#6b7280');
+      ctx.fillStyle = '#4b5563';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#9ca3af';
+      ctx.fillRect(ox + 5, oy + 5, 6, 6);
+    });
+
+    // aether_altar_core [8, 8]
+    drawTile(8, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#06b6d4';
+      ctx.fillRect(ox + 3, oy + 3, 10, 10);
+      ctx.fillStyle = '#67e8f9';
+      ctx.fillRect(ox + 5, oy + 5, 6, 6);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(ox + 7, oy + 7, 2, 2);
+    });
+
     // 32. Missing Texture Checkerboard (15, 15)
     drawTile(15, 15, (c, ox, oy) => {
       fillBg(ox, oy, '#ff00ff');
@@ -545,6 +930,21 @@ export class TextureAtlas {
   // Resolve tile name for a given block and face normal
   public static getTileForBlock(block: BlockType, face: 'top' | 'bottom' | 'side'): string {
     switch (block) {
+      case BlockType.AETHER_STONE: return 'aether_stone';
+      case BlockType.VOIDGLASS: return 'voidglass';
+      case BlockType.CRYSTAL_BRICK: return 'crystal_brick';
+      case BlockType.MECHANUM_PLATE: return 'mechanum_plate';
+      case BlockType.SKYROOT_LOG: return face === 'side' ? 'skyroot_log_side' : 'skyroot_log_top';
+      case BlockType.SKYROOT_LEAVES: return 'skyroot_leaves';
+      case BlockType.SKYROOT_PLANKS: return 'skyroot_planks';
+      case BlockType.AETHER_GRASS:
+        if (face === 'top') return 'aether_grass_top';
+        if (face === 'bottom') return 'aether_dirt';
+        return 'aether_grass_side';
+      case BlockType.AETHER_DIRT: return 'aether_dirt';
+      case BlockType.AETHER_GATE_FRAME: return 'aether_gate_frame';
+      case BlockType.AETHER_PORTAL: return 'aether_portal';
+
       case BlockType.AIR:
         return 'missing_texture';
       case BlockType.GRASS:
@@ -730,6 +1130,52 @@ export class TextureAtlas {
         return 'aether_rail_switch';
       case BlockType.LEY_GENERATOR:
         return 'ley_generator';
+
+      // Nusantara Architecture Blocks
+      case BlockType.TEAK_WOOD_LOG:
+        return face === 'side' ? 'teak_log_side' : 'teak_log_top';
+      case BlockType.TEAK_WOOD_PLANKS:
+        return 'teak_planks';
+      case BlockType.ULIN_IRONWOOD_LOG:
+        return face === 'side' ? 'ulin_log_side' : 'ulin_log_top';
+      case BlockType.ULIN_IRONWOOD_PLANKS:
+        return 'ulin_planks';
+      case BlockType.WOVEN_BAMBOO_GEDEK:
+        return 'woven_bamboo';
+      case BlockType.BAMBOO_STALK_BLOCK:
+        return 'bamboo_stalk';
+      case BlockType.TERRACOTTA_ROOF_TILE:
+        return 'terracotta_tile';
+      case BlockType.IJUK_THATCH_ROOF:
+        return 'ijuk_thatch';
+      case BlockType.ALANG_ALANG_THATCH:
+        return 'alang_thatch';
+      case BlockType.CARVED_ANDESITE_STONE:
+        return 'carved_andesite';
+      case BlockType.VOLCANIC_BRICK:
+        return 'volcanic_brick';
+      case BlockType.CARVED_WOOD_BEAM:
+        return 'carved_beam';
+      case BlockType.WOODEN_SHUTTER:
+        return 'wooden_shutter';
+      case BlockType.BAMBOO_FENCE:
+        return 'bamboo_fence';
+      case BlockType.SPLIT_GATE_STONE:
+        return 'split_gate_stone';
+      case BlockType.AETHER_LANTERN:
+        return 'aether_lantern';
+      case BlockType.AETHER_CONDUIT_FLOOR:
+        return 'aether_conduit_floor';
+      case BlockType.TERRACE_WATERWAY:
+        return 'terrace_waterway';
+      case BlockType.RICE_STORAGE_CHEST:
+        return face === 'top' ? 'rice_chest_top' : 'rice_chest_side';
+      case BlockType.BATIK_CARPET_BLOCK:
+        return 'batik_carpet';
+      case BlockType.STONE_ALANG_PILLAR:
+        return 'stone_alang_pillar';
+      case BlockType.AETHER_ALTAR_CORE:
+        return 'aether_altar_core';
 
       default:
         if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {

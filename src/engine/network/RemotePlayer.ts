@@ -18,6 +18,7 @@ export class RemotePlayer {
   private buffer: TransformBufferEntry[] = [];
   private currentPos: THREE.Vector3 = new THREE.Vector3();
   private currentYaw = 0;
+  private static readonly _scratchTargetPos = new THREE.Vector3();
 
   // Configuration for interpolation delay
   private readonly interpolationDelayMs = 100; // Standard 100ms render buffer
@@ -136,7 +137,8 @@ export class RemotePlayer {
     // Fallback: lerp smoothly to the latest received snapshot if buffer is starved
     const latest = this.buffer[this.buffer.length - 1];
     const lerpFactor = Math.min(1.0, deltaTime * 12.0);
-    this.currentPos.lerp(new THREE.Vector3(latest.position[0], latest.position[1], latest.position[2]), lerpFactor);
+    RemotePlayer._scratchTargetPos.set(latest.position[0], latest.position[1], latest.position[2]);
+    this.currentPos.lerp(RemotePlayer._scratchTargetPos, lerpFactor);
     this.currentYaw += (latest.rotation[1] - this.currentYaw) * lerpFactor;
 
     this.group.position.copy(this.currentPos);

@@ -74,6 +74,7 @@ export class TelemetrySystem implements GameSystem {
       level: stats.level,
       xp: stats.xp,
       biomeName: currentBiome.name,
+      culturalRegionName: world.regionManager ? world.regionManager.getDominantRegion(player.position.x, player.position.z)?.displayName : 'Unknown',
       playerPos: [player.position.x, player.position.y, player.position.z],
       playerYaw: player.yaw,
       fps: this.runtime.currentFps || 60,

@@ -112,6 +112,75 @@ export const ARTIFACT_SYNERGIES: ArtifactSynergy[] = [
       staminaCostReduction: 0.3,
     },
   },
+
+  // --- NUSANTARA CULTURAL ARTIFACT SYNERGIES ---
+  {
+    id: 'synergy_subak_irrigation',
+    name: 'Resonansi Subak Amerta (Irrigation × Harvest)',
+    description: 'Mengharmoniskan aliran air suci dan berkah panen raya. +40% kecepatan tumbuh padi, retensi air otomatis, dan pernapasan air tanpa batas.',
+    requiredTags: ['irrigation', 'harvest'],
+    bonus: {
+      lootDropMultiplier: 1.4,
+      staminaCostReduction: 0.25,
+      moveSpeedBonus: 1.15,
+    },
+  },
+  {
+    id: 'synergy_river_navigator',
+    name: 'Nahkoda Samudra & Rimba (Navigation × Storm)',
+    description: 'Menyatukan kepekaan navigasi dan penguasaan badai. Kebal terhadap kerusakan badai, +35% laju berlayar, dan penglihatan tembus kabut laut.',
+    requiredTags: ['navigation', 'storm'],
+    bonus: {
+      moveSpeedBonus: 1.35,
+      defenseBonus: 1.2,
+      staminaCostReduction: 0.3,
+    },
+  },
+  {
+    id: 'synergy_ancestral_bastion',
+    name: 'Benteng Pasak Leluhur (Guardian × Colossus)',
+    description: 'Kekuatan monolit purba dan arca pelindung. +60% Poise ketahanan fisik, kekebalan knockback, dan parry melepaskan gelombang kejut tanah.',
+    requiredTags: ['guardian', 'colossus'],
+    bonus: {
+      poiseDamageBonus: 1.75,
+      parryShockwave: true,
+      defenseBonus: 1.35,
+    },
+  },
+  {
+    id: 'synergy_tempest_conductor',
+    name: 'Konduktor Petir Mahasura (Storm × Aether)',
+    description: 'Menyalurkan petir samudra ke dalam leylines tubuh. Serangan berat melepaskan sambaran petir rantai ke 4 target terdekat.',
+    requiredTags: ['storm', 'aether'],
+    bonus: {
+      damageMultiplier: 1.35,
+      critChanceBonus: 0.18,
+      critDamageMultiplier: 1.4,
+    },
+  },
+  {
+    id: 'synergy_sri_abundance',
+    name: 'Kemakmuran Dewi Sri (Harvest × Nature)',
+    description: 'Berkah tanah subur gemah ripah loh jinawi. Setiap panen menggandakan hasil panen dan berpeluang 25% menjatuhkan Kristal Aether murni.',
+    requiredTags: ['harvest', 'nature'],
+    bonus: {
+      lootDropMultiplier: 1.6,
+      staminaCostReduction: 0.25,
+    },
+  },
+  {
+    id: 'synergy_nusantara_nexus',
+    name: 'Harmoni Nusantara Ageng (Cross-Tradition Nexus)',
+    description: 'Menyatukan 3 pusaka dari tradisi budaya berbeda. Memberikan +20% ke seluruh atribut, regenerasi stamina cepat, dan pendaran aura pelindung emas.',
+    requiredTags: ['guardian', 'irrigation', 'navigation'],
+    bonus: {
+      damageMultiplier: 1.25,
+      defenseBonus: 1.25,
+      moveSpeedBonus: 1.2,
+      staminaCostReduction: 0.35,
+      lootDropMultiplier: 1.35,
+    },
+  },
 ];
 
 export class ArtifactSynergyManager {

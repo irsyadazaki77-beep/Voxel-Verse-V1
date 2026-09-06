@@ -8,9 +8,12 @@ import { Pathfinder } from '../ai/Pathfinder';
 import { GameEventBus } from '../events/GameEventBus';
 
 import { SETTLEMENT_REGISTRY, SettlementManager } from '../settlement/SettlementManager';
+import { NPCScheduleManager, NPCRoleType } from '../settlement/NPCScheduleManager';
 import { PoiseSystem } from '../combat/PoiseSystem';
 import { CREATURE_REGISTRY } from './CreatureRegistry';
 import { EcosystemManager } from './EcosystemManager';
+import { CreatureAnimationEngine } from './CreatureAnimationEngine';
+import { CreatureRig } from './CreatureRigTypes';
 
 export interface FloatingText {
   id: string;
@@ -46,6 +49,7 @@ export class EntityManager {
   public entityGroup: THREE.Group;
 
   private spawnTimer: number = 0;
+  private frameCount: number = 0;
   private spatialGrid: Map<string, Set<string>> = new Map();
 
   // Shared Geometries & Materials to avoid GC churn
@@ -111,7 +115,9 @@ export class EntityManager {
 
   public spawnEntity(state: EntityState): void {
     const modelKey = state.modelType || state.type;
-    const mesh = EntityModelBuilder.buildByModelType(modelKey);
+    const variant = state.variant ?? Math.floor(Math.random() * 3);
+    state.variant = variant;
+    const mesh = EntityModelBuilder.buildByModelType(modelKey, variant);
 
     if (state.isBaby || state.scale) {
       if (Array.isArray(state.scale)) {
@@ -132,34 +138,89 @@ export class EntityManager {
     this.spatialGrid.get(key)!.add(state.id);
   }
 
-  public spawnInitialPopulation(world: VoxelWorld, playerPos: THREE.Vector3): void {
-    // Spawn Friendly Nomadic Merchant near player
-    const spawnY = world.getSpawnHeight(playerPos.x + 8, playerPos.z + 8);
-    this.spawnEntity({
-      id: 'merchant_1',
-      type: 'npc',
-      name: 'Torvald the Nomadic Merchant',
-      position: [playerPos.x + 8, spawnY, playerPos.z + 8],
-      velocity: [0, 0, 0],
-      rotation: 0,
-      health: 100,
-      maxHealth: 100,
-      damage: 0,
-      speed: 1.5,
-      aiState: 'idle',
-      modelType: 'merchant',
-      drops: [],
-      dialogue: [
-        'Greetings traveler! The Aetherial ley lines are strong in this realm.',
-        'Beware the deep caverns when night falls — the Shadow Stalkers wake.',
-        'I am willing to barter bronze and ancient relics for raw ores!',
-      ],
-      tradeOffers: [
-        { give: { itemId: 'raw_copper', count: 5 }, receive: { itemId: 'bread', count: 3 } },
-        { give: { itemId: 'raw_iron', count: 4 }, receive: { itemId: 'lantern', count: 1 } },
-        { give: { itemId: 'ancient_glyph', count: 1 }, receive: { itemId: 'golden_fruit', count: 1 } },
-      ],
+  public spawnSettlementPopulation(world: VoxelWorld, settlementId: string, centerPos: [number, number, number]): void {
+    const roles: { role: NPCRoleType; name: string; offset: [number, number] }[] = [
+      { role: 'elder', name: 'Tetua Adat & Sesepuh', offset: [0, 2] },
+      { role: 'merchant', name: 'Saudagar Pasar Adat', offset: [6, -4] },
+      { role: 'farmer', name: 'Petani Sawah & Subak', offset: [-10, 8] },
+      { role: 'fisher', name: 'Nelayan Pesisir & Sungai', offset: [12, 10] },
+      { role: 'craftsperson', name: 'Pengrajin & Empu Pande', offset: [-8, -8] },
+      { role: 'guard', name: 'Prajurit Penjaga Gerbang', offset: [14, 0] },
+      { role: 'engineer', name: 'Empu Saluran Irigasi', offset: [-12, 2] },
+      { role: 'hunter', name: 'Pemburu Penjejak Rimba', offset: [4, 14] },
+      { role: 'boat_trader', name: 'Saudagar Perahu Pinisi', offset: [16, 14] },
+    ];
+
+    roles.forEach((r, idx) => {
+      const npcId = `${settlementId}_${r.role}_${idx}`;
+      if (this.entities.has(npcId)) return;
+
+      const sx = centerPos[0] + r.offset[0];
+      const sz = centerPos[2] + r.offset[1];
+      const sy = world.getSpawnHeight(sx, sz);
+
+      const dialogueData = SettlementManager.getNPCDialogue(r.role, false, settlementId, 12);
+      this.spawnEntity({
+        id: npcId,
+        type: 'npc',
+        name: dialogueData.name || r.name,
+        position: [sx, sy, sz],
+        velocity: [0, 0, 0],
+        rotation: Math.random() * Math.PI * 2,
+        health: 100,
+        maxHealth: 100,
+        damage: 0,
+        speed: 1.4,
+        aiState: 'idle',
+        modelType: r.role,
+        drops: [],
+        dialogue: dialogueData.lines,
+        tradeOffers: dialogueData.trades,
+      });
     });
+  }
+
+  public spawnInitialPopulation(world: VoxelWorld, playerPos: THREE.Vector3): void {
+    // Check if player spawned near any registered settlements
+    const settlements = SETTLEMENT_REGISTRY;
+    let spawnedSettlement = false;
+    for (const [sId, sDef] of Object.entries(settlements)) {
+      const dist = Math.hypot(playerPos.x - sDef.originPos[0], playerPos.z - sDef.originPos[2]);
+      if (dist < 120) {
+        this.spawnSettlementPopulation(world, sId, sDef.originPos);
+        spawnedSettlement = true;
+      }
+    }
+
+    // If no settlement nearby, spawn default Nomadic Merchant near player
+    if (!spawnedSettlement) {
+      const spawnY = world.getSpawnHeight(playerPos.x + 8, playerPos.z + 8);
+      this.spawnEntity({
+        id: 'merchant_1',
+        type: 'npc',
+        name: 'Torvald the Nomadic Merchant',
+        position: [playerPos.x + 8, spawnY, playerPos.z + 8],
+        velocity: [0, 0, 0],
+        rotation: 0,
+        health: 100,
+        maxHealth: 100,
+        damage: 0,
+        speed: 1.5,
+        aiState: 'idle',
+        modelType: 'merchant',
+        drops: [],
+        dialogue: [
+          'Salam sejahtera, pengembara! Selamat datang di kepulauan Nusantara.',
+          'Waspadalah saat menjelajahi hutan lebat dan gua karst di waktu malam.',
+          'Saya siap menukar rempah wangi dan komoditas langka dengan hasil tambangmu!',
+        ],
+        tradeOffers: [
+          { give: { itemId: 'raw_copper', count: 5 }, receive: { itemId: 'beras_wangi', count: 4 } },
+          { give: { itemId: 'raw_iron', count: 4 }, receive: { itemId: 'lantern', count: 1 } },
+          { give: { itemId: 'cengkeh_spices', count: 2 }, receive: { itemId: 'kopi_arabika', count: 2 } },
+        ],
+      });
+    }
 
     // Spawn Wild Stags in the meadows
     for (let i = 0; i < 4; i++) {
@@ -187,7 +248,7 @@ export class EntityManager {
     }
   }
 
-  private updateEntityAI(state: EntityState, ePos: THREE.Vector3, playerPos: THREE.Vector3, distToPlayer: number, world: VoxelWorld, isNight: boolean) {
+  private updateEntityAI(state: EntityState, ePos: THREE.Vector3, playerPos: THREE.Vector3, distToPlayer: number, world: VoxelWorld, isNight: boolean, timeOfDay: number = 12) {
     const now = Date.now();
     state.lastAttackTime = state.lastAttackTime || 0;
     state.attackCooldown = state.attackCooldown || 1400;
@@ -262,14 +323,18 @@ export class EntityManager {
         } else {
           state.aiState = 'chase';
           if (distToPlayer > 2.5) {
-            const path = Pathfinder.findPath(world, ePos, playerPos, 24);
-            if (path && path.length > 0) {
-              state.path = path;
-            } else {
-              state.path = [];
-              state.velocity[0] = normPlayerX * state.speed;
-              state.velocity[2] = normPlayerZ * state.speed;
-              state.rotation = Math.atan2(normPlayerX, normPlayerZ);
+            const lastPf = (state as any).lastPathfindTime || 0;
+            if (now - lastPf > 1000) { // Pathfind at most once per 1000ms
+              (state as any).lastPathfindTime = now;
+              const path = Pathfinder.findPath(world, ePos, playerPos, 24);
+              if (path && path.length > 0) {
+                state.path = path;
+              } else {
+                state.path = [];
+                state.velocity[0] = normPlayerX * state.speed;
+                state.velocity[2] = normPlayerZ * state.speed;
+                state.rotation = Math.atan2(normPlayerX, normPlayerZ);
+              }
             }
           }
         }
@@ -277,16 +342,20 @@ export class EntityManager {
         // Too far from spawn origin, return home
         state.aiState = 'return';
         EntityManager._tempVecB.set(homeX, homeY, homeZ);
-        const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 20);
-        if (path && path.length > 0) {
-          state.path = path;
-        } else {
-          const toHomeLen = Math.hypot(dxHome, dzHome) || 1;
-          const normHomeX = -dxHome / toHomeLen;
-          const normHomeZ = -dzHome / toHomeLen;
-          state.velocity[0] = normHomeX * (state.speed * 0.8);
-          state.velocity[2] = normHomeZ * (state.speed * 0.8);
-          state.rotation = Math.atan2(normHomeX, normHomeZ);
+        const lastPf = (state as any).lastPathfindTime || 0;
+        if (now - lastPf > 1500) { // Return home pathfind at most once per 1500ms
+          (state as any).lastPathfindTime = now;
+          const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 20);
+          if (path && path.length > 0) {
+            state.path = path;
+          } else {
+            const toHomeLen = Math.hypot(dxHome, dzHome) || 1;
+            const normHomeX = -dxHome / toHomeLen;
+            const normHomeZ = -dzHome / toHomeLen;
+            state.velocity[0] = normHomeX * (state.speed * 0.8);
+            state.velocity[2] = normHomeZ * (state.speed * 0.8);
+            state.rotation = Math.atan2(normHomeX, normHomeZ);
+          }
         }
       } else {
         // Idle / Roam leisurely in territory
@@ -296,8 +365,12 @@ export class EntityManager {
             const dx = (Math.random() - 0.5) * 12;
             const dz = (Math.random() - 0.5) * 12;
             EntityManager._tempVecB.set(homeX + dx, homeY, homeZ + dz);
-            const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 12);
-            if (path) state.path = path;
+            const lastPf = (state as any).lastPathfindTime || 0;
+            if (now - lastPf > 3000) { // Roaming pathfind at most once per 3000ms
+              (state as any).lastPathfindTime = now;
+              const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 12);
+              if (path) state.path = path;
+            }
           }
         }
       }
@@ -328,31 +401,82 @@ export class EntityManager {
             const dx = (Math.random() - 0.5) * 14;
             const dz = (Math.random() - 0.5) * 14;
             EntityManager._tempVecB.set(ePos.x + dx, ePos.y, ePos.z + dz);
-            const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 12);
-            if (path) state.path = path;
+            const lastPf = (state as any).lastPathfindTime || 0;
+            if (now - lastPf > 3000) { // Passive roaming pathfind once per 3000ms
+              (state as any).lastPathfindTime = now;
+              const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 12);
+              if (path) state.path = path;
+            }
           }
         }
       }
     }
-    // Friendly NPCs & Merchants
+    // Friendly NPCs & Nusantara Living Settlement Schedules
     else if (state.type === 'npc') {
-      if (distToPlayer < 6) {
+      if (distToPlayer < 4.5) {
         state.aiState = 'idle';
         state.path = [];
         const toPlayerX = playerPos.x - ePos.x;
         const toPlayerZ = playerPos.z - ePos.z;
         state.rotation = Math.atan2(toPlayerX, toPlayerZ);
-      } else if (distToHomeSq > 64) {
-        state.aiState = 'return';
-        EntityManager._tempVecB.set(homeX, homeY, homeZ);
-        const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 10);
-        if (path) state.path = path;
+      } else {
+        const role = (state.modelType || 'farmer') as NPCRoleType;
+        const phase = NPCScheduleManager.getSchedulePhase(timeOfDay);
+        const sched = NPCScheduleManager.getActiveSchedule(role, timeOfDay);
+        (state as any).schedulePhase = phase;
+        (state as any).scheduleActivity = sched.activityName;
+
+        let ox = 0;
+        let oz = 0;
+        if (sched.targetLandmark === 'farm') { ox = -10; oz = 8; }
+        else if (sched.targetLandmark === 'docks') { ox = 14; oz = 12; }
+        else if (sched.targetLandmark === 'workshop') { ox = -8; oz = -8; }
+        else if (sched.targetLandmark === 'market') { ox = 6; oz = -4; }
+        else if (sched.targetLandmark === 'pendopo') { ox = 0; oz = 0; }
+        else if (sched.targetLandmark === 'shrine') { ox = 0; oz = 10; }
+        else if (sched.targetLandmark === 'gate') { ox = 14; oz = 0; }
+        else if (sched.targetLandmark === 'engineering') { ox = -12; oz = 2; }
+        else { ox = 0; oz = 0; }
+
+        const targetX = homeX + ox;
+        const targetZ = homeZ + oz;
+        const dx = ePos.x - targetX;
+        const dz = ePos.z - targetZ;
+        const distSq = dx * dx + dz * dz;
+
+        if (distSq > 16) {
+          state.aiState = 'return';
+          EntityManager._tempVecB.set(targetX, homeY, targetZ);
+          const lastPf = (state as any).lastPathfindTime || 0;
+          if (now - lastPf > 2500) {
+            (state as any).lastPathfindTime = now;
+            const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 16);
+            if (path && path.length > 0) {
+              state.path = path;
+            } else {
+              const len = Math.hypot(dx, dz) || 1;
+              state.velocity[0] = (-dx / len) * (state.speed * 0.8);
+              state.velocity[2] = (-dz / len) * (state.speed * 0.8);
+              state.rotation = Math.atan2(-dx, -dz);
+            }
+          }
+        } else {
+          // Leisurely roaming / idle at landmark
+          state.aiState = sched.animationState === 'work' ? 'wander' : 'idle';
+          if (Math.random() < 0.1 && (!state.path || state.path.length === 0)) {
+            const rx = (Math.random() - 0.5) * 4;
+            const rz = (Math.random() - 0.5) * 4;
+            EntityManager._tempVecB.set(targetX + rx, homeY, targetZ + rz);
+            const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 6);
+            if (path) state.path = path;
+          }
+        }
       }
     }
   }
 
   // Update AI state machine, physics, and behaviors
-  public update(deltaTime: number, world: VoxelWorld, playerPos: THREE.Vector3, isNight: boolean, damagePlayer?: (dmg: number, src: string) => void): void {
+  public update(deltaTime: number, world: VoxelWorld, playerPos: THREE.Vector3, isNight: boolean, damagePlayer?: (dmg: number, src: string) => void, timeOfDay: number = 12): void {
     const dt = Math.min(deltaTime, 0.1);
     this.spawnTimer += dt;
     
@@ -543,12 +667,15 @@ export class EntityManager {
       if (now - lastUpdate > updateInterval) {
         state.pathUpdateCooldown = now;
         EntityManager._tempVecA.set(state.position[0], state.position[1], state.position[2]);
-        this.updateEntityAI(state, EntityManager._tempVecA, playerPos, distToPlayer, world, isNight);
+        this.updateEntityAI(state, EntityManager._tempVecA, playerPos, distToPlayer, world, isNight, timeOfDay);
       }
 
       if (state.aiState === 'attack' && state.type === 'hostile') {
          if (now - (state.lastAttackTime || 0) > (state.attackCooldown || 1500)) {
              state.lastAttackTime = now;
+             if (mesh.userData.rig) {
+               CreatureAnimationEngine.triggerAttack(mesh.userData.rig);
+             }
              if (damagePlayer) {
                  damagePlayer(state.damage, state.name);
              }
@@ -638,14 +765,23 @@ export class EntityManager {
       }
       mesh.rotation.y = state.rotation;
 
-      // Idle / walking bobbing
-      const isMoving = Math.abs(state.velocity[0]) > 0.1 || Math.abs(state.velocity[2]) > 0.1;
-      if (isMoving) {
-        mesh.position.y += Math.abs(Math.sin(Date.now() * 0.01)) * 0.08;
+      // Creature Visual 3.0 Hierarchical Procedural Animation
+      const rig = mesh.userData.rig as CreatureRig | undefined;
+      if (rig) {
+        CreatureAnimationEngine.update(dt, rig, state, distToPlayerSq2D, this.frameCount);
+      } else {
+        // Fallback bobbing if model has no rig
+        const isMoving = Math.abs(state.velocity[0]) > 0.1 || Math.abs(state.velocity[2]) > 0.1;
+        if (isMoving) {
+          mesh.position.y += Math.abs(Math.sin(Date.now() * 0.01)) * 0.08;
+        }
       }
 
       // Despawn distant entities
       if (distToPlayerSq2D > 6400 && state.type !== 'npc') { // 80m squared = 6400
+        if (rig) {
+          CreatureAnimationEngine.cleanup(rig);
+        }
         this.entityGroup.remove(mesh);
         this.entities.delete(id);
         PoiseSystem.removeEntity(id);
@@ -707,39 +843,28 @@ export class EntityManager {
 
     // Apply Poise Damage and Check Stagger
     const isBoss = state.type === 'boss' || state.modelType.includes('boss') || state.modelType === 'void_sovereign' || state.modelType === 'ruin_sentinel';
-    const staggered = PoiseSystem.applyPoiseDamage(entityId, poiseDamage, isBoss ? 160 : 55);
-    if (staggered) {
+    const poiseResult = PoiseSystem.applyPoiseDamage(entityId, poiseDamage, isBoss ? 160 : 55, isBoss);
+    const isStaggered = !!poiseResult.staggered;
+    if (isStaggered) {
       this.addFloatingText('STAGGERED!', new THREE.Vector3(...state.position).add(new THREE.Vector3(0, 2.2, 0)), '#f59e0b');
     }
 
     // Apply Knockback with stagger scaling
-    const knockDir = new THREE.Vector3(state.position[0], 0, state.position[2])
-      .sub(new THREE.Vector3(knockbackOrigin.x, 0, knockbackOrigin.z))
-      .normalize();
+    const knockDir = EntityManager._tempDir.set(
+      state.position[0] - knockbackOrigin.x,
+      0,
+      state.position[2] - knockbackOrigin.z
+    ).normalize();
     const force = (isCritical ? 9.0 : 6.0) * knockbackScale;
     state.velocity[0] += knockDir.x * force;
     state.velocity[1] += isCritical ? 5.5 : 3.8;
     state.velocity[2] += knockDir.z * force;
 
-    // Flash Red or Gold Hit Feedback
-    mesh.traverse(child => {
-      if (child instanceof THREE.Mesh && child.material) {
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        const oldCols = materials.map(m => (m && (m as THREE.MeshLambertMaterial).color) ? (m as THREE.MeshLambertMaterial).color.clone() : null);
-        materials.forEach(m => {
-          if (m && (m as THREE.MeshLambertMaterial).color) {
-            (m as THREE.MeshLambertMaterial).color.setHex(isCritical ? 0xfacc15 : 0xff3333);
-          }
-        });
-        setTimeout(() => {
-          materials.forEach((m, idx) => {
-            if (m && (m as THREE.MeshLambertMaterial).color && oldCols[idx]) {
-              (m as THREE.MeshLambertMaterial).color.copy(oldCols[idx]!);
-            }
-          });
-        }, isCritical ? 220 : 150);
-      }
-    });
+    // Zero-allocation Visual 3.0 Hit Flash, Flinch & Stagger
+    const hitRig = mesh.userData.rig as CreatureRig | undefined;
+    if (hitRig) {
+      CreatureAnimationEngine.triggerHit(hitRig, isCritical, isStaggered);
+    }
 
     // Spawn Floating Damage Text (Golden for Crits, Crimson for Normal)
     const floatText = isCritical ? `CRIT! -${Math.round(damage)}` : `-${Math.round(damage)}`;
@@ -975,13 +1100,14 @@ export class EntityManager {
     let closestDist = maxDist;
 
     for (const [id, { state }] of this.entities.entries()) {
-      const ePos = new THREE.Vector3(...state.position).add(new THREE.Vector3(0, 0.9, 0));
-      const toEntity = new THREE.Vector3().subVectors(ePos, origin);
+      const ePos = EntityManager._tempVecA.set(state.position[0], state.position[1] + 0.9, state.position[2]);
+      const toEntity = EntityManager._tempVecB.subVectors(ePos, origin);
       const proj = toEntity.dot(direction);
 
       if (proj > 0 && proj < maxDist) {
-        const perp = new THREE.Vector3().subVectors(toEntity, direction.clone().multiplyScalar(proj));
-        if (perp.length() < 0.85 && proj < closestDist) {
+        const perp = EntityManager._tempDir.copy(direction).multiplyScalar(proj);
+        perp.subVectors(toEntity, perp);
+        if (perp.lengthSq() < 0.85 * 0.85 && proj < closestDist) {
           closestDist = proj;
           closestId = id;
         }

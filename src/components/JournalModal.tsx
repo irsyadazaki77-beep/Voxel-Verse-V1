@@ -10,6 +10,9 @@ import { TreasureMapSystem, TreasureMap } from '../engine/exploration/TreasureMa
 import { ArtifactSynergyManager, ARTIFACT_SYNERGIES } from '../engine/artifacts/ArtifactSynergyManager';
 import { WorldStabilitySystem } from '../engine/exploration/WorldStabilitySystem';
 import { CREATURE_REGISTRY } from '../engine/entities/CreatureRegistry';
+import { AETHER_TRADITIONS, AetherTraditionId } from '../engine/engineering/AetherTraditions';
+import { ResonanceNexusManager, NEXUS_PILLARS, NexusPillarId } from '../engine/engineering/ResonanceNexusManager';
+import { REGIONAL_ENGINEERING_RECIPES, RegionalRecipe } from '../engine/engineering/RegionalEngineeringRegistry';
 import { QuestDef, QuestState, DiscoveryRecord, WorldTierId } from '../types';
 import { 
   BookOpen, 
@@ -31,7 +34,13 @@ import {
   Activity,
   Zap,
   Menu,
-  ChevronRight
+  ChevronRight,
+  Cpu,
+  Radio,
+  Layers,
+  Check,
+  Lock,
+  Boxes
 } from 'lucide-react';
 
 interface JournalModalProps {
@@ -42,7 +51,7 @@ interface JournalModalProps {
   playerLevel: number;
 }
 
-type TabType = 'quests' | 'bounties' | 'treasure' | 'discoveries' | 'artifacts' | 'tiers' | 'stability' | 'lore' | 'bestiary';
+type TabType = 'quests' | 'bounties' | 'treasure' | 'discoveries' | 'artifacts' | 'tiers' | 'stability' | 'traditions' | 'nexus' | 'lore' | 'bestiary';
 
 export const JournalModal: React.FC<JournalModalProps> = ({
   isOpen,
@@ -60,6 +69,9 @@ export const JournalModal: React.FC<JournalModalProps> = ({
   const [stabilityVal, setStabilityVal] = useState<number>(75);
   const [discoveries, setDiscoveries] = useState<DiscoveryRecord[]>([]);
   const [selectedLoreId, setSelectedLoreId] = useState<string>('chronicle_origin');
+  const [selectedTraditionId, setSelectedTraditionId] = useState<AetherTraditionId>('jawa_tirta');
+  const [nexusPillars, setNexusPillars] = useState(ResonanceNexusManager.getPillarStates());
+  const [nexusConvergence, setNexusConvergence] = useState(ResonanceNexusManager.isConvergenceAchieved());
 
   useEffect(() => {
     if (!isOpen) return;
@@ -70,6 +82,13 @@ export const JournalModal: React.FC<JournalModalProps> = ({
     setEquippedArtifacts(ArtifactSynergyManager.getEquipped());
     setStabilityVal(WorldStabilitySystem.stability);
     setDiscoveries(DiscoverySystem.getDiscoveries());
+    setNexusPillars(ResonanceNexusManager.getPillarStates());
+    setNexusConvergence(ResonanceNexusManager.isConvergenceAchieved());
+
+    const unsubNexus = ResonanceNexusManager.subscribe(() => {
+      setNexusPillars(ResonanceNexusManager.getPillarStates());
+      setNexusConvergence(ResonanceNexusManager.isConvergenceAchieved());
+    });
 
     const unsubQuests = QuestManager.onQuestChange(() => {
       setQuests(QuestManager.getActiveQuests());
@@ -88,6 +107,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
     });
 
     return () => {
+      unsubNexus();
       unsubQuests();
       unsubBounties();
       unsubMaps();
@@ -121,6 +141,13 @@ export const JournalModal: React.FC<JournalModalProps> = ({
       items: [
         { id: 'artifacts', label: 'Artifact Synergies', icon: Sparkles },
         { id: 'tiers', label: 'World Tier', icon: Shield },
+      ]
+    },
+    {
+      title: 'AETHER NUSANTARA',
+      items: [
+        { id: 'traditions', label: 'Aether Traditions', icon: Layers },
+        { id: 'nexus', label: 'Resonance Nexus', icon: Radio },
       ]
     },
     {
@@ -599,34 +626,357 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                 </div>
               )}
 
+              {/* AETHER TRADITIONS TAB */}
+              {activeTab === 'traditions' && (
+                <div className="space-y-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
+                  <div className="border-b border-[var(--vv-border-subtle)] pb-3">
+                    <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+                      <Layers className="w-5 h-5 text-cyan-400" />
+                      Aether Traditions (Tradisi Rekayasa Budaya Nusantara)
+                    </h3>
+                    <p className="text-xs text-[var(--vv-text-muted)] mt-1">
+                      Harmonisasi teknologi purba Aether dengan kearifan lokal 7 Region Budaya Nusantara. Bukan sekadar mesin sci-fi, melainkan tradisi yang mengalir ratusan generasi.
+                    </p>
+                  </div>
+
+                  {/* Region Selection Pills */}
+                  <div className="flex flex-wrap gap-2">
+                    {Object.values(AETHER_TRADITIONS).map(trad => {
+                      const isSelected = selectedTraditionId === trad.id;
+                      return (
+                        <button
+                          key={trad.id}
+                          onClick={() => setSelectedTraditionId(trad.id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            isSelected
+                              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                              : 'bg-[var(--vv-surface)] text-[var(--vv-text-muted)] hover:text-white border border-[var(--vv-border-subtle)]'
+                          }`}
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: trad.materialAesthetics.energyColor }} />
+                          {trad.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Selected Tradition Detail Panel */}
+                  {(() => {
+                    const currentTrad = AETHER_TRADITIONS[selectedTraditionId];
+                    if (!currentTrad) return null;
+
+                    return (
+                      <div className="space-y-6">
+                        <div className="voxel-panel-subtle p-6 border-cyan-500/30">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <div className="text-[10px] font-mono uppercase tracking-widest text-cyan-400 font-bold mb-1">
+                                {currentTrad.title}
+                              </div>
+                              <h4 className="text-xl font-bold text-white font-display">{currentTrad.name}</h4>
+                            </div>
+                            <div className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: currentTrad.materialAesthetics.energyColor }} />
+                              {currentTrad.materialAesthetics.lightCharacter}
+                            </div>
+                          </div>
+
+                          {/* Lore & Philosophy */}
+                          <p className="text-sm text-zinc-300 leading-relaxed mb-4">
+                            {currentTrad.philosophy}
+                          </p>
+
+                          <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-800/40 italic text-xs text-cyan-200/90 leading-relaxed mb-5">
+                            &ldquo;{currentTrad.lorePassage}&rdquo;
+                          </div>
+
+                          {/* Aesthetic & Material Grid */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5 text-xs">
+                            <div className="p-3 rounded-lg bg-black/40 border border-white/5">
+                              <span className="text-[var(--vv-text-muted)] block mb-1 font-bold">Material Utama:</span>
+                              <span className="text-white">{currentTrad.materialAesthetics.primaryMaterials.join(', ')}</span>
+                            </div>
+                            <div className="p-3 rounded-lg bg-black/40 border border-white/5">
+                              <span className="text-[var(--vv-text-muted)] block mb-1 font-bold">Aksen Logam:</span>
+                              <span className="text-white">{currentTrad.materialAesthetics.metalAccents.join(', ')}</span>
+                            </div>
+                            <div className="p-3 rounded-lg bg-black/40 border border-white/5">
+                              <span className="text-[var(--vv-text-muted)] block mb-1 font-bold">Motif Ukiran:</span>
+                              <span className="text-white">{currentTrad.materialAesthetics.carvingStyle}</span>
+                            </div>
+                          </div>
+
+                          {/* Infrastructure Archetypes */}
+                          <div className="border-t border-white/10 pt-4">
+                            <h5 className="text-xs font-bold uppercase tracking-wider text-cyan-400 mb-3 flex items-center gap-2">
+                              <Cpu className="w-4 h-4" />
+                              Arsitektur Infrastruktur Regional
+                            </h5>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                              <div className="p-3 rounded-lg bg-black/30 border border-white/5">
+                                <strong className="text-amber-300 block mb-0.5">Energy Gatherer:</strong>
+                                <span className="text-zinc-300">{currentTrad.infrastructureArchetypes.energyGatherer}</span>
+                              </div>
+                              <div className="p-3 rounded-lg bg-black/30 border border-white/5">
+                                <strong className="text-amber-300 block mb-0.5">Conduit Style:</strong>
+                                <span className="text-zinc-300">{currentTrad.infrastructureArchetypes.conduitStyle}</span>
+                              </div>
+                              <div className="p-3 rounded-lg bg-black/30 border border-white/5">
+                                <strong className="text-amber-300 block mb-0.5">Terminal Node:</strong>
+                                <span className="text-zinc-300">{currentTrad.infrastructureArchetypes.terminalNode}</span>
+                              </div>
+                              <div className="p-3 rounded-lg bg-black/30 border border-white/5">
+                                <strong className="text-amber-300 block mb-0.5">Defense Node:</strong>
+                                <span className="text-zinc-300">{currentTrad.infrastructureArchetypes.defenseNode}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Regional Schematics List */}
+                        <div>
+                          <h5 className="text-sm font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <Boxes className="w-4 h-4 text-cyan-400" />
+                            Cetak Biru Rekayasa ({currentTrad.schematics.length} Schematics)
+                          </h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {currentTrad.schematics.map(sch => {
+                              const isUnlocked = ResonanceNexusManager.isSchematicUnlocked(sch.id) ||
+                                                ResonanceNexusManager.isSchematicUnlocked(`schematic_${sch.id}`);
+                              return (
+                                <div
+                                  key={sch.id}
+                                  className={`p-4 rounded-xl border transition-all ${
+                                    isUnlocked
+                                      ? 'bg-cyan-950/20 border-cyan-500/30'
+                                      : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)] opacity-75'
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-start mb-2">
+                                    <h6 className="font-bold text-sm text-white flex items-center gap-2">
+                                      {sch.name}
+                                    </h6>
+                                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                                      isUnlocked ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-zinc-800 text-zinc-400'
+                                    }`}>
+                                      {isUnlocked ? 'UNLOCKED' : 'LOCKED'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-[var(--vv-text-muted)] mb-3">{sch.description}</p>
+                                  
+                                  <div className="text-[11px] p-2.5 rounded bg-black/40 border border-white/5 mb-3 text-cyan-300">
+                                    <strong>Khasiat:</strong> {sch.functionalEffect}
+                                  </div>
+
+                                  <div className="text-[10px] text-[var(--vv-text-muted)] flex justify-between border-t border-white/5 pt-2">
+                                    <span>Kategori: <strong className="text-white capitalize">{sch.functionalCategory}</strong></span>
+                                    <span>Syarat: <strong className="text-amber-300">{sch.unlockRequirement}</strong></span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* NUSANTARA RESONANCE NEXUS TAB */}
+              {activeTab === 'nexus' && (
+                <div className="space-y-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
+                  <div className="border-b border-[var(--vv-border-subtle)] pb-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+                          <Radio className="w-5 h-5 text-amber-400" />
+                          Nusantara Resonance Nexus (Late-Game Mega-Project)
+                        </h3>
+                        <p className="text-xs text-[var(--vv-text-muted)] mt-1">
+                          Proyek akhir penyatuan 7 Pilar Resonansi Nusantara untuk mengunci kestabilan leylines global dan membuka Altar Mahakarya Konvergensi.
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className={`text-xs font-mono font-bold px-3 py-1 rounded-full ${
+                          nexusConvergence
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-400'
+                            : 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                        }`}>
+                          {nexusConvergence ? 'CONVERGENCE ACHIEVED' : `${nexusPillars.filter(p => p.activated).length} / 7 PILLARS ACTIVE`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Nexus Convergence Banner */}
+                  <div className={`p-6 rounded-2xl border transition-all ${
+                    nexusConvergence
+                      ? 'bg-gradient-to-r from-amber-950/40 via-purple-950/40 to-cyan-950/40 border-amber-500/50 shadow-[0_0_30px_rgba(245,158,11,0.2)]'
+                      : 'bg-gradient-to-r from-cyan-950/30 to-purple-950/30 border-cyan-500/30'
+                  }`}>
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400">
+                        <Sparkles className="w-7 h-7 animate-spin" style={{ animationDuration: '8s' }} />
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-bold text-white font-display">
+                          {nexusConvergence ? 'Mahakarya Konvergensi Nusantara Telah Terbuka!' : 'Ritual 7 Pilar Resonansi'}
+                        </h4>
+                        <p className="text-xs text-zinc-300">
+                          {nexusConvergence
+                            ? 'Seluruh 7 Pilar Tradisi telah selaras. Resonansi leylines global memberikan +100% stabilitas abadi dan membuka resep Altar Konvergensi.'
+                            : 'Kunjungi 7 Landmark Monolit di setiap region, selesaikan reputasi nagari, tumpas anomali wilayah, dan persembahkan pusaka leluhur.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-black/60 rounded-full h-3.5 border border-white/10 p-0.5 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-cyan-500 via-amber-400 to-purple-500 h-full rounded-full transition-all duration-500 shadow-[0_0_12px_rgba(245,158,11,0.5)]"
+                        style={{ width: `${(nexusPillars.filter(p => p.activated).length / 7) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 7 Pillars Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {nexusPillars.map(pillar => {
+                      const isReady = pillar.canActivate;
+                      return (
+                        <div
+                          key={pillar.id}
+                          className={`p-5 rounded-xl border relative transition-all ${
+                            pillar.activated
+                              ? 'bg-emerald-950/20 border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.1)]'
+                              : isReady
+                              ? 'bg-amber-950/20 border-amber-500/40'
+                              : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)]'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <span className="text-[10px] font-mono text-cyan-400 uppercase font-bold tracking-wider">
+                                {pillar.traditionId.replace('_', ' ').toUpperCase()}
+                              </span>
+                              <h5 className="font-bold text-base text-white">{pillar.name}</h5>
+                            </div>
+                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded flex items-center gap-1 ${
+                              pillar.activated
+                                ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-600'
+                                : isReady
+                                ? 'bg-amber-900/60 text-amber-300 border border-amber-600'
+                                : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                            }`}>
+                              {pillar.activated ? <Check className="w-3 h-3" /> : isReady ? <Zap className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                              {pillar.activated ? 'ACTIVE' : isReady ? 'READY' : 'LOCKED'}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-[var(--vv-text-muted)] mb-3">{pillar.description}</p>
+                          <div className="text-[11px] text-zinc-400 mb-3 font-mono">
+                            📍 Lokasi Monolit: <strong className="text-white">{pillar.landmarkLocation}</strong>
+                          </div>
+
+                          {/* Requirements Breakdown */}
+                          <div className="space-y-1.5 p-3 rounded-lg bg-black/40 border border-white/5 text-xs mb-4">
+                            <div className="flex justify-between text-[11px]">
+                              <span className="text-[var(--vv-text-muted)]">Pusaka Diperlukan:</span>
+                              <strong className="text-amber-300">{pillar.requiredArtifact.replace(/_/g, ' ').toUpperCase()}</strong>
+                            </div>
+                            <div className="flex justify-between text-[11px]">
+                              <span className="text-[var(--vv-text-muted)]">Reputasi Pemukiman:</span>
+                              <strong className={pillar.reputationMet ? 'text-emerald-400' : 'text-zinc-500'}>
+                                {pillar.reputationMet ? '✓ Memadai' : `Min. ${pillar.requiredReputation} Rep`}
+                              </strong>
+                            </div>
+                            <div className="flex justify-between text-[11px]">
+                              <span className="text-[var(--vv-text-muted)]">Anomali Terpecahkan:</span>
+                              <strong className={pillar.anomalyResolved ? 'text-emerald-400' : 'text-zinc-500'}>
+                                {pillar.anomalyResolved ? '✓ Purged' : 'Belum Ditumpas'}
+                              </strong>
+                            </div>
+                          </div>
+
+                          {/* Action Button */}
+                          {!pillar.activated && (
+                            <button
+                              onClick={() => {
+                                ResonanceNexusManager.activatePillar(pillar.id as NexusPillarId);
+                              }}
+                              disabled={!isReady}
+                              className={`w-full py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                                isReady
+                                  ? 'bg-amber-600 hover:bg-amber-500 text-black shadow-lg cursor-pointer'
+                                  : 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-white/5'
+                              }`}
+                            >
+                              <Zap className="w-3.5 h-3.5" />
+                              {isReady ? 'Harmonisasikan Pilar Resonansi' : 'Syarat Belum Terpenuhi'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* BESTIARY TAB */}
               {activeTab === 'bestiary' && (
                 <div className="space-y-6 animate-in slide-in-from-bottom-2 fade-in duration-300">
                   <div className="border-b border-[var(--vv-border-subtle)] pb-3">
                     <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
                       <Flame className="w-5 h-5 text-[var(--vv-warning)]" />
-                      Fauna & Wildlife Bestiary
+                      Fauna & Mythic Creatures Bestiary
                     </h3>
                     <p className="text-xs text-[var(--vv-text-muted)] mt-1">
-                      Species profiles, biomes, diets, taming mechanics, and livestock outputs in VoxelVerse Ecosystem 2.0.
+                      Species profiles, regional lore, biomes, diets, taming mechanics, and cleansing rituals in VoxelVerse Ecosystem 2.0 & Nusantara Mythic Expansion.
                     </p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {Object.values(CREATURE_REGISTRY).map(creature => (
-                      <div key={creature.id} className="p-5 rounded-xl bg-[var(--vv-surface)] border border-[var(--vv-border-subtle)] flex flex-col justify-between">
+                      <div 
+                        key={creature.id} 
+                        className={`p-5 rounded-xl border flex flex-col justify-between transition-all ${
+                          creature.isMythic 
+                            ? 'bg-[var(--vv-aether)]/10 border-[var(--vv-aether)]/40 shadow-[0_0_15px_rgba(139,92,246,0.1)]' 
+                            : 'bg-[var(--vv-surface)] border-[var(--vv-border-subtle)]'
+                        }`}
+                      >
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <h4 className="text-base font-bold text-white flex items-center gap-2">
                               {creature.name}
+                              {creature.isBoss && (
+                                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
+                                  Boss / Mythic Titan
+                                </span>
+                              )}
                             </h4>
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--vv-aether)]/20 text-[var(--vv-aether)] border border-[var(--vv-aether)]/30">
-                              {creature.rarity}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {creature.culturalRegion && (
+                                <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
+                                  {creature.culturalRegion}
+                                </span>
+                              )}
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--vv-aether)]/20 text-[var(--vv-aether)] border border-[var(--vv-aether)]/30">
+                                {creature.rarity}
+                              </span>
+                            </div>
                           </div>
+
                           <p className="text-xs text-[var(--vv-text-muted)] mb-3 leading-relaxed">
                             {creature.description}
                           </p>
+
+                          {creature.lore && (
+                            <div className="p-3 mb-3 rounded bg-amber-950/20 border border-amber-800/30 italic text-[11px] text-amber-200/90 leading-relaxed">
+                              &ldquo;{creature.lore}&rdquo;
+                            </div>
+                          )}
 
                           <div className="grid grid-cols-2 gap-2 text-[11px] mb-3 bg-black/30 p-3 rounded-lg border border-white/5">
                             <div>
@@ -643,9 +993,15 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                             </div>
                           </div>
 
+                          {creature.cleansingItem && (
+                            <div className="text-[11px] bg-cyan-950/30 text-cyan-300 p-2.5 rounded border border-cyan-800/40 mb-2">
+                              <strong>Cleansing Rite:</strong> Offer <span className="underline font-semibold">{creature.cleansingItem.replace(/_/g, ' ')}</span> to grant harmonic peace & unlock <span className="text-amber-300 font-semibold">{creature.cleansingRewardArtifact?.replace(/_/g, ' ')}</span>.
+                            </div>
+                          )}
+
                           {creature.productOutput && (
                             <div className="text-[11px] bg-[var(--vv-success)]/10 text-[var(--vv-success)] p-2 rounded border border-[var(--vv-success)]/20 mb-2">
-                              <strong>Yields:</strong> {creature.productOutput.itemId.replace('_', ' ')} every {creature.productOutput.intervalSeconds}s
+                              <strong>Yields:</strong> {creature.productOutput.itemId.replace(/_/g, ' ')} every {creature.productOutput.intervalSeconds}s
                             </div>
                           )}
                         </div>

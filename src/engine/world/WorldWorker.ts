@@ -12,6 +12,7 @@ export interface GenerateTaskInput {
   cz: number;
   seed: number;
   preset?: WorldPreset;
+  dimensionId?: string;
   modifiedBlocks?: Record<string, number>;
 }
 
@@ -50,16 +51,20 @@ if (typeof self !== 'undefined') {
   let generatorCore: WorldGeneratorCore | null = null;
   let currentSeed = -1;
   let currentPreset: WorldPreset | null = null;
+  let currentDimensionId: string | null = null;
 
   self.onmessage = (e: MessageEvent<WorkerTaskInput>) => {
     const input = e.data;
 
     if (input.type === 'generate') {
       const preset = input.preset || 'standard';
-      if (!generatorCore || currentSeed !== input.seed || currentPreset !== preset) {
-        generatorCore = new WorldGeneratorCore(input.seed, preset);
+      const dimensionId = input.dimensionId || 'overworld';
+      
+      if (!generatorCore || currentSeed !== input.seed || currentPreset !== preset || currentDimensionId !== dimensionId) {
+        generatorCore = new WorldGeneratorCore(input.seed, preset, { dimensionId });
         currentSeed = input.seed;
         currentPreset = preset;
+        currentDimensionId = dimensionId;
       }
       const blocks = generatorCore.generateChunkData(input.cx, input.cz, input.modifiedBlocks);
       const response: GenerateTaskResult = { type: 'generate', taskId: input.taskId, cx: input.cx, cz: input.cz, buffer: blocks.buffer };
@@ -110,18 +115,21 @@ if (typeof self !== 'undefined') {
         meshData.solidUvs.buffer,
         meshData.solidTileRects.buffer,
         meshData.solidIndices.buffer,
+        meshData.solidMaterials.buffer,
         meshData.transPositions.buffer,
         meshData.transNormals.buffer,
         meshData.transColors.buffer,
         meshData.transUvs.buffer,
         meshData.transTileRects.buffer,
         meshData.transIndices.buffer,
+        meshData.transMaterials.buffer,
         meshData.waterPositions.buffer,
         meshData.waterNormals.buffer,
         meshData.waterColors.buffer,
         meshData.waterUvs.buffer,
         meshData.waterTileRects.buffer,
-        meshData.waterIndices.buffer
+        meshData.waterIndices.buffer,
+        meshData.waterMaterials.buffer
       ];
       
       (self as unknown as { postMessage: (msg: any, transfer: any[]) => void }).postMessage(response, transfers);

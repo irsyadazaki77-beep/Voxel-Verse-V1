@@ -4,6 +4,92 @@ import { GameEventBus } from '../events/GameEventBus';
 import { NotificationManager } from '../ui/NotificationManager';
 import { SubtitleManager } from '../ui/SubtitleManager';
 import { BossCombatState } from '../../types';
+import { AETHER_TRADITIONS, AetherTraditionId } from '../engineering/AetherTraditions';
+import { ResonanceNexusManager } from '../engineering/ResonanceNexusManager';
+
+export interface RegionalAnomalyInfo {
+  id: string;
+  name: string;
+  description: string;
+  regionId: string;
+  atmosphericColor: [number, number, number];
+  hazardSubtitle: string;
+  stabilizeSubtitle: string;
+  rewardArtifact: string;
+}
+
+export const REGIONAL_ANOMALIES: Record<string, RegionalAnomalyInfo> = {
+  jawa: {
+    id: 'anomaly_volcanic_resonance',
+    name: 'Volcanic Resonance (Resonansi Magma Merapi)',
+    description: 'Leylines bawah tanah terbentur magma purba, memanaskan saluran andesit dan melepaskan getaran tektonik.',
+    regionId: 'jawa',
+    atmosphericColor: [0.95, 0.45, 0.20],
+    hazardSubtitle: 'Gemuruh magma Merapi mengguncang tanah; leylines andesit memijar merah!',
+    stabilizeSubtitle: 'Uap magma mendingin; berkah kesuburan tanah Wilwatikta telah pulih.',
+    rewardArtifact: 'mustika_tirta_subak'
+  },
+  minang: {
+    id: 'anomaly_highland_echo',
+    name: 'Highland Mist Distortion (Distorsi Kabut Lembah Harau)',
+    description: 'Kabut ngarai beresonansi liar dengan puncak Marapi, menciptakan ilusi ruang dan gelombang suara sonik.',
+    regionId: 'minang',
+    atmosphericColor: [0.65, 0.85, 0.90],
+    hazardSubtitle: 'Gema sonik Marapi mengaburkan pandangan; kabut tebal menyelimuti nagari!',
+    stabilizeSubtitle: 'Gema lembah tenang kembali; kemurnian angin bukit barisan telah tegak.',
+    rewardArtifact: 'batu_guntur_marapi'
+  },
+  borneo: {
+    id: 'anomaly_river_surge',
+    name: 'River Aether Surge (Gelombang Ley Sungai Purba)',
+    description: 'Air Batang Kapuas meluap dengan pendaran hijau zamrud, memicu pusaran air liar di sepanjang dermaga.',
+    regionId: 'borneo',
+    atmosphericColor: [0.20, 0.80, 0.65],
+    hazardSubtitle: 'Arus Batang Kapuas meluap liar; gelombang leylines hijau menghantam tepian!',
+    stabilizeSubtitle: 'Arus sungai kembali tenang mengalir; berkah kayu besi ulin melindungi betang.',
+    rewardArtifact: 'suar_rimba_borneo'
+  },
+  bali: {
+    id: 'anomaly_sacred_tide',
+    name: 'Sacred Tide Distortion (Distorsi Tirta Dewata)',
+    description: 'Pasang samudra menggeser frekuensi Candi Bentar, membuka celah bayangan adharma.',
+    regionId: 'bali',
+    atmosphericColor: [0.75, 0.35, 0.85],
+    hazardSubtitle: 'Gelombang adharma mengaburkan kesucian pura; kabut ungu merembes ke celah candi bentar!',
+    stabilizeSubtitle: 'Air suci Tirta Empul kembali murni; Tri Hita Karana terjaga sempurna.',
+    rewardArtifact: 'patung_candi_bentar'
+  },
+  toraja: {
+    id: 'anomaly_highland_resonance',
+    name: 'Highland Echo (Gema Leluhur Tebing Karst)',
+    description: 'Getaran leylines memantul di tebing karst Londa, membangkitkan bayangan penjaga makam purba.',
+    regionId: 'toraja',
+    atmosphericColor: [0.85, 0.70, 0.35],
+    hazardSubtitle: 'Tebing karst Londa berdengung keras; arwah penjaga purba bangkit melindungi tebing!',
+    stabilizeSubtitle: 'Monolit Simbuang meredam guncangan bumi; ketenangan leluhur Toraja terpulihkan.',
+    rewardArtifact: 'tanduk_pa_tedong'
+  },
+  papua: {
+    id: 'anomaly_crystal_forest',
+    name: 'Crystal Forest Awakening (Kebangkitan Kristal Rimba Purba)',
+    description: 'Spora kristal purba menyelimuti tajuk kanopi hutan hujan Papua dalam kilau ungu magis.',
+    regionId: 'papua',
+    atmosphericColor: [0.60, 0.20, 0.85],
+    hazardSubtitle: 'Spora kristal ungu membakar tajuk pohon; rimba purba Baliem bergetar liar!',
+    stabilizeSubtitle: 'Spora kristal mengendap menjadi pupuk sukma; kehangatan honai kembali menyala.',
+    rewardArtifact: 'perisai_asmat_pusaka'
+  },
+  nusa: {
+    id: 'anomaly_storm_rift',
+    name: 'Storm Rift (Pusaran Badai Samudra Rempah)',
+    description: 'Pusaran badai petir samudra berputar di atas terumbu karang, menciptakan lonjakan medan muatan listrik.',
+    regionId: 'nusa',
+    atmosphericColor: [0.15, 0.40, 0.90],
+    hazardSubtitle: 'Pusaran badai petir membelah langit samudra; sambaran kilat membakar laut lepas!',
+    stabilizeSubtitle: 'Badai mereda menjadi angin muson sejuk; mercusuar karang laut bersinar terang.',
+    rewardArtifact: 'penangkal_badai_ternate'
+  }
+};
 
 export class AetherAnomalyManager {
   public static status: 'dormant' | 'warning' | 'active' | 'climax' | 'resolved' = 'dormant';
@@ -12,6 +98,7 @@ export class AetherAnomalyManager {
   public static climaxBossId: string | null = null;
   public static anomalyCoords: [number, number, number] | null = null;
   public static rewardClaimed: boolean = false;
+  public static currentRegionalAnomaly: RegionalAnomalyInfo = REGIONAL_ANOMALIES.jawa;
   
   private static onAnomalyStateChangeCallbacks: (() => void)[] = [];
 
@@ -20,11 +107,12 @@ export class AetherAnomalyManager {
       this.deserialize(savedData);
     } else {
       this.status = 'dormant';
-      this.timer = 1500 + Math.random() * 300; // First major anomaly occurs at 25-30 minutes of natural playtime!
+      this.timer = 1500 + Math.random() * 300; // Natural 25-30 mins cycle
       this.activeIntensity = 0;
       this.climaxBossId = null;
       this.anomalyCoords = null;
       this.rewardClaimed = false;
+      this.currentRegionalAnomaly = REGIONAL_ANOMALIES.jawa;
     }
   }
 
@@ -36,6 +124,7 @@ export class AetherAnomalyManager {
       climaxBossId: this.climaxBossId,
       anomalyCoords: this.anomalyCoords,
       rewardClaimed: this.rewardClaimed,
+      currentAnomalyId: this.currentRegionalAnomaly.id,
     };
   }
 
@@ -47,6 +136,10 @@ export class AetherAnomalyManager {
     this.climaxBossId = data.climaxBossId || null;
     this.anomalyCoords = data.anomalyCoords || null;
     this.rewardClaimed = !!data.rewardClaimed;
+    if (data.currentAnomalyId) {
+      const found = Object.values(REGIONAL_ANOMALIES).find(a => a.id === data.currentAnomalyId);
+      if (found) this.currentRegionalAnomaly = found;
+    }
   }
 
   public static update(deltaTime: number, runtime: GameRuntime): void {
@@ -57,10 +150,8 @@ export class AetherAnomalyManager {
       }
     } else if (this.status === 'warning') {
       this.timer -= deltaTime;
-      // Pulse sky color slightly (intensity climbs from 0 to 0.45)
       this.activeIntensity = Math.min(0.45, this.activeIntensity + deltaTime * 0.05);
       
-      // Play a low creepy hum
       if (Math.random() < 0.02) {
         runtime.audio.playTone(80 + Math.sin(Date.now() * 0.005) * 10, 0.4);
       }
@@ -70,10 +161,8 @@ export class AetherAnomalyManager {
       }
     } else if (this.status === 'active') {
       this.timer -= deltaTime;
-      // Interpolate intensity to 1.0!
       this.activeIntensity = Math.min(1.0, this.activeIntensity + deltaTime * 0.1);
 
-      // Procedural sound cues
       if (Math.random() < 0.05) {
         runtime.audio.playTone(150 + Math.random() * 300, 0.15);
       }
@@ -82,19 +171,16 @@ export class AetherAnomalyManager {
         this.transitionTo('climax', runtime);
       }
     } else if (this.status === 'climax') {
-      // Climax is active until the rift boss/sentinel is destroyed!
       this.activeIntensity = 1.0;
       
       if (this.climaxBossId) {
-        // Check if the boss is dead
         const bossState = runtime.entities.entities.get(this.climaxBossId)?.state;
         if (!bossState || bossState.health <= 0) {
           this.transitionTo('resolved', runtime);
         } else {
-          // Keep sync with HUD healthbar
           runtime.emitBossUpdated({
             id: this.climaxBossId,
-            name: 'Aether Rift Sentinel',
+            name: `${this.currentRegionalAnomaly.name} Sentinel`,
             modelType: 'ruin_sentinel',
             health: bossState.health,
             maxHealth: bossState.maxHealth,
@@ -105,15 +191,13 @@ export class AetherAnomalyManager {
           });
         }
       } else {
-        // Fallback if boss id was somehow lost/invalidated
         this.transitionTo('resolved', runtime);
       }
     } else if (this.status === 'resolved') {
-      // Revert intensity back to 0
       this.activeIntensity = Math.max(0, this.activeIntensity - deltaTime * 0.2);
       if (this.activeIntensity <= 0) {
         this.status = 'dormant';
-        this.timer = 1500 + Math.random() * 600; // 25 to 35 minutes recurrence delay
+        this.timer = 1500 + Math.random() * 600;
         this.rewardClaimed = false;
         this.notifyListeners();
       }
@@ -122,32 +206,43 @@ export class AetherAnomalyManager {
 
   public static transitionTo(newStatus: typeof AetherAnomalyManager.status, runtime: GameRuntime): void {
     this.status = newStatus;
+
+    // Detect cultural region dynamically at player's location
+    if (runtime?.world?.regionManager && runtime?.player?.position) {
+      const pos = runtime.player.position;
+      const dominant = runtime.world.regionManager.getDominantRegion(pos.x, pos.z);
+      if (dominant && REGIONAL_ANOMALIES[dominant.id]) {
+        this.currentRegionalAnomaly = REGIONAL_ANOMALIES[dominant.id];
+      }
+    }
+
+    const anomaly = this.currentRegionalAnomaly;
     this.notifyListeners();
 
     if (newStatus === 'warning') {
       this.timer = 30; // 30s atmospheric buildup warning
       NotificationManager.push({
-        title: 'AETHER DISTURBANCE DETECTED',
-        message: 'The local leylines are vibrating violently. A portal is opening...',
+        title: `DISTORSI LEYLINES DETEKSI: ${anomaly.name.toUpperCase()}`,
+        message: anomaly.description,
         priority: 'HIGH',
         icon: '🔮',
         durationMs: 8000
       });
-      SubtitleManager.push('Eldritch Voice', 'Eldritch ley whispers amplify in the wind', 'environment', 4000);
+      SubtitleManager.push('Gema Alam', anomaly.hazardSubtitle, 'environment', 5000);
       runtime.audio.playTone(110, 0.8);
       setTimeout(() => runtime.audio.playTone(90, 0.8), 500);
 
     } else if (newStatus === 'active') {
-      this.timer = 60; // 60s of standard active invasion
+      this.timer = 60; // 60s active invasion
       this.rewardClaimed = false;
       NotificationManager.push({
-        title: 'AETHER ANOMALY UNLEASHED',
-        message: 'Spatial rifts tear open! Wildlife has mutated.',
+        title: `ANOMALI AETHER AKTIF: ${anomaly.name}`,
+        message: 'Celah dimensi terbuka lebar! Makhluk liar bermutasi oleh energi leylines.',
         priority: 'CRITICAL',
         icon: '⚡',
         durationMs: 10000
       });
-      SubtitleManager.push('SYSTEM', 'The space-time barrier fractures!', 'environment', 5000);
+      SubtitleManager.push('SISTEM', anomaly.hazardSubtitle, 'environment', 5000);
       
       // Idempotent entity mutation
       Array.from(runtime.entities.entities.values()).map(e => e.state).forEach(ent => {
@@ -169,7 +264,6 @@ export class AetherAnomalyManager {
       });
 
     } else if (newStatus === 'climax') {
-      // Spawn Climax Rift Sentinel close to the player
       const pPos = runtime.player.position;
       const angle = Math.random() * Math.PI * 2;
       const rx = pPos.x + Math.cos(angle) * 16;
@@ -179,23 +273,21 @@ export class AetherAnomalyManager {
       this.anomalyCoords = [rx, ry, rz];
 
       NotificationManager.push({
-        title: 'RIFT SENTINEL EMERGES',
-        message: 'The Leyline Anomaly has coalesced into an Ancient Sentinel! Purge it!',
+        title: `SENTINEL ANOMALI MUNCUL: ${anomaly.name}`,
+        message: 'Inti anomali mewujud menjadi Sentinel Purba! Tumpas untuk memulihkan keseimbangan alam!',
         priority: 'CRITICAL',
         icon: '👹',
         durationMs: 10000
       });
-      SubtitleManager.push('SYSTEM', 'Destroy the Sentinel to stabilize the realm!', 'environment', 5000);
+      SubtitleManager.push('SISTEM', 'Hancurkan Sentinel untuk menstabilkan kawasan!', 'environment', 5000);
 
-      // Spawn the boss!
       this.climaxBossId = runtime.entities.spawnBoss('ruin_sentinel', [rx, ry, rz], runtime.world);
       
-      // Emit Boss Spawn event to register on HUD healthbar
       const bossState = runtime.entities.entities.get(this.climaxBossId!)?.state;
       if (bossState) {
         runtime.emitBossUpdated({
           id: this.climaxBossId!,
-          name: 'Aether Rift Sentinel',
+          name: `${anomaly.name} Sentinel`,
           modelType: 'ruin_sentinel',
           health: bossState.health,
           maxHealth: bossState.maxHealth,
@@ -208,13 +300,13 @@ export class AetherAnomalyManager {
 
     } else if (newStatus === 'resolved') {
       NotificationManager.push({
-        title: 'AETHER ANOMALY PURGED',
-        message: 'The local space-time region has stabilized. Acquired rare crystals!',
+        title: `ANOMALI DIPULIHKAN: ${anomaly.name}`,
+        message: 'Kawasan leylines telah kembali stabil. Memperoleh pusaka langka!',
         priority: 'HIGH',
         icon: '🏆',
         durationMs: 8000
       });
-      SubtitleManager.push('SYSTEM', 'The rifts close as ley energy subsides.', 'environment', 4000);
+      SubtitleManager.push('SISTEM', anomaly.stabilizeSubtitle, 'environment', 5000);
 
       // Revert mutated entity stats back to base
       Array.from(runtime.entities.entities.values()).map(e => e.state).forEach(ent => {
@@ -228,23 +320,23 @@ export class AetherAnomalyManager {
         }
       });
 
-      // Reward the player (guaranteed only once per anomaly cycle)
+      // Reward the player and register to ResonanceNexusManager
       if (!this.rewardClaimed) {
         this.rewardClaimed = true;
-        runtime.addItemToInventory('aether_crystal', 8);
-        runtime.stats.addXP(400);
+        runtime.addItemToInventory('aether_crystal', 10);
+        runtime.stats.addXP(500);
 
-        if (Math.random() < 0.5) {
-          const artifacts = ['chrono_core', 'tidal_pearl', 'solaris_aegis'];
-          const chosen = artifacts[Math.floor(Math.random() * artifacts.length)];
-          runtime.addItemToInventory(chosen, 1);
-          GameEventBus.emit('ARTIFACT_UNLOCKED', { artifactId: chosen, name: chosen.replace('_', ' ').toUpperCase() });
-        }
+        // Guaranteed or high-chance regional artifact drop
+        runtime.addItemToInventory(anomaly.rewardArtifact, 1);
+        GameEventBus.emit('ARTIFACT_UNLOCKED', {
+          artifactId: anomaly.rewardArtifact,
+          name: anomaly.rewardArtifact.replace(/_/g, ' ').toUpperCase()
+        });
 
-        GameEventBus.emit('ANOMALY_RESOLVED', { anomalyId: 'aether_rift' });
+        ResonanceNexusManager.registerStabilizedAnomaly(anomaly.id);
+        GameEventBus.emit('ANOMALY_RESOLVED', { anomalyId: anomaly.id, regionId: anomaly.regionId });
       }
 
-      // Hide Boss health HUD
       runtime.emitBossUpdated(null);
       this.climaxBossId = null;
       this.anomalyCoords = null;
@@ -272,3 +364,4 @@ export class AetherAnomalyManager {
     this.onAnomalyStateChangeCallbacks.forEach(cb => cb());
   }
 }
+

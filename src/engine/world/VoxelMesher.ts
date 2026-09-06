@@ -11,6 +11,7 @@ export interface TransferableMeshData {
   solidUvs: Float32Array;
   solidTileRects: Float32Array;
   solidIndices: Uint32Array;
+  solidMaterials: Float32Array;
 
   transPositions: Float32Array;
   transNormals: Float32Array;
@@ -18,6 +19,7 @@ export interface TransferableMeshData {
   transUvs: Float32Array;
   transTileRects: Float32Array;
   transIndices: Uint32Array;
+  transMaterials: Float32Array;
 
   waterPositions: Float32Array;
   waterNormals: Float32Array;
@@ -25,6 +27,7 @@ export interface TransferableMeshData {
   waterUvs: Float32Array;
   waterTileRects: Float32Array;
   waterIndices: Uint32Array;
+  waterMaterials: Float32Array;
 }
 
 export interface ChunkMeshData {
@@ -34,6 +37,7 @@ export interface ChunkMeshData {
   solidUvs: number[];
   solidTileRects: number[];
   solidIndices: number[];
+  solidMaterials: number[];
 
   transPositions: number[];
   transNormals: number[];
@@ -41,6 +45,7 @@ export interface ChunkMeshData {
   transUvs: number[];
   transTileRects: number[];
   transIndices: number[];
+  transMaterials: number[];
 
   waterPositions: number[];
   waterNormals: number[];
@@ -48,9 +53,130 @@ export interface ChunkMeshData {
   waterUvs: number[];
   waterTileRects: number[];
   waterIndices: number[];
+  waterMaterials: number[];
 }
 
 export class VoxelMesher {
+  public static getBlockMaterialClass(block: number): number {
+    switch (block) {
+      case 2: // GRASS
+        return 1; // GRASS
+      case 3: // STONE
+      case 4: // COBBLESTONE
+      case 17: // STONE_BRICKS
+      case 18: // STONE_STAIRS
+      case 19: // STONE_SLAB
+      case 20: // STONE_PILLAR
+      case 40: // OBSIDIAN
+      case 41: // BASALT
+      case 42: // MAGMA_ROCK
+      case 43: // ANCIENT_RUNE_STONE
+      case 54: // MOSS_STONE
+      case 66: // ANVIL_SMITHING
+      case 116: // TERRACOTTA_ROOF_TILE
+      case 119: // CARVED_ANDESITE_STONE
+      case 120: // VOLCANIC_BRICK
+      case 124: // SPLIT_GATE_STONE
+      case 126: // AETHER_CONDUIT_FLOOR
+      case 130: // STONE_ALANG_PILLAR
+        return 2; // STONE
+      case 8: // OAK_LOG
+      case 10: // PINE_LOG
+      case 14: // WOOD_PLANKS
+      case 15: // WOOD_STAIRS
+      case 16: // WOOD_SLAB
+      case 44: // CRAFTING_BENCH
+      case 45: // FURNACE
+      case 46: // CHEST
+      case 47: // DOOR_BOTTOM
+      case 48: // DOOR_TOP
+      case 49: // FENCE_WOOD
+      case 58: // BOOKSHELF
+      case 110: // TEAK_WOOD_LOG
+      case 111: // TEAK_WOOD_PLANKS
+      case 112: // ULIN_IRONWOOD_LOG
+      case 113: // ULIN_IRONWOOD_PLANKS
+      case 114: // WOVEN_BAMBOO_GEDEK
+      case 115: // BAMBOO_STALK_BLOCK
+      case 121: // CARVED_WOOD_BEAM
+      case 122: // WOODEN_SHUTTER
+      case 123: // BAMBOO_FENCE
+      case 127: // TERRACE_WATERWAY
+      case 128: // RICE_STORAGE_CHEST
+        return 3; // WOOD
+      case 22: // COPPER_ORE
+      case 23: // IRON_ORE
+      case 24: // GOLD_ORE
+      case 25: // MYTHRIL_ORE
+      case 50: // COPPER_BLOCK
+      case 51: // IRON_BLOCK
+      case 52: // GOLD_BLOCK
+      case 53: // MYTHRIL_BLOCK
+        return 4; // METAL
+      case 21: // GLASS
+        return 5; // GLASS
+      case 26: // AETHER_CRYSTAL_ORE
+      case 32: // GLOWSTONE_CRYSTAL
+      case 12: // CYAN_CRYSTAL_LOG
+      case 13: // CYAN_CRYSTAL_LEAVES
+      case 37: // LUMINESCENT_MUSHROOM
+        return 6; // CRYSTAL
+      case 77: // AETHER_CORE
+      case 78: // AETHER_CORE_ADVANCED
+      case 79: // LEY_CONDUIT
+      case 80: // CRYSTAL_SENSOR
+      case 81: // LOGIC_RUNE
+      case 82: // DELAY_RUNE
+      case 83: // PULSE_RUNE
+      case 84: // LATCH_RUNE
+      case 85: // AETHER_ACTUATOR
+      case 86: // ITEM_FUNNEL
+      case 87: // AETHER_STORAGE_RELAY
+      case 88: // LEY_HARVESTER
+      case 89: // IRRIGATION_NODE
+      case 90: // RESONANCE_FABRICATOR
+      case 91: // AETHER_SENTINEL_TURRET
+      case 92: // AETHER_SPIKE
+      case 93: // SHOCK_RUNE
+      case 94: // FLAME_VENT
+      case 95: // AETHER_LAMP
+      case 96: // AETHER_RAIL
+      case 97: // AETHER_RAIL_SWITCH
+      case 98: // LEY_GENERATOR
+      case 125: // AETHER_LANTERN
+      case 131: // AETHER_ALTAR_CORE
+        return 7; // AETHER
+      case 29: // LAVA
+        return 8; // LAVA
+      case 28: // WATER
+      case 39: // ICE
+        return 9; // WATER
+      case 9: // OAK_LEAVES
+      case 11: // PINE_LEAVES
+      case 33: // TALL_GRASS
+      case 34: // BLUE_FLOWER
+      case 35: // RED_FLOWER
+      case 36: // SUN_ORCHID
+      case 60: // CROP_WHEAT_0
+      case 61: // CROP_WHEAT_1
+      case 62: // CROP_WHEAT_2
+      case 63: // CROP_WHEAT_3
+      case 64: // CROP_CARROT
+      case 65: // CROP_HERB
+      case 117: // IJUK_THATCH_ROOF
+      case 118: // ALANG_ALANG_THATCH
+      case 129: // BATIK_CARPET_BLOCK
+        return 10; // FOLIAGE
+      case 1: // DIRT
+      case 5: // SAND
+      case 6: // GRAVEL
+      case 7: // CLAY
+      case 59: // FARMLAND
+      default:
+        return 0; // SOIL
+    }
+  }
+
   // Calculate vertex Ambient Occlusion (0 to 3)
   private static calculateAO(side1: boolean, side2: boolean, corner: boolean): number {
     if (side1 && side2) return 0;
@@ -91,6 +217,7 @@ export class VoxelMesher {
       solidUvs: [],
       solidTileRects: [],
       solidIndices: [],
+      solidMaterials: [],
 
       transPositions: [],
       transNormals: [],
@@ -98,6 +225,7 @@ export class VoxelMesher {
       transUvs: [],
       transTileRects: [],
       transIndices: [],
+      transMaterials: [],
 
       waterPositions: [],
       waterNormals: [],
@@ -105,6 +233,7 @@ export class VoxelMesher {
       waterUvs: [],
       waterTileRects: [],
       waterIndices: [],
+      waterMaterials: [],
     };
 
     let solidIndexOffset = 0;
@@ -324,6 +453,10 @@ export class VoxelMesher {
               tuMin, tvMin, tuMax, tvMax
             );
 
+            let materials = cell.transparent ? data.transMaterials : data.solidMaterials;
+            const matClass = VoxelMesher.getBlockMaterialClass(block);
+            materials.push(matClass, matClass, matClass, matClass);
+
             indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset, indexOffset + 2, indexOffset + 3);
 
             if (cell.transparent) transIndexOffset += 4;
@@ -350,20 +483,36 @@ export class VoxelMesher {
               const tile = TextureAtlas.getTileForBlock(block, 'top');
               const [uMin, vMin, uMax, vMax] = TextureAtlas.getUVs(tile);
 
-              // Calculate depth for visual polish (up to 8 blocks deep)
+              // Calculate depth for visual polish (up to 12 blocks deep for deep ocean absorption)
               let depthCount = 1;
-              for (let dy = 1; dy <= 8; dy++) {
+              for (let dy = 1; dy <= 12; dy++) {
                 if (getBlock(x, y - dy, z) === BlockType.WATER) depthCount++;
                 else break;
               }
-              const depthFactor = Math.min(depthCount / 8.0, 1.0);
+              const depthFactor = Math.min(depthCount / 12.0, 1.0);
 
-              // Calculate shoreline proximity (short-circuited for max performance)
-              const isShore = VoxelMesher.isSolidOpaque(getBlock(x - 1, y, z)) ||
-                              VoxelMesher.isSolidOpaque(getBlock(x + 1, y, z)) ||
-                              VoxelMesher.isSolidOpaque(getBlock(x, y, z - 1)) ||
-                              VoxelMesher.isSolidOpaque(getBlock(x, y, z + 1));
-              const shoreFactor = isShore ? 1.0 : 0.0;
+              // Smooth Shoreline Proximity Field (0..1 distance field within 3 blocks)
+              // Provides continuous gradient for dynamic foam wash, shallow tint, and wet edges
+              let shoreFactor = 0.0;
+              const isSolid = (bx: number, by: number, bz: number) => VoxelMesher.isSolidOpaque(getBlock(bx, by, bz));
+
+              // 1. Direct orthogonal neighbor (dist = 1.0)
+              if (isSolid(x - 1, y, z) || isSolid(x + 1, y, z) || isSolid(x, y, z - 1) || isSolid(x, y, z + 1)) {
+                shoreFactor = 1.0;
+              } else if (isSolid(x, y - 1, z)) {
+                // Ultra-shallow water over ground/shelf
+                shoreFactor = 0.88;
+              } else if (isSolid(x - 1, y, z - 1) || isSolid(x + 1, y, z - 1) || isSolid(x - 1, y, z + 1) || isSolid(x + 1, y, z + 1)) {
+                // Diagonal neighbor (dist ~ 1.41)
+                shoreFactor = 0.72;
+              } else if (isSolid(x - 2, y, z) || isSolid(x + 2, y, z) || isSolid(x, y, z - 2) || isSolid(x, y, z + 2)) {
+                // 2-block orthogonal (dist = 2.0)
+                shoreFactor = 0.45;
+              } else if (isSolid(x - 2, y, z - 1) || isSolid(x + 2, y, z - 1) || isSolid(x - 2, y, z + 1) || isSolid(x + 2, y, z + 1) ||
+                         isSolid(x - 1, y, z - 2) || isSolid(x + 1, y, z - 2) || isSolid(x - 1, y, z + 2) || isSolid(x + 1, y, z + 2)) {
+                // 2-block diagonal (dist ~ 2.23)
+                shoreFactor = 0.22;
+              }
 
               data.waterPositions.push(
                 x, y + 0.88, z + 1,
@@ -375,6 +524,9 @@ export class VoxelMesher {
               
               // Encode depth in R, shore in G
               for (let i = 0; i < 4; i++) data.waterColors.push(depthFactor, shoreFactor, 1.0);
+              
+              const matClass = 9; // WATER
+              for (let i = 0; i < 4; i++) data.waterMaterials.push(matClass);
               
               data.waterUvs.push(0, 0, 1, 0, 1, 1, 0, 1);
               data.waterTileRects.push(
@@ -403,6 +555,10 @@ export class VoxelMesher {
               );
               data.transNormals.push(...norm, ...norm, ...norm, ...norm);
               for (let i = 0; i < 4; i++) data.transColors.push(1.0, 1.0, 1.0);
+              
+              const matClass = VoxelMesher.getBlockMaterialClass(block);
+              for (let i = 0; i < 4; i++) data.transMaterials.push(matClass);
+
               data.transUvs.push(0, 0, 1, 0, 1, 1, 0, 1);
               data.transTileRects.push(
                 uMin, vMin, uMax, vMax,
@@ -433,6 +589,10 @@ export class VoxelMesher {
               data.solidPositions.push(...pos);
               data.solidNormals.push(...norm, ...norm, ...norm, ...norm);
               for (let i = 0; i < 4; i++) data.solidColors.push(1.0, 1.0, 1.0);
+              
+              const matClass = VoxelMesher.getBlockMaterialClass(block);
+              for (let i = 0; i < 4; i++) data.solidMaterials.push(matClass);
+
               data.solidUvs.push(...localUv);
               data.solidTileRects.push(...tileRect, ...tileRect, ...tileRect, ...tileRect);
               data.solidIndices.push(solidIndexOffset, solidIndexOffset + 1, solidIndexOffset + 2, solidIndexOffset, solidIndexOffset + 2, solidIndexOffset + 3);
@@ -514,6 +674,10 @@ export class VoxelMesher {
               data.solidPositions.push(...pos);
               data.solidNormals.push(...norm, ...norm, ...norm, ...norm);
               for (let i = 0; i < 4; i++) data.solidColors.push(1.0, 1.0, 1.0);
+              
+              const matClass = VoxelMesher.getBlockMaterialClass(block);
+              for (let i = 0; i < 4; i++) data.solidMaterials.push(matClass);
+
               data.solidUvs.push(...localUv);
               data.solidTileRects.push(...tileRect, ...tileRect, ...tileRect, ...tileRect);
               data.solidIndices.push(solidIndexOffset, solidIndexOffset + 1, solidIndexOffset + 2, solidIndexOffset, solidIndexOffset + 2, solidIndexOffset + 3);
@@ -552,6 +716,7 @@ export class VoxelMesher {
       solidUvs: new Float32Array(data.solidUvs),
       solidTileRects: new Float32Array(data.solidTileRects),
       solidIndices: new Uint32Array(data.solidIndices),
+      solidMaterials: new Float32Array(data.solidMaterials),
 
       transPositions: new Float32Array(data.transPositions),
       transNormals: new Float32Array(data.transNormals),
@@ -559,6 +724,7 @@ export class VoxelMesher {
       transUvs: new Float32Array(data.transUvs),
       transTileRects: new Float32Array(data.transTileRects),
       transIndices: new Uint32Array(data.transIndices),
+      transMaterials: new Float32Array(data.transMaterials),
 
       waterPositions: new Float32Array(data.waterPositions),
       waterNormals: new Float32Array(data.waterNormals),
@@ -566,6 +732,7 @@ export class VoxelMesher {
       waterUvs: new Float32Array(data.waterUvs),
       waterTileRects: new Float32Array(data.waterTileRects),
       waterIndices: new Uint32Array(data.waterIndices),
+      waterMaterials: new Float32Array(data.waterMaterials),
     };
   }
 }

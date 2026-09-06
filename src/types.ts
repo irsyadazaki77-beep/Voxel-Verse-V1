@@ -5,6 +5,9 @@ export type GameMode = 'survival' | 'creative' | 'adventure' | 'hardcore';
 export type Difficulty = 'peaceful' | 'easy' | 'normal' | 'hard';
 export type WorldPreset = 'standard' | 'continental' | 'archipelago' | 'mountainous' | 'flattish';
 
+export const DIMENSION_OVERWORLD = 'overworld';
+export const DIMENSION_AETHER = 'aether_expanse';
+
 export enum BlockType {
   AIR = 0,
   DIRT = 1,
@@ -95,6 +98,93 @@ export enum BlockType {
   AETHER_RAIL = 96,
   AETHER_RAIL_SWITCH = 97,
   LEY_GENERATOR = 98,
+  
+  // Aether Expanse
+  AETHER_STONE = 99,
+  VOIDGLASS = 100,
+  CRYSTAL_BRICK = 101,
+  MECHANUM_PLATE = 102,
+  SKYROOT_LOG = 103,
+  SKYROOT_LEAVES = 104,
+  SKYROOT_PLANKS = 105,
+  AETHER_GRASS = 106,
+  AETHER_DIRT = 107,
+  AETHER_GATE_FRAME = 108,
+  AETHER_PORTAL = 109,
+
+  // Nusantara Architectural Blocks (22 modular families)
+  TEAK_WOOD_LOG = 110,
+  TEAK_WOOD_PLANKS = 111,
+  ULIN_IRONWOOD_LOG = 112,
+  ULIN_IRONWOOD_PLANKS = 113,
+  WOVEN_BAMBOO_GEDEK = 114,
+  BAMBOO_STALK_BLOCK = 115,
+  TERRACOTTA_ROOF_TILE = 116,
+  IJUK_THATCH_ROOF = 117,
+  ALANG_ALANG_THATCH = 118,
+  CARVED_ANDESITE_STONE = 119,
+  VOLCANIC_BRICK = 120,
+  CARVED_WOOD_BEAM = 121,
+  WOODEN_SHUTTER = 122,
+  BAMBOO_FENCE = 123,
+  SPLIT_GATE_STONE = 124,
+  AETHER_LANTERN = 125,
+  AETHER_CONDUIT_FLOOR = 126,
+  TERRACE_WATERWAY = 127,
+  RICE_STORAGE_CHEST = 128,
+  BATIK_CARPET_BLOCK = 129,
+  STONE_ALANG_PILLAR = 130,
+  AETHER_ALTAR_CORE = 131,
+}
+
+// Nusantara Architecture & Settlement Grammar Styles
+export type RoofProfileType = 'gonjong' | 'joglo_pyramid' | 'meru_pagoda' | 'river_gabled' | 'saddle_boat' | 'conical_dome' | 'pointed_thatch' | 'bonnet_arch';
+
+export type FoundationType = 'stone_plinth' | 'high_stilts' | 'earthen_terrace' | 'volcanic_base' | 'karst_stilts' | 'earthen_circle' | 'disc_guarded_stilts';
+
+export type RoadPathStyle = 'flagstone_steps' | 'cobble_lanes' | 'stone_paved_courtyard' | 'wooden_catwalk' | 'karst_ridge_steps' | 'beaten_dirt_paths' | 'coral_sand_lanes';
+
+export type CourtyardPattern = 'mountain_linear' | 'alun_alun_central' | 'sanga_mandala_axis' | 'riverine_linear' | 'north_south_sacred_axis' | 'circular_silimo' | 'dispersed_savanna';
+
+export interface StructureStyleDef {
+  styleId: string;
+  name: string;
+  regionId: string;
+  roofProfile: RoofProfileType;
+  foundationType: FoundationType;
+  buildingHeight: { min: number; max: number };
+  materials: {
+    foundation: BlockType;
+    walls: BlockType;
+    roof: BlockType;
+    accents: BlockType;
+    flooring: BlockType;
+    pillars: BlockType;
+    fences: BlockType;
+    lighting: BlockType;
+  };
+  hasVeranda?: boolean;
+  stiltsHeight?: number;
+  roofOverhang?: number;
+}
+
+export interface SettlementStyleDef {
+  styleId: string;
+  name: string;
+  regionId: string;
+  roadPathStyle: RoadPathStyle;
+  courtyardPattern: CourtyardPattern;
+  buildingDensity: 'low' | 'medium' | 'high';
+  pathBlock: BlockType;
+  primaryBuildingStyle: StructureStyleDef;
+  secondaryBuildingStyles: Record<string, StructureStyleDef>;
+  landmarkRules: {
+    primaryMonument: string;
+    requiresWaterOrRiver?: boolean;
+    requiresRidgeOrSlope?: boolean;
+    requiresSacredAxis?: boolean;
+    aetherConduitStyle?: 'underground_stone' | 'aerial_beam' | 'crystal_pillar';
+  };
 }
 
 // Block Geometry Shapes supported by engine
@@ -134,7 +224,7 @@ export interface RaycastHit {
   subHitPos?: [number, number, number];
 }
 
-export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'ancient';
+export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'ancient' | 'aetheric';
 export type ItemCategory = 'tool' | 'weapon' | 'armor' | 'material' | 'block' | 'food' | 'consumable' | 'seed' | 'accessory' | 'potion';
 
 export interface ItemDef {
@@ -286,7 +376,7 @@ export interface BiomeDef {
   deepStoneBlock: BlockType;
   foliageDensity: number;
   treeChance: number;
-  treeType: 'oak' | 'pine' | 'crystal' | 'palm' | 'birch' | 'giant' | 'jungle' | 'dead' | 'none';
+  treeType: 'oak' | 'pine' | 'crystal' | 'palm' | 'birch' | 'giant' | 'jungle' | 'dead' | 'none' | 'skyroot';
   skyColor: [number, number, number];
   fogColor: [number, number, number];
   waterColor: [number, number, number];
@@ -333,6 +423,7 @@ export interface EntityState {
   lastProductionTime?: number;
   lastBreedingTime?: number;
   birthTime?: number;
+  variant?: number;
 }
 
 export interface WeatherState {
@@ -584,7 +675,25 @@ export interface QuestDef {
   prerequisites?: string[]; // quest IDs required before unlocking
 }
 
-export type WorldEventType = 'meteor' | 'eclipse' | 'caravan' | 'invasion' | 'aurora';
+export type WorldEventType =
+  | 'meteor'
+  | 'eclipse'
+  | 'caravan'
+  | 'invasion'
+  | 'aurora'
+  | 'panen_subak'
+  | 'pasar_nagari'
+  | 'kabut_mistis'
+  | 'panen_raya'
+  | 'pasar_malam'
+  | 'kedatangan_saudagar'
+  | 'musim_ikan'
+  | 'peringatan_muson'
+  | 'pertahanan_desa'
+  | 'upacara_adat'
+  | 'berkah_aether'
+  | 'migrasi_kristal'
+  | 'gejolak_gunung_api';
 
 export interface WorldEventInstance {
   id: string;
@@ -605,7 +714,7 @@ export interface Waypoint {
   icon?: string;
 }
 
-export type DungeonTheme = 'mine' | 'crypt' | 'crystal' | 'corrupted' | 'volcanic';
+export type DungeonTheme = 'mine' | 'crypt' | 'crystal' | 'corrupted' | 'volcanic' | 'aether_temple';
 
 export type DungeonRoomType = 'entrance' | 'hallway' | 'combat' | 'puzzle' | 'treasure' | 'secret' | 'boss';
 

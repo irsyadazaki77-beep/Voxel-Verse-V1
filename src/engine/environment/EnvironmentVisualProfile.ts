@@ -210,13 +210,204 @@ export const BIOME_VISUAL_PROFILES: Record<string, VisualProfile> = {
     particleDensity: 0.2,
     emissiveBoost: 1.0,
   },
+  aether_expanse: {
+    id: 'aether_expanse',
+    name: 'Aether Expanse',
+    skyColorDay: [0.1, 0.4, 0.6],       // Deep rich cyan/teal
+    skyColorSunset: [0.3, 0.2, 0.5],    // Violet sunset
+    skyColorNight: [0.05, 0.05, 0.15],  // Void dark
+    fogColorDay: [0.2, 0.6, 0.7],
+    fogColorSunset: [0.4, 0.25, 0.6],
+    fogColorNight: [0.02, 0.05, 0.1],
+    fogDensity: 0.0007,
+    sunColor: 0xd4f0ff,
+    sunIntensity: 1.5,
+    ambientColor: 0x3b82f6,
+    ambientIntensity: 0.4,
+    hemiColor: 0x0ea5e9,
+    hemiGroundColor: 0x1e1b4b,
+    waterColor: [0.1, 0.8, 0.9],
+    waterOpacity: 0.8,
+    windSpeed: 2.0,
+    particleType: 'spores',
+    particleDensity: 0.5,
+    emissiveBoost: 1.5,
+  },
+  // Nusantara Cultural Region Visual Profiles
+  minang: {
+    id: 'minang',
+    name: 'Tanah Minang (Lembah Harau)',
+    skyColorDay: [0.38, 0.65, 0.88],
+    skyColorSunset: [0.92, 0.48, 0.32],
+    skyColorNight: [0.06, 0.08, 0.16],
+    fogColorDay: [0.65, 0.78, 0.82],
+    fogColorSunset: [0.82, 0.54, 0.44],
+    fogColorNight: [0.08, 0.10, 0.18],
+    fogDensity: 0.012, // Thin mountain mist
+    sunColor: 0xfff4db,
+    sunIntensity: 1.22,
+    ambientColor: 0xd4eedb, // Lush emerald
+    ambientIntensity: 0.42,
+    hemiColor: 0x55aa77,
+    hemiGroundColor: 0x3d3222,
+    waterColor: [0.12, 0.62, 0.78],
+    waterOpacity: 0.72,
+    windSpeed: 2.2,
+    particleType: 'leaves',
+    particleDensity: 0.3,
+    emissiveBoost: 1.0,
+  },
+  jawa: {
+    id: 'jawa',
+    name: 'Tanah Jawa (Dataran Subur)',
+    skyColorDay: [0.42, 0.68, 0.94],
+    skyColorSunset: [0.96, 0.58, 0.32],
+    skyColorNight: [0.07, 0.08, 0.18],
+    fogColorDay: [0.72, 0.82, 0.90],
+    fogColorSunset: [0.88, 0.62, 0.48],
+    fogColorNight: [0.09, 0.11, 0.22],
+    fogDensity: 0.007,
+    sunColor: 0xfff3cf,
+    sunIntensity: 1.28,
+    ambientColor: 0xe6edd8,
+    ambientIntensity: 0.40,
+    hemiColor: 0x82c474,
+    hemiGroundColor: 0x483a2a,
+    waterColor: [0.18, 0.58, 0.85],
+    waterOpacity: 0.74,
+    windSpeed: 2.0,
+    particleType: 'leaves',
+    particleDensity: 0.2,
+    emissiveBoost: 1.0,
+  },
+  bali: {
+    id: 'bali',
+    name: 'Bali Highlands (Subak Sacred)',
+    skyColorDay: [0.40, 0.70, 0.95],
+    skyColorSunset: [0.98, 0.50, 0.28], // Vivid golden-orange sunset
+    skyColorNight: [0.08, 0.09, 0.20],
+    fogColorDay: [0.68, 0.82, 0.88],
+    fogColorSunset: [0.90, 0.56, 0.42],
+    fogColorNight: [0.10, 0.12, 0.24],
+    fogDensity: 0.009,
+    sunColor: 0xffeed0,
+    sunIntensity: 1.30,
+    ambientColor: 0xf2edd4, // Warm sacred temple glow
+    ambientIntensity: 0.44,
+    hemiColor: 0x76c988,
+    hemiGroundColor: 0x4f3d2a,
+    waterColor: [0.15, 0.65, 0.82],
+    waterOpacity: 0.70,
+    windSpeed: 2.3,
+    particleType: 'spores',
+    particleDensity: 0.35,
+    emissiveBoost: 1.1,
+  },
+  borneo: {
+    id: 'borneo',
+    name: 'Borneo Riverlands (Hutan Hujan Tropis)',
+    skyColorDay: [0.32, 0.60, 0.82],
+    skyColorSunset: [0.86, 0.46, 0.28],
+    skyColorNight: [0.04, 0.06, 0.14],
+    fogColorDay: [0.55, 0.75, 0.70], // Dense humid canopy mist
+    fogColorSunset: [0.78, 0.50, 0.40],
+    fogColorNight: [0.06, 0.09, 0.15],
+    fogDensity: 0.015, // Dense tropical haze
+    sunColor: 0xffebcc,
+    sunIntensity: 1.18,
+    ambientColor: 0xb8e6b8,
+    ambientIntensity: 0.45,
+    hemiColor: 0x449966,
+    hemiGroundColor: 0x2c261c,
+    waterColor: [0.10, 0.45, 0.55], // River peat/clay water
+    waterOpacity: 0.85,
+    windSpeed: 1.6,
+    particleType: 'spores',
+    particleDensity: 0.6,
+    emissiveBoost: 1.0,
+  },
+  toraja: {
+    id: 'toraja',
+    name: 'Toraja Highlands (Pegunungan Karst)',
+    skyColorDay: [0.35, 0.58, 0.85],
+    skyColorSunset: [0.82, 0.44, 0.36],
+    skyColorNight: [0.05, 0.07, 0.17],
+    fogColorDay: [0.60, 0.72, 0.80], // Highland valley mist
+    fogColorSunset: [0.75, 0.52, 0.48],
+    fogColorNight: [0.08, 0.11, 0.20],
+    fogDensity: 0.014,
+    sunColor: 0xfff0e2,
+    sunIntensity: 1.20,
+    ambientColor: 0xc8d8e0,
+    ambientIntensity: 0.38,
+    hemiColor: 0x6a8a9a,
+    hemiGroundColor: 0x333333,
+    waterColor: [0.15, 0.55, 0.75],
+    waterOpacity: 0.75,
+    windSpeed: 3.2,
+    particleType: 'spores',
+    particleDensity: 0.25,
+    emissiveBoost: 1.0,
+  },
+  papua: {
+    id: 'papua',
+    name: 'Papuan Highlands (Lembah Baliem & Puncak)',
+    skyColorDay: [0.45, 0.68, 0.95], // Crisp thin mountain air
+    skyColorSunset: [0.90, 0.52, 0.50],
+    skyColorNight: [0.07, 0.10, 0.24],
+    fogColorDay: [0.70, 0.80, 0.92],
+    fogColorSunset: [0.82, 0.60, 0.65],
+    fogColorNight: [0.10, 0.14, 0.28],
+    fogDensity: 0.008,
+    sunColor: 0xf6f8ff,
+    sunIntensity: 1.32,
+    ambientColor: 0xd8e8f8,
+    ambientIntensity: 0.42,
+    hemiColor: 0x88bbee,
+    hemiGroundColor: 0x3a4450,
+    waterColor: [0.20, 0.70, 0.90],
+    waterOpacity: 0.78,
+    windSpeed: 4.2,
+    particleType: 'snow',
+    particleDensity: 0.3,
+    emissiveBoost: 1.1,
+  },
+  nusa: {
+    id: 'nusa',
+    name: 'Eastern Isles (Kepulauan Karang & Savana)',
+    skyColorDay: [0.44, 0.72, 0.98],
+    skyColorSunset: [0.98, 0.60, 0.30], // Blazing tropical sunset
+    skyColorNight: [0.07, 0.09, 0.22],
+    fogColorDay: [0.72, 0.85, 0.95],
+    fogColorSunset: [0.90, 0.65, 0.45],
+    fogColorNight: [0.08, 0.12, 0.25],
+    fogDensity: 0.0055, // Crystal clear coastal horizon
+    sunColor: 0xfffae8,
+    sunIntensity: 1.35,
+    ambientColor: 0xfbf4db,
+    ambientIntensity: 0.46,
+    hemiColor: 0x38bdf8,
+    hemiGroundColor: 0x5a4832,
+    waterColor: [0.05, 0.78, 0.88], // Luminous turquoise coral shallows
+    waterOpacity: 0.65,
+    windSpeed: 3.8,
+    particleType: 'sand',
+    particleDensity: 0.25,
+    emissiveBoost: 1.05,
+  },
 };
 
 export class EnvironmentAtmosphereEngine {
-  public static getProfile(biomeId?: string): VisualProfile {
+  public static getProfile(biomeId?: string, regionId?: string): VisualProfile {
+    if (regionId && BIOME_VISUAL_PROFILES[regionId]) {
+      return BIOME_VISUAL_PROFILES[regionId];
+    }
     if (!biomeId) return BIOME_VISUAL_PROFILES.plains;
     const normalized = biomeId.toLowerCase();
     
+    if (BIOME_VISUAL_PROFILES[normalized]) {
+      return BIOME_VISUAL_PROFILES[normalized];
+    }
     if (normalized.includes('ocean') || normalized.includes('abyss') || normalized.includes('deep')) {
       return BIOME_VISUAL_PROFILES.ocean;
     }

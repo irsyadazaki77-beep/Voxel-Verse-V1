@@ -68,7 +68,8 @@ export class ChunkWorkerPool {
         return;
       }
 
-      const worker = new Worker(new URL('./WorldWorker.ts', import.meta.url), { type: 'module' });
+      const worker = // @ts-ignore
+      new Worker(new URL('./WorldWorker.ts', import.meta.url), { type: 'module' });
       this.workers[index] = worker;
       this.workerBusy[index] = false;
 

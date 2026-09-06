@@ -484,12 +484,19 @@ async function startServer() {
   const wss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (request, socket, head) => {
-    const pathname = request.url ? new URL(request.url, `http://${request.headers.host}`).pathname : '';
-    if (pathname === '/ws') {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-      });
-    } else {
+    socket.on('error', () => {
+      // Ignore abortive upgrade socket errors
+    });
+    try {
+      const pathname = request.url ? new URL(request.url, `http://${request.headers.host || 'localhost'}`).pathname : '';
+      if (pathname === '/ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+      } else {
+        socket.destroy();
+      }
+    } catch {
       socket.destroy();
     }
   });
@@ -1284,7 +1291,7 @@ async function startServer() {
   // Setup Vite development middleware OR static fallback for production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -1301,6 +1308,4 @@ async function startServer() {
   });
 }
 
-if (process.argv[1] && process.argv[1].endsWith('server.ts')) {
-  startServer();
-}
+startServer();

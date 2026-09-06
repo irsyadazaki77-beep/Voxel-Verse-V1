@@ -10,6 +10,7 @@ export type WorldPreset = 'standard' | 'continental' | 'archipelago' | 'mountain
 
 export interface WorldGenParameters {
   preset: WorldPreset;
+  dimensionId?: string;
   continentalnessScale: number; // Low frequency scale for macro continents
   erosionScale: number; // Scale for terrain smoothness / ruggedness
   peaksScale: number; // Scale for mountain ridges & valleys

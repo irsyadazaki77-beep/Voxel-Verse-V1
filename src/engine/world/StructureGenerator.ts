@@ -4,6 +4,8 @@ import { BlockType } from '../../types';
 import { STRUCTURE_REGION_SIZE, CHUNK_SIZE_Y } from './WorldConfig';
 import { DungeonGenerator } from '../dungeon/DungeonGenerator';
 import { SettlementManager } from '../settlement/SettlementManager';
+import { NusantaraBuildingKit } from './NusantaraBuildingKit';
+import { NusantaraSettlementGenerator } from './NusantaraSettlementGenerator';
 
 export interface VoxelBlockPlacement {
   dx: number; // Offset relative to structure origin
@@ -384,9 +386,16 @@ export class StructureGenerator {
 
     // 1. DYNAMIC SPECIAL SETTLEMENTS (DETERMINISTIC WORLD LOCATIONS)
     const settlements = [
-      { id: 'haven_camp', x: 8, z: 8, height: 64, type: 'haven' },
-      { id: 'suncrest_hamlet', x: 320, z: 280, height: 68, type: 'suncrest' },
-      { id: 'ferrite_outpost', x: 650, z: -500, height: 75, type: 'ferrite' }
+      { id: 'haven_camp', x: 8, z: 8, height: 64, type: 'haven', regionId: '' },
+      { id: 'suncrest_hamlet', x: 320, z: 280, height: 68, type: 'suncrest', regionId: '' },
+      { id: 'ferrite_outpost', x: 650, z: -500, height: 75, type: 'ferrite', regionId: '' },
+      { id: 'nagari_minang', x: -420, z: -350, height: 72, type: 'nusantara', regionId: 'tanah_minang' },
+      { id: 'desa_majapahit', x: 380, z: 450, height: 64, type: 'nusantara', regionId: 'tanah_jawa' },
+      { id: 'banjar_subak', x: 520, z: -480, height: 78, type: 'nusantara', regionId: 'bali_highlands' },
+      { id: 'kampung_dayak', x: -600, z: 580, height: 62, type: 'nusantara', regionId: 'borneo_riverlands' },
+      { id: 'desa_kete_kesu', x: 720, z: 180, height: 84, type: 'nusantara', regionId: 'toraja_highlands' },
+      { id: 'kampung_baliem', x: -800, z: -750, height: 88, type: 'nusantara', regionId: 'papua_highlands' },
+      { id: 'desa_sasak', x: -280, z: 850, height: 66, type: 'nusantara', regionId: 'eastern_isles' }
     ];
 
     for (const s of settlements) {
@@ -421,7 +430,7 @@ export class StructureGenerator {
       const dx = placeX - (chunkMinX + 8);
       const dz = placeZ - (chunkMinZ + 8);
 
-      if (Math.abs(dx) < 48 && Math.abs(dz) < 48) {
+      if (Math.abs(dx) < 60 && Math.abs(dz) < 60) {
         const state = SettlementManager.getSettlementState(s.id);
         const level = state ? state.level : 1;
 
@@ -432,6 +441,8 @@ export class StructureGenerator {
           bp = StructureGenerator.generateSuncrestHamletBlueprint(level);
         } else if (s.type === 'ferrite') {
           bp = StructureGenerator.generateFerriteOutpostBlueprint(level);
+        } else if (s.type === 'nusantara') {
+          bp = NusantaraSettlementGenerator.generateSettlement(s.regionId, placeX, groundY, placeZ, seed);
         }
 
         for (const block of bp) {
@@ -578,16 +589,28 @@ export class StructureGenerator {
 
           const typeRand = (hash * 100) % 1;
           let blueprint: VoxelBlockPlacement[] = [];
-          if (typeRand < 0.2) {
+          if (typeRand < 0.12) {
             blueprint = StructureGenerator.generateDungeonEntrance();
-          } else if (typeRand < 0.4) {
+          } else if (typeRand < 0.22) {
             blueprint = StructureGenerator.generateMeteorCrater();
-          } else if (typeRand < 0.6) {
+          } else if (typeRand < 0.32) {
             blueprint = StructureGenerator.generateWatchtower();
-          } else if (typeRand < 0.8) {
+          } else if (typeRand < 0.42) {
             blueprint = StructureGenerator.generateExplorerCabin();
-          } else {
+          } else if (typeRand < 0.52) {
             blueprint = StructureGenerator.generateAncientShrine();
+          } else if (typeRand < 0.65) {
+            // Rare Nusantara Megastructure: Ancient Temple Complex (Candi Agung)
+            blueprint = NusantaraBuildingKit.generateAncientTempleComplex();
+          } else if (typeRand < 0.77) {
+            // Rare Nusantara Megastructure: Royal Hall Pagaruyung
+            blueprint = NusantaraBuildingKit.generateRoyalHall();
+          } else if (typeRand < 0.88) {
+            // Rare Nusantara Megastructure: Grand Betang Kahayan
+            blueprint = NusantaraBuildingKit.generateGrandBetang();
+          } else {
+            // Rare Nusantara Megastructure: Toraja Cliff Sanctuary
+            blueprint = NusantaraBuildingKit.generateCliffSanctuary();
           }
 
           for (const bp of blueprint) {
@@ -833,4 +856,549 @@ export class StructureGenerator {
 
     return blocks;
   }
+
+  public static generateRumahGadang(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Floor on stilts (7x5 footprint)
+    for (let x = -4; x <= 4; x++) {
+      for (let z = -2; z <= 2; z++) {
+        // Foundation pillars
+        if ((Math.abs(x) === 4 || Math.abs(x) === 2 || x === 0) && (Math.abs(z) === 2)) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.STONE_PILLAR });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.STONE_PILLAR });
+        }
+        // Planks floor
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    // Wooden walls (walls flare outward slightly)
+    for (let y = 3; y <= 5; y++) {
+      for (let x = -4; x <= 4; x++) {
+        blocks.push({ dx: x, dy: y, dz: -2, block: BlockType.WOOD_PLANKS });
+        blocks.push({ dx: x, dy: y, dz: 2, block: BlockType.WOOD_PLANKS });
+      }
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: -4, dy: y, dz: z, block: BlockType.WOOD_PLANKS });
+        blocks.push({ dx: 4, dy: y, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    // Door opening & lantern
+    blocks.push({ dx: 0, dy: 3, dz: -2, block: BlockType.AIR });
+    blocks.push({ dx: 0, dy: 4, dz: -2, block: BlockType.AIR });
+    blocks.push({ dx: 0, dy: 4, dz: 0, block: BlockType.LANTERN });
+
+    // Sweeping Roof with multiple iconic Gonjong horns (Minangkabau style)
+    for (let x = -5; x <= 5; x++) {
+      const dist = Math.abs(x);
+      // Sweeping upward curved profile
+      const hornCurve = dist >= 3 ? Math.floor(Math.pow(dist - 2, 1.6)) : 0;
+      for (let z = -2; z <= 2; z++) {
+        const roofY = 6 + hornCurve;
+        if (Math.abs(z) === 2) {
+          blocks.push({ dx: x, dy: roofY, dz: z, block: BlockType.WOOD_STAIRS });
+        } else {
+          blocks.push({ dx: x, dy: roofY + (1 - Math.abs(z)), dz: z, block: BlockType.PINE_LOG });
+        }
+      }
+    }
+    // Sharp Gonjong Horn finials on outermost ends
+    blocks.push({ dx: -5, dy: 10, dz: 0, block: BlockType.WOOD_SLAB });
+    blocks.push({ dx: 5, dy: 10, dz: 0, block: BlockType.WOOD_SLAB });
+    return blocks;
+  }
+
+  public static generateRangkiang(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Minang rice granary on 4 tall stilts
+    for (let x = -1; x <= 1; x += 2) {
+      for (let z = -1; z <= 1; z += 2) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.STONE_PILLAR });
+        blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.OAK_LOG });
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.OAK_LOG });
+      }
+    }
+    // Raised granary box
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.WOOD_PLANKS });
+        if (Math.abs(x) === 2 || Math.abs(z) === 2) {
+          blocks.push({ dx: x, dy: 4, dz: z, block: BlockType.WOOD_PLANKS });
+          blocks.push({ dx: x, dy: 5, dz: z, block: BlockType.WOOD_PLANKS });
+        }
+      }
+    }
+    // Inside storage
+    blocks.push({ dx: 0, dy: 4, dz: 0, block: BlockType.CHEST });
+    // Swept curved horn roof
+    for (let x = -3; x <= 3; x++) {
+      const up = Math.abs(x) === 3 ? 2 : Math.abs(x) === 2 ? 1 : 0;
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: 6 + up, dz: z, block: BlockType.PINE_LOG });
+      }
+    }
+    return blocks;
+  }
+
+  public static generateJoglo(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Javanese Joglo (9x9 platform with central soko guru pillars)
+    for (let x = -4; x <= 4; x++) {
+      for (let z = -4; z <= 4; z++) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.STONE_BRICKS });
+      }
+    }
+    // 4 Soko Guru Central Pillars
+    const soko = [-1, 1];
+    for (const sx of soko) {
+      for (const sz of soko) {
+        for (let y = 1; y <= 5; y++) {
+          blocks.push({ dx: sx * 2, dy: y, dz: sz * 2, block: BlockType.OAK_LOG });
+        }
+      }
+    }
+    // Central Lantern
+    blocks.push({ dx: 0, dy: 5, dz: 0, block: BlockType.LANTERN });
+
+    // Peripheral veranda columns
+    for (let x = -3; x <= 3; x += 3) {
+      for (let z = -3; z <= 3; z += 3) {
+        if (Math.abs(x) === 3 || Math.abs(z) === 3) {
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.FENCE_WOOD });
+          blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.FENCE_WOOD });
+        }
+      }
+    }
+
+    // Outer low eave roof (Limasan veranda overhang)
+    for (let x = -4; x <= 4; x++) {
+      for (let z = -4; z <= 4; z++) {
+        if (Math.abs(x) === 4 || Math.abs(z) === 4) {
+          blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.CLAY });
+        }
+      }
+    }
+    for (let x = -3; x <= 3; x++) {
+      for (let z = -3; z <= 3; z++) {
+        if (Math.abs(x) === 3 || Math.abs(z) === 3) {
+          blocks.push({ dx: x, dy: 4, dz: z, block: BlockType.CLAY });
+        }
+      }
+    }
+    // Steep Tajug / Brunjung Pyramid Peak over Soko Guru
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        blocks.push({ dx: x, dy: 5, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    for (let x = -1; x <= 1; x++) {
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: 6, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    blocks.push({ dx: 0, dy: 7, dz: 0, block: BlockType.GOLD_BLOCK }); // Makuta top crown
+    return blocks;
+  }
+
+  public static generateCandi(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Stepped andesite stone temple stupa (7x7 base)
+    for (let y = 0; y <= 2; y++) {
+      const s = 3 - y;
+      for (let x = -s; x <= s; x++) {
+        for (let z = -s; z <= s; z++) {
+          blocks.push({ dx: x, dy: y, dz: z, block: BlockType.STONE_BRICKS });
+        }
+      }
+    }
+    // Inner hollow shrine room with relic altar
+    for (let y = 3; y <= 5; y++) {
+      for (let x = -2; x <= 2; x++) {
+        for (let z = -2; z <= 2; z++) {
+          if (Math.abs(x) === 2 || Math.abs(z) === 2) {
+            blocks.push({ dx: x, dy: y, dz: z, block: BlockType.STONE_BRICKS });
+          } else {
+            blocks.push({ dx: x, dy: y, dz: z, block: BlockType.AIR });
+          }
+        }
+      }
+    }
+    // Altar inside shrine
+    blocks.push({ dx: 0, dy: 3, dz: 0, block: BlockType.ANCIENT_RUNE_STONE });
+    blocks.push({ dx: 0, dy: 4, dz: 0, block: BlockType.LANTERN });
+    // Arch entrance
+    blocks.push({ dx: 0, dy: 3, dz: -2, block: BlockType.AIR });
+    blocks.push({ dx: 0, dy: 4, dz: -2, block: BlockType.AIR });
+
+    // Tiered Stupa Spire Top
+    for (let x = -1; x <= 1; x++) {
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: 6, dz: z, block: BlockType.STONE_BRICKS });
+      }
+    }
+    blocks.push({ dx: 0, dy: 7, dz: 0, block: BlockType.STONE_PILLAR });
+    blocks.push({ dx: 0, dy: 8, dz: 0, block: BlockType.STONE_SLAB });
+    return blocks;
+  }
+
+  public static generateAncientStoneRuins(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Weathered collapsed temple ruin
+    for (let x = -3; x <= 3; x++) {
+      for (let z = -3; z <= 3; z++) {
+        if ((x + z) % 2 === 0) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.MOSS_STONE });
+        } else {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.STONE_BRICKS });
+        }
+      }
+    }
+    // Broken columns
+    const cols = [[-2, -2, 4], [2, -2, 2], [-2, 2, 1], [2, 2, 3]];
+    for (const [cx, cz, h] of cols) {
+      for (let y = 1; y <= h; y++) {
+        blocks.push({ dx: cx, dy: y, dz: cz, block: BlockType.STONE_PILLAR });
+      }
+    }
+    // Central broken altar
+    blocks.push({ dx: 0, dy: 1, dz: 0, block: BlockType.ANCIENT_RUNE_STONE });
+    blocks.push({ dx: 0, dy: 2, dz: 0, block: BlockType.CHEST });
+    return blocks;
+  }
+
+  public static generatePuraGate(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Balinese Candi Bentar (split entrance gate with carved wings)
+    // Left Wing
+    for (let y = 0; y <= 6; y++) {
+      const width = Math.max(1, 3 - Math.floor(y / 2));
+      for (let w = 0; w < width; w++) {
+        const blk = y % 2 === 0 ? BlockType.STONE_BRICKS : BlockType.CLAY;
+        blocks.push({ dx: -2 - w, dy: y, dz: 0, block: blk });
+      }
+    }
+    blocks.push({ dx: -2, dy: 7, dz: 0, block: BlockType.STONE_SLAB });
+
+    // Right Wing
+    for (let y = 0; y <= 6; y++) {
+      const width = Math.max(1, 3 - Math.floor(y / 2));
+      for (let w = 0; w < width; w++) {
+        const blk = y % 2 === 0 ? BlockType.STONE_BRICKS : BlockType.CLAY;
+        blocks.push({ dx: 2 + w, dy: y, dz: 0, block: blk });
+      }
+    }
+    blocks.push({ dx: 2, dy: 7, dz: 0, block: BlockType.STONE_SLAB });
+
+    // Central pathway with offering stones
+    blocks.push({ dx: -1, dy: 0, dz: 0, block: BlockType.STONE_BRICKS });
+    blocks.push({ dx: 0, dy: 0, dz: 0, block: BlockType.STONE_BRICKS });
+    blocks.push({ dx: 1, dy: 0, dz: 0, block: BlockType.STONE_BRICKS });
+    blocks.push({ dx: -1, dy: 1, dz: -1, block: BlockType.LANTERN });
+    blocks.push({ dx: 1, dy: 1, dz: -1, block: BlockType.LANTERN });
+    return blocks;
+  }
+
+  public static generateSubakWaterGate(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Balinese Subak Water Division Weir & Sluice Gate
+    for (let x = -3; x <= 3; x++) {
+      blocks.push({ dx: x, dy: 0, dz: 0, block: BlockType.STONE_BRICKS });
+      blocks.push({ dx: x, dy: 1, dz: -1, block: BlockType.STONE_BRICKS });
+      blocks.push({ dx: x, dy: 1, dz: 1, block: BlockType.STONE_BRICKS });
+      // Water channel in the center
+      if (Math.abs(x) <= 2) {
+        blocks.push({ dx: x, dy: 1, dz: 0, block: BlockType.WATER });
+      }
+    }
+    // Wooden sluice dividing board & stone shrine
+    blocks.push({ dx: 0, dy: 2, dz: 0, block: BlockType.WOOD_PLANKS });
+    blocks.push({ dx: 2, dy: 2, dz: 1, block: BlockType.STONE_PILLAR });
+    blocks.push({ dx: 2, dy: 3, dz: 1, block: BlockType.GLOWSTONE_CRYSTAL });
+    return blocks;
+  }
+
+  public static generateMeruTower(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Balinese Pura Meru (Tiered Pagoda Tower, 3 tumpang tiers)
+    // Base platform
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.STONE_BRICKS });
+        blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.STONE_BRICKS });
+      }
+    }
+    // Inner wooden core
+    for (let y = 2; y <= 9; y++) {
+      blocks.push({ dx: 0, dy: y, dz: 0, block: BlockType.OAK_LOG });
+    }
+    // Tier 1 Roof (Wide)
+    for (let x = -3; x <= 3; x++) {
+      for (let z = -3; z <= 3; z++) {
+        if (Math.abs(x) === 3 || Math.abs(z) === 3) {
+          blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.PINE_LEAVES });
+        }
+      }
+    }
+    // Tier 2 Roof (Medium)
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        if (Math.abs(x) === 2 || Math.abs(z) === 2) {
+          blocks.push({ dx: x, dy: 5, dz: z, block: BlockType.PINE_LEAVES });
+        }
+      }
+    }
+    // Tier 3 Roof (Small)
+    for (let x = -1; x <= 1; x++) {
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: 7, dz: z, block: BlockType.PINE_LEAVES });
+      }
+    }
+    // Crown
+    blocks.push({ dx: 0, dy: 9, dz: 0, block: BlockType.GOLD_BLOCK });
+    return blocks;
+  }
+
+  public static generateBetang(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Dayak Rumah Betang Longhouse (Stilts along riverbanks)
+    for (let x = -6; x <= 6; x++) {
+      for (let z = -2; z <= 2; z++) {
+        // Heavy ironwood stilts
+        if (x % 3 === 0 && (z === -2 || z === 2)) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.OAK_LOG });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.OAK_LOG });
+        }
+        // Elevated wooden deck
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    // Walls and partitions
+    for (let y = 3; y <= 5; y++) {
+      for (let x = -6; x <= 6; x++) {
+        blocks.push({ dx: x, dy: y, dz: -2, block: BlockType.WOOD_PLANKS });
+        blocks.push({ dx: x, dy: y, dz: 2, block: BlockType.WOOD_PLANKS });
+      }
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: -6, dy: y, dz: z, block: BlockType.WOOD_PLANKS });
+        blocks.push({ dx: 6, dy: y, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    // Windows and entrance
+    blocks.push({ dx: 0, dy: 3, dz: -2, block: BlockType.AIR });
+    blocks.push({ dx: 0, dy: 4, dz: -2, block: BlockType.AIR });
+    blocks.push({ dx: -3, dy: 4, dz: -2, block: BlockType.FENCE_WOOD });
+    blocks.push({ dx: 3, dy: 4, dz: -2, block: BlockType.FENCE_WOOD });
+    blocks.push({ dx: 0, dy: 4, dz: 0, block: BlockType.TORCH });
+
+    // Long gabled roof
+    for (let x = -7; x <= 7; x++) {
+      for (let z = -2; z <= 2; z++) {
+        const roofH = 6 + (2 - Math.abs(z));
+        blocks.push({ dx: x, dy: roofH, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    return blocks;
+  }
+
+  public static generateRiverPier(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Wooden riverfront boardwalk & stilt pier for canoe docking
+    for (let x = -1; x <= 1; x++) {
+      for (let z = 0; z <= 6; z++) {
+        // Pilings
+        if (z % 2 === 0 && (x === -1 || x === 1)) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.OAK_LOG });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.OAK_LOG });
+        }
+        // Boardwalk
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    // Mooring posts & lantern
+    blocks.push({ dx: -1, dy: 3, dz: 6, block: BlockType.FENCE_WOOD });
+    blocks.push({ dx: 1, dy: 3, dz: 6, block: BlockType.FENCE_WOOD });
+    blocks.push({ dx: 1, dy: 4, dz: 6, block: BlockType.LANTERN });
+    return blocks;
+  }
+
+  public static generateTongkonan(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Toraja Tongkonan with sweeping boat-shaped curved roof
+    for (let x = -3; x <= 3; x++) {
+      for (let z = -2; z <= 2; z++) {
+        // Foundation posts
+        if (Math.abs(x) <= 2 && (z === -2 || z === 2)) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.OAK_LOG });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.OAK_LOG });
+        }
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    // Decorated Living Quarters
+    for (let y = 3; y <= 5; y++) {
+      for (let x = -2; x <= 2; x++) {
+        blocks.push({ dx: x, dy: y, dz: -2, block: BlockType.WOOD_PLANKS });
+        blocks.push({ dx: x, dy: y, dz: 2, block: BlockType.WOOD_PLANKS });
+      }
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: -2, dy: y, dz: z, block: BlockType.WOOD_PLANKS });
+        blocks.push({ dx: 2, dy: y, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    // Central buffalo horn pillar (tulak somba)
+    blocks.push({ dx: 0, dy: 1, dz: -2, block: BlockType.STONE_PILLAR });
+    blocks.push({ dx: 0, dy: 2, dz: -2, block: BlockType.LANTERN });
+
+    // Dramatic saddleback boat-shaped roof extending far forward and backward
+    for (let x = -5; x <= 5; x++) {
+      const dist = Math.abs(x);
+      const sweepUp = dist >= 2 ? Math.floor(Math.pow(dist - 1, 1.7)) : 0;
+      for (let z = -2; z <= 2; z++) {
+        const y = 6 + sweepUp + (1 - Math.abs(z));
+        blocks.push({ dx: x, dy: y, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+    return blocks;
+  }
+
+  public static generateCliffVault(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Toraja Cliff burial chamber with wooden effigy (tau-tau) balcony
+    for (let x = -2; x <= 2; x++) {
+      for (let y = 0; y <= 3; y++) {
+        blocks.push({ dx: x, dy: y, dz: 0, block: BlockType.STONE_BRICKS });
+      }
+    }
+    // Wooden tau-tau balcony
+    for (let x = -2; x <= 2; x++) {
+      blocks.push({ dx: x, dy: 1, dz: -1, block: BlockType.WOOD_PLANKS });
+      blocks.push({ dx: x, dy: 2, dz: -1, block: BlockType.FENCE_WOOD });
+    }
+    // Effigy and chest
+    blocks.push({ dx: 0, dy: 2, dz: 0, block: BlockType.AIR });
+    blocks.push({ dx: 0, dy: 2, dz: 1, block: BlockType.CHEST });
+    blocks.push({ dx: 0, dy: 3, dz: -1, block: BlockType.LANTERN });
+    return blocks;
+  }
+
+  public static generateHonai(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Papuan highland circular thatched hut
+    const radius = 3;
+    for (let x = -radius; x <= radius; x++) {
+      for (let z = -radius; z <= radius; z++) {
+        const d2 = x * x + z * z;
+        if (d2 <= radius * radius + 1) {
+          // Dirt/wood floor
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.DIRT });
+          // Lower circular wooden walls
+          if (d2 >= (radius - 1) * (radius - 1)) {
+            blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.WOOD_PLANKS });
+            blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.WOOD_PLANKS });
+          }
+        }
+      }
+    }
+    // Door opening
+    blocks.push({ dx: 0, dy: 1, dz: -radius, block: BlockType.AIR });
+    blocks.push({ dx: 0, dy: 2, dz: -radius, block: BlockType.AIR });
+
+    // Central warm hearth (fire pit)
+    blocks.push({ dx: 0, dy: 0, dz: 0, block: BlockType.COBBLESTONE });
+    blocks.push({ dx: 0, dy: 1, dz: 0, block: BlockType.TORCH });
+
+    // Domed Thatched Roof
+    for (let x = -radius; x <= radius; x++) {
+      for (let z = -radius; z <= radius; z++) {
+        const d = Math.sqrt(x * x + z * z);
+        if (d <= radius) {
+          blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.TALL_GRASS });
+        }
+        if (d <= 2) {
+          blocks.push({ dx: x, dy: 4, dz: z, block: BlockType.TALL_GRASS });
+        }
+        if (d <= 1) {
+          blocks.push({ dx: x, dy: 5, dz: z, block: BlockType.TALL_GRASS });
+        }
+      }
+    }
+    return blocks;
+  }
+
+  public static generateSasakLumbung(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Sasak traditional granary on circular disc-capped stilts with arched bonnet roof
+    for (let x = -1; x <= 1; x += 2) {
+      for (let z = -1; z <= 1; z += 2) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.SAND });
+        blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.STONE_PILLAR });
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.WOOD_SLAB }); // Disc guard against pests
+      }
+    }
+    // Raised platform
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.WOOD_PLANKS });
+        if (Math.abs(x) === 2 || Math.abs(z) === 2) {
+          blocks.push({ dx: x, dy: 4, dz: z, block: BlockType.WOOD_PLANKS });
+        }
+      }
+    }
+    blocks.push({ dx: 0, dy: 4, dz: 0, block: BlockType.CHEST });
+    // Rounded arch thatched grass bonnet roof
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        blocks.push({ dx: x, dy: 5, dz: z, block: BlockType.TALL_GRASS });
+        if (Math.abs(z) <= 1) {
+          blocks.push({ dx: x, dy: 6, dz: z, block: BlockType.TALL_GRASS });
+        }
+      }
+    }
+    return blocks;
+  }
+
+  public static generateNusantaraStructure(type: string): VoxelBlockPlacement[] {
+    switch (type) {
+      // Minang
+      case 'rumah_gadang': return NusantaraBuildingKit.generateRumahGadang(false);
+      case 'rangkiang': return NusantaraBuildingKit.generateRangkiang('si_bayau_bayau');
+      case 'surau': return NusantaraBuildingKit.generateSurau();
+      case 'sawah_gazebo': return NusantaraBuildingKit.generateRangkiang('sitinjau_lauik');
+      // Jawa
+      case 'joglo': return NusantaraBuildingKit.generateJoglo();
+      case 'limasan': return NusantaraBuildingKit.generateLimasan();
+      case 'pendopo': return NusantaraBuildingKit.generatePendopo();
+      case 'candi':
+      case 'ancient_ruins': return NusantaraBuildingKit.generateAncientTempleComplex();
+      case 'gapura_bata':
+      case 'gapura': return NusantaraBuildingKit.generateGapuraMajapahit();
+      // Bali
+      case 'pura':
+      case 'candi_bentar': return NusantaraBuildingKit.generateCandiBentar();
+      case 'kori_agung':
+      case 'kori_gate': return NusantaraBuildingKit.generateKoriAgung();
+      case 'subak_gate': return NusantaraBuildingKit.generateSubakWaterDivision();
+      case 'meru_tower': return NusantaraBuildingKit.generateMeruTower(5);
+      case 'bale_kulkul': return NusantaraBuildingKit.generatePendopo();
+      // Borneo
+      case 'betang': return NusantaraBuildingKit.generateRumahBetang(24);
+      case 'river_pier': return NusantaraBuildingKit.generateRiverPier(8);
+      case 'stilt_fishery': return NusantaraBuildingKit.generateRiverPier(6);
+      // Toraja
+      case 'tongkonan': return NusantaraBuildingKit.generateTongkonan();
+      case 'alang_granary':
+      case 'alang': return NusantaraBuildingKit.generateAlangSurap();
+      case 'cliff_vault': return NusantaraBuildingKit.generateCliffSanctuary();
+      // Papua
+      case 'honai': return NusantaraBuildingKit.generateHonai();
+      case 'pilamo': return NusantaraBuildingKit.generateHonai();
+      case 'highland_watchpost': return NusantaraBuildingKit.generateSasakLumbung();
+      // Eastern Isles
+      case 'sasak_lumbung': return NusantaraBuildingKit.generateSasakLumbung();
+      case 'uma_kalada':
+      case 'uma_mbaru': return NusantaraBuildingKit.generateUmaKalada();
+      case 'coastal_stilt': return NusantaraBuildingKit.generateRiverPier(8);
+      default: return [];
+    }
+  }
+
 }

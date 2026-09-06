@@ -258,6 +258,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const safeSpawn = runtime.world.findSafeSpawn(seed);
     runtime.player.position.set(...safeSpawn);
     runtime.player.velocity.set(0, 0, 0);
+    runtime.player.highestFallY = safeSpawn[1];
 
     runtime.stats.health = 100;
     runtime.stats.hunger = 100;
@@ -265,6 +266,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     runtime.stats.stamina = 100;
     runtime.stats.isDead = false;
     runtime.stats.activeEffects = [];
+    runtime.isPaused = false;
 
     setModal('none');
     containerRef.current?.requestPointerLock();
@@ -404,6 +406,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             if (runtimeRef.current) {
               runtimeRef.current.player.position.set(tx, ty, tz);
               runtimeRef.current.player.velocity.set(0, 0, 0);
+            }
+          }}
+          onChangeDimension={(dim) => {
+            if (runtimeRef.current) {
+              runtimeRef.current.changeDimension(dim);
             }
           }}
           onSpawnBoss={(type) => {

@@ -1,3 +1,8 @@
+import { Logger } from '../ui/Logger';
+
+
+  
+  
 import * as THREE from 'three';
 import { VoxelWorld, RaycastHit } from '../world/VoxelWorld';
 import { PlayerController } from '../player/PlayerController';
@@ -83,6 +88,7 @@ export class GameRuntime {
   public settings: GameSettings;
   public gameMode: GameMode;
   public worldId: string;
+  public globalModifiedBlocks: Record<string, Record<string, number>> = {};
   public worldName: string;
   public seed: number;
 
@@ -116,6 +122,9 @@ export class GameRuntime {
   private settingsUnsubscribe: (() => void) | null = null;
   private networkBlockUnsubscribe: (() => void) | null = null;
   private callbacks: GameRuntimeCallbacks = {};
+
+  private accum5Hz: number = 0;
+  private accum1Hz: number = 0;
 
   constructor(
     container: HTMLElement,
@@ -151,7 +160,17 @@ export class GameRuntime {
         }
       }
       if (this.sky) {
-        this.sky.updateShadowSettings(newSettings.graphics.shadows, newSettings.graphics.shadowMapSize || 1024);
+        let shadowDist = 35;
+        const q = newSettings.graphics.shadowQuality;
+        if (q === 'low') shadowDist = 25;
+        else if (q === 'medium') shadowDist = 35;
+        else if (q === 'high') shadowDist = 48;
+        else if (q === 'ultra') shadowDist = 64;
+        this.sky.updateShadowSettings(
+          newSettings.graphics.shadows,
+          newSettings.graphics.shadowMapSize || 1024,
+          shadowDist
+        );
       }
       if (this.clouds) {
         this.clouds.cloudGroup.visible = newSettings.graphics.clouds;
@@ -322,6 +341,7 @@ export class GameRuntime {
     let initialSpawn: [number, number, number] = [0, 80, 0];
 
     if (worldData) {
+      this.globalModifiedBlocks = worldData.modifiedBlocks || {};
       SaveManager.applySaveToWorld(this.world, worldData);
       initialSpawn = worldData.player.position;
       this.stats.health = worldData.player.health;
@@ -334,6 +354,15 @@ export class GameRuntime {
       this.inventory = worldData.player.inventory;
       this.equipment = worldData.player.equipment;
       this.activeHotbarIndex = worldData.player.hotbarIndex || 0;
+
+      // Safe recovery if player saved while dead or falling through void
+      if (this.stats.health <= 0 || initialSpawn[1] < 5) {
+        this.stats.health = 100;
+        this.stats.hunger = 100;
+        this.stats.saturation = 20;
+        this.stats.isDead = false;
+        initialSpawn = this.world.findSafeSpawn(seed);
+      }
       
       this.world.preloadSpawnChunks(initialSpawn[0], initialSpawn[2], 2);
     } else {
@@ -596,22 +625,78 @@ export class GameRuntime {
     }
   };
 
+  
+  public async changeDimension(dimensionId: string): Promise<void> {
+    Logger.info('GameRuntime', `Changing dimension to ${dimensionId}...`);
+    
+    if (this.persistenceSystem) {
+      await this.persistenceSystem.saveGame();
+    }
+    
+    this.scene.remove(this.world.worldGroup);
+    this.world.chunks.forEach(chunk => chunk.dispose());
+    this.world.chunks.clear();
+    // dirty queue clear omitted
+    // integration queue omitted
+    
+    
+    // Sync current world modifications to global state before clearing
+    const currentSerialized = SaveManager.serializeModifiedBlocks(this.world);
+    this.globalModifiedBlocks = { ...this.globalModifiedBlocks, ...currentSerialized };
+
+    this.world = new VoxelWorld(this.seed, this.world.preset, dimensionId);
+    
+    // Hydrate the new world with its specific modified blocks from global state
+    Object.entries(this.globalModifiedBlocks).forEach(([chunkKey, blocks]) => {
+      if (chunkKey.startsWith(dimensionId + ':') || (dimensionId === 'overworld' && !chunkKey.includes(':'))) {
+        const localMap = new Map<string, number>();
+        Object.entries(blocks).forEach(([localKey, blockType]) => {
+          localMap.set(localKey, blockType as number);
+        });
+        this.world.modifiedBlocks.set(chunkKey, localMap);
+      }
+    });
+
+    this.scene.add(this.world.worldGroup);
+    
+    if (dimensionId === 'aether_expanse') {
+       // Using the profile directly instead of custom colors if we implement it that way
+       // The environment system should automatically pick it up via BiomeManager!
+       // So we just need to reset player position to island height!
+    }
+    
+    this.player.position.set(0, 100, 0);
+    this.player.velocity.set(0, 0, 0);
+    
+    Logger.info('GameRuntime', `Dimension change complete.`);
+  }
+
+
   private update(deltaTime: number): void {
     const cpuSimStart = performance.now();
     const biome = this.world.biomeManager.getBiome(this.player.position.x, this.player.position.z);
     
+    this.accum5Hz += deltaTime;
+    this.accum1Hz += deltaTime;
+
     // Core Engine Sub-Ticks outside systems if any (like Furnaces/Farming plots/Map visit etc)
     BalanceTelemetry.update(deltaTime);
-    FurnaceManager.update(deltaTime);
-    FarmingManager.update(deltaTime, this.world);
-    DiscoverySystem.update(deltaTime);
+    if (this.accum5Hz >= 0.2) {
+      FurnaceManager.update(this.accum5Hz);
+      DiscoverySystem.update(this.accum5Hz);
+      this.accum5Hz = 0;
+    }
+    if (this.accum1Hz >= 1.0) {
+      FarmingManager.update(this.accum1Hz, this.world);
+      WorldEventManager.update(
+        this.accum1Hz,
+        Math.floor((this.sky.timeOfDay || 8) / 24) + 1,
+        this.sky.timeOfDay || 8,
+        [this.player.position.x, this.player.position.y, this.player.position.z]
+      );
+      this.accum1Hz = 0;
+    }
     AetherAnomalyManager.update(deltaTime, this);
-    WorldEventManager.update(
-      deltaTime,
-      Math.floor((this.sky.timeOfDay || 8) / 24) + 1,
-      this.sky.timeOfDay || 8,
-      [this.player.position.x, this.player.position.y, this.player.position.z]
-    );
     MapManager.visitChunk(Math.floor(this.player.position.x / 16), Math.floor(this.player.position.z / 16));
 
     // 1. Simulation System (Physics, Survival)
@@ -629,7 +714,7 @@ export class GameRuntime {
       }
       this.stats.takeDamage(dmg, src);
       this.player.applyDamageFeedback();
-    });
+    }, this.sky.timeOfDay || 12);
 
     // 4. Input Mouse Pitch/Yaw Sync & Hotbar Wheel Cycling
     if (this.inputManager.isPointerLocked) {

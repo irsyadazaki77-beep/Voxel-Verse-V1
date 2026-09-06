@@ -13,6 +13,8 @@ export interface EcosystemRegionState {
 
 export type EcosystemEventType = 'NONE' | 'GREAT_MIGRATION' | 'PREDATOR_SURGE' | 'CRYSTAL_SWARM' | 'FISH_RUN';
 
+import { WorldStabilitySystem } from '../exploration/WorldStabilitySystem';
+
 export class EcosystemManager {
   public static tickTimer: number = 0;
   public static readonly TICK_INTERVAL: number = 2.0; // 2.0 seconds low-frequency tick
@@ -221,6 +223,33 @@ export class EcosystemManager {
     const spawnX = Math.floor(playerPos[0] + Math.cos(angle) * distance);
     const spawnZ = Math.floor(playerPos[2] + Math.sin(angle) * distance);
     const spawnY = playerPos[1]; // Height adjusted by ground collision
+
+    const stability = WorldStabilitySystem.stability;
+
+    // 15% chance to attempt spawning a Mythic Nusantara creature when conditions match
+    if (Math.random() < 0.25) {
+      const mythicKeys = Object.keys(CREATURE_REGISTRY).filter((k) => CREATURE_REGISTRY[k].isMythic);
+      let candidates: string[] = [];
+
+      if (anomalyActive) {
+        // Anomaly encounters
+        candidates = mythicKeys.filter((k) => CREATURE_REGISTRY[k].stabilityTrigger === 'anomaly');
+      } else if (stability >= 70) {
+        // High stability -> peaceful guardians
+        candidates = mythicKeys.filter((k) => CREATURE_REGISTRY[k].stabilityTrigger === 'high');
+      } else if (stability <= 40) {
+        // Low stability -> corrupted creatures & bosses
+        candidates = mythicKeys.filter((k) => CREATURE_REGISTRY[k].stabilityTrigger === 'low');
+      } else {
+        candidates = mythicKeys.filter((k) => CREATURE_REGISTRY[k].stabilityTrigger === 'any');
+      }
+
+      if (candidates.length > 0) {
+        const chosenMythic = candidates[Math.floor(Math.random() * candidates.length)];
+        spawnCallback(chosenMythic, [spawnX, spawnY, spawnZ]);
+        return;
+      }
+    }
 
     // Select candidate creature based on time & anomaly
     const keys = Object.keys(CREATURE_REGISTRY);

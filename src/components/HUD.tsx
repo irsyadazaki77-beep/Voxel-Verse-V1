@@ -49,6 +49,7 @@ const HUDTelemetryOverlay = () => {
   const posRef = useRef<HTMLDivElement>(null);
   const fpsRef = useRef<HTMLDivElement>(null);
   const armorRef = useRef<HTMLDivElement>(null);
+  const regionRef = useRef<HTMLSpanElement>(null);
   const biomeRef = useRef<HTMLSpanElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
   const compassRef = useRef<HTMLSpanElement>(null);
@@ -64,8 +65,11 @@ const HUDTelemetryOverlay = () => {
       if (armorRef.current) {
         armorRef.current.innerText = stats.defenseRating.toString();
       }
+      if (regionRef.current) {
+        regionRef.current.innerText = stats.culturalRegionName || 'Tanah Minang';
+      }
       if (biomeRef.current) {
-        biomeRef.current.innerText = stats.biomeName || 'Aetheria Realm';
+        biomeRef.current.innerText = stats.biomeName || 'Highlands';
       }
       if (timeRef.current) {
         const hours = Math.floor(stats.timeOfDay);
@@ -86,9 +90,11 @@ const HUDTelemetryOverlay = () => {
 
   return (
     <div className="voxel-panel-subtle px-3.5 py-2 shadow-xl flex items-center gap-3.5 text-xs font-mono pointer-events-auto border border-white/10">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <Compass className="w-3.5 h-3.5 text-sky-400" />
-        <span className="text-zinc-300 font-bold" ref={biomeRef}>Highlands</span>
+        <span className="text-emerald-400 font-bold text-[11px]" ref={regionRef}>Tanah Minang</span>
+        <span className="text-zinc-600">/</span>
+        <span className="text-zinc-300 font-bold text-[11px]" ref={biomeRef}>Highlands</span>
       </div>
 
       <div className="h-3 w-[1px] bg-white/15" />
@@ -116,11 +122,15 @@ const HUDTelemetryOverlay = () => {
 const HUDProfilerOverlay = ({ onClose }: { onClose: () => void }) => {
   const [metrics, setMetrics] = useState(TelemetryStore.state.profilerMetrics);
   const [fps, setFps] = useState(TelemetryStore.state.fps);
+  const [regionName, setRegionName] = useState(TelemetryStore.state.culturalRegionName);
+  const [biomeName, setBiomeName] = useState(TelemetryStore.state.biomeName);
 
   useEffect(() => {
     return TelemetryStore.subscribe((stats) => {
       setMetrics(stats.profilerMetrics);
       setFps(stats.fps);
+      setRegionName(stats.culturalRegionName);
+      setBiomeName(stats.biomeName);
     });
   }, []);
 
@@ -269,6 +279,83 @@ const HUDProfilerOverlay = ({ onClose }: { onClose: () => void }) => {
               <span className={`font-bold ${((metrics as any).sunIntensity + (metrics as any).ambientIntensity) > 4.5 ? 'text-rose-400' : 'text-zinc-300'}`}>
                 {((metrics as any).sunIntensity + (metrics as any).ambientIntensity + (metrics as any).hemiIntensity || 0).toFixed(2)}
               </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Nusantara Cultural Region Profile */}
+        <div className="bg-black/40 border border-amber-500/30 p-2 rounded col-span-2">
+          <div className="text-amber-400 font-bold border-b border-amber-500/30 pb-1 mb-1 flex items-center justify-between">
+             <span>CULTURAL REGION (NUSANTARA)</span>
+             <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded border border-amber-500/40">GEN 1.0</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4">
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Region:</span>
+              <span className="font-bold text-amber-300">{regionName || 'Uncharted'}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Biome:</span>
+              <span className="font-bold text-sky-300">{biomeName || 'Unknown'}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Terrain:</span>
+              <span className="font-bold text-emerald-300">{regionName === 'Tanah Minang' ? 'Mountain Valley' : regionName === 'Tanah Jawa' ? 'Plains & Hills' : regionName === 'Bali Highlands' ? 'Volcanic Slopes' : regionName === 'Borneo Riverlands' ? 'River Basin' : regionName === 'Toraja Highlands' ? 'Steep Cliffs' : regionName === 'Papuan Highlands' ? 'Mountain Range' : regionName === 'Eastern Isles' ? 'Archipelago' : 'Standard'}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Structure:</span>
+              <span className="font-bold text-purple-300">{regionName === 'Tanah Minang' ? 'Rumah Gadang' : regionName === 'Tanah Jawa' ? 'Joglo/Candi' : regionName === 'Bali Highlands' ? 'Pura/Subak' : regionName === 'Borneo Riverlands' ? 'Betang' : regionName === 'Toraja Highlands' ? 'Tongkonan' : regionName === 'Papuan Highlands' ? 'Honai' : 'Default'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Chunk Debug Overlay (New Diagnostic Box) */}
+        <div className="bg-black/40 border border-white/5 p-2 rounded col-span-2">
+          <div className="text-zinc-400 font-bold border-b border-white/5 pb-1 mb-1">CHUNK GEOMETRY DIAGNOSTICS</div>
+          <div className="grid grid-cols-2 gap-x-4">
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Loaded Chunks:</span>
+              <span className="font-bold text-sky-400">{metrics.loadedChunks ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Generated:</span>
+              <span className="font-bold text-sky-300">{metrics.generatedChunks ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Meshed Chunks:</span>
+              <span className="font-bold text-emerald-400">{metrics.meshedChunks ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Visible Chunks:</span>
+              <span className="font-bold text-amber-400">{metrics.visibleChunks ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Culled Chunks:</span>
+              <span className="font-bold text-zinc-400">{metrics.culledChunks ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">worldGroup Child:</span>
+              <span className="font-bold text-pink-400">{metrics.worldGroupChildren ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Solid Meshes:</span>
+              <span className="font-bold text-orange-400">{metrics.solidMeshCount ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Water Meshes:</span>
+              <span className="font-bold text-blue-400">{metrics.waterMeshCount ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Pending Gen:</span>
+              <span className="font-bold text-purple-400">{metrics.pendingGeneration ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span className="text-zinc-400">Pending Mesh:</span>
+              <span className="font-bold text-rose-400">{metrics.pendingMeshing ?? 0}</span>
+            </div>
+            <div className="flex justify-between py-0.5 col-span-2 border-t border-white/5 mt-1 pt-1">
+              <span className="text-zinc-400">Pending Upload/Meshing:</span>
+              <span className="font-bold text-yellow-400">{metrics.pendingUpload ?? 0}</span>
             </div>
           </div>
         </div>

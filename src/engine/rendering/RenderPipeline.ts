@@ -7,6 +7,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { FXAAPass } from 'three/examples/jsm/postprocessing/FXAAPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { GraphicsSettings } from '../ui/SettingsManager';
 
 // Custom Cinematic Color Grading + Sharpening Shader
@@ -125,6 +126,7 @@ export class RenderPipeline {
 
   private composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
+  private ssaoPass: SSAOPass | null = null;
   private bloomPass: UnrealBloomPass | null = null;
   private postPass: ShaderPass | null = null;
   private aaPass: SMAAPass | FXAAPass | null = null;
@@ -162,6 +164,14 @@ export class RenderPipeline {
       this.composer = new EffectComposer(this.renderer);
       this.renderPass = new RenderPass(this.scene, this.camera);
       this.composer.addPass(this.renderPass);
+
+      // SSAO Pass
+      this.ssaoPass = new SSAOPass(this.scene, this.camera, this.currentWidth, this.currentHeight);
+      this.ssaoPass.kernelRadius = 1.2;
+      this.ssaoPass.minDistance = 0.005;
+      this.ssaoPass.maxDistance = 0.15;
+      this.ssaoPass.enabled = false; // Configured and enabled via settings
+      this.composer.addPass(this.ssaoPass);
 
       // 1. Capped half-resolution bloom pass for optimal fillrate on 1080p, 1440p, and 4K
       const [bloomW, bloomH] = this.calculateBloomResolution(this.currentWidth, this.currentHeight);
@@ -217,6 +227,27 @@ export class RenderPipeline {
     if (!this.composer) return;
 
     this.composer.setSize(width, height);
+
+    // Update SSAO Pass
+    if (this.ssaoPass) {
+      this.ssaoPass.enabled = settings.ambientOcclusion;
+      if (settings.ambientOcclusion) {
+        const quality = settings.ambientOcclusionQuality || 'medium';
+        if (quality === 'low') {
+          this.ssaoPass.kernelRadius = 0.8;
+          (this.ssaoPass as any).minDistance = 0.008;
+          (this.ssaoPass as any).maxDistance = 0.10;
+        } else if (quality === 'medium') {
+          this.ssaoPass.kernelRadius = 1.2;
+          (this.ssaoPass as any).minDistance = 0.005;
+          (this.ssaoPass as any).maxDistance = 0.15;
+        } else if (quality === 'high') {
+          this.ssaoPass.kernelRadius = 1.8;
+          (this.ssaoPass as any).minDistance = 0.002;
+          (this.ssaoPass as any).maxDistance = 0.20;
+        }
+      }
+    }
 
     // Update Bloom Pass
     if (this.bloomPass) {
@@ -276,6 +307,10 @@ export class RenderPipeline {
       if (this.bloomPass) {
         const [bloomW, bloomH] = this.calculateBloomResolution(width, height);
         (this.bloomPass as any).resolution.set(bloomW, bloomH);
+      }
+
+      if (this.ssaoPass) {
+        this.ssaoPass.setSize(width, height);
       }
 
       if (this.postPass) {

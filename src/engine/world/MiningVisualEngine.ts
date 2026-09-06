@@ -9,6 +9,13 @@ export class MiningVisualEngine {
   public static getCrackMesh(): THREE.Mesh {
     if (this.crackMesh) return this.crackMesh;
 
+    if (typeof document === 'undefined') {
+      const geo = new THREE.BoxGeometry(1.004, 1.004, 1.004);
+      const mat = new THREE.MeshBasicMaterial({ visible: false });
+      this.crackMesh = new THREE.Mesh(geo, mat);
+      return this.crackMesh;
+    }
+
     // Generate procedural crack stage texture canvas (10 progressive stages)
     const canvas = document.createElement('canvas');
     canvas.width = 160;

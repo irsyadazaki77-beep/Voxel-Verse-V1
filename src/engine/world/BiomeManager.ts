@@ -1,3 +1,4 @@
+import { CulturalRegionManager } from './CulturalRegionManager';
 // Biome System 2.0 & Multidimensional Climate Engine
 // Evaluates Continentalness, Erosion, Temperature, Humidity & Elevation for natural biome distributions
 import { BiomeDef, BlockType } from '../../types';
@@ -14,6 +15,26 @@ export interface ExtendedBiomeDef extends BiomeDef {
 }
 
 export const BIOMES_2: Record<string, ExtendedBiomeDef> = {
+
+  aether_expanse: {
+    id: 'aether_expanse',
+    name: 'Aether Expanse',
+    category: 'exotic',
+    temperature: 0.2,
+    humidity: 0.5,
+    heightOffset: 60,
+    heightScale: 20,
+    surfaceBlock: BlockType.AETHER_GRASS,
+    subSurfaceBlock: BlockType.AETHER_DIRT,
+    deepStoneBlock: BlockType.AETHER_STONE,
+    foliageDensity: 0.1,
+    treeChance: 0.15,
+    treeType: 'skyroot',
+    skyColor: [0.1, 0.4, 0.6],
+    fogColor: [0.2, 0.6, 0.7],
+    waterColor: [0.1, 0.8, 0.9],
+  },
+
   deep_ocean: {
     id: 'deep_ocean',
     name: 'Abyssal Ocean',
@@ -382,8 +403,12 @@ export class BiomeManager {
   private continentalNoise: SimplexNoise;
   private erosionNoise: SimplexNoise;
   private peaksNoise: SimplexNoise;
+  public dimensionId?: string;
+  private regionManager: CulturalRegionManager;
 
-  constructor(seed: number) {
+  constructor(seed: number, dimensionId: string = "overworld") {
+    this.dimensionId = dimensionId;
+    this.regionManager = new CulturalRegionManager(seed);
     this.tempNoise = new SimplexNoise(seed + 101);
     this.humidNoise = new SimplexNoise(seed + 202);
     this.continentalNoise = new SimplexNoise(seed + 303);
@@ -391,11 +416,29 @@ export class BiomeManager {
     this.peaksNoise = new SimplexNoise(seed + 505);
   }
 
+  public getRegionManager(): CulturalRegionManager {
+    return this.regionManager;
+  }
+
   // Multidimensional climate evaluation
+  
   public getBiome(wx: number, wz: number): ExtendedBiomeDef {
+    if (this.dimensionId === 'aether_expanse') {
+       return BIOMES_2.aether_expanse;
+    }
+
+    const regionBlend = this.regionManager.getRegionBlend(wx, wz);
+    let tempBias = 0;
+    let humidBias = 0;
+    for (const b of regionBlend) {
+      tempBias += b.region.climateBias.temp * b.weight;
+      humidBias += b.region.climateBias.humid * b.weight;
+    }
+
     const scale = 0.0012; // Macro continent / climate scale
-    const temp = this.tempNoise.fbm2D(wx * scale, wz * scale, 3, 0.5);
-    const humid = (this.humidNoise.fbm2D(wx * scale + 1200, wz * scale + 1200, 3, 0.5) + 1) * 0.5;
+    const temp = this.tempNoise.fbm2D(wx * scale, wz * scale, 3, 0.5) + tempBias * 0.25;
+    const rawHumid = (this.humidNoise.fbm2D(wx * scale + 1200, wz * scale + 1200, 3, 0.5) + 1) * 0.5;
+    const humid = Math.max(0.02, Math.min(0.98, rawHumid + humidBias * 0.25));
     const continental = this.continentalNoise.fbm2D(wx * 0.0006, wz * 0.0006, 4, 0.45);
     const erosion = this.erosionNoise.fbm2D(wx * 0.002, wz * 0.002, 3, 0.5);
     const peaks = Math.abs(this.peaksNoise.fbm2D(wx * 0.004, wz * 0.004, 3, 0.5));

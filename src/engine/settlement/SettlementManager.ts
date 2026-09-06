@@ -2,6 +2,8 @@
 import { SettlementDef, WorldTierId } from '../../types';
 import { GameEventBus } from '../events/GameEventBus';
 import { NotificationManager } from '../ui/NotificationManager';
+import { NPCScheduleManager, NPCRoleType, SchedulePhase } from './NPCScheduleManager';
+import { SettlementEconomy } from './SettlementEconomy';
 
 export interface SettlementState {
   level: number; // 1 to 5
@@ -15,7 +17,7 @@ export const SETTLEMENT_REGISTRY: Record<string, SettlementDef> = {
     biomeId: 'plains',
     tier: 'tier1_haven',
     originPos: [8, 64, 8],
-    npcIds: ['torvald_merchant'],
+    npcIds: ['torvald_merchant', 'farmer_haven', 'guard_haven'],
     services: ['trade', 'quest', 'craft', 'rest'],
   },
   suncrest_hamlet: {
@@ -24,7 +26,7 @@ export const SETTLEMENT_REGISTRY: Record<string, SettlementDef> = {
     biomeId: 'forest',
     tier: 'tier2_frontier',
     originPos: [320, 68, 280],
-    npcIds: ['elder_bryan', 'farmer_elena'],
+    npcIds: ['elder_bryan', 'farmer_elena', 'craft_anton', 'engineer_milo'],
     services: ['trade', 'quest', 'craft'],
   },
   ferrite_outpost: {
@@ -33,8 +35,72 @@ export const SETTLEMENT_REGISTRY: Record<string, SettlementDef> = {
     biomeId: 'taiga',
     tier: 'tier3_ancient',
     originPos: [650, 75, -500],
-    npcIds: ['blacksmith_brom', 'warden_alistair'],
+    npcIds: ['blacksmith_brom', 'warden_alistair', 'engineer_koren'],
     services: ['trade', 'craft'],
+  },
+  // Nusantara Cultural Region Hamlets
+  nagari_minang: {
+    id: 'nagari_minang',
+    name: 'Nagari Lembah Harau (Tanah Minang)',
+    biomeId: 'highlands',
+    tier: 'tier2_frontier',
+    originPos: [-420, 72, -350],
+    npcIds: ['datuk_maruhum_elder', 'mandeh_siti_merchant', 'udin_craftsperson', 'buyung_farmer', 'prajurit_bagindo_guard'],
+    services: ['trade', 'quest', 'craft', 'rest'],
+  },
+  desa_majapahit: {
+    id: 'desa_majapahit',
+    name: 'Dusun Wilwatikta (Tanah Jawa)',
+    biomeId: 'meadow',
+    tier: 'tier2_frontier',
+    originPos: [380, 64, 450],
+    npcIds: ['ki_lurah_tejo_elder', 'empu_supa_engineer', 'mbok_sri_farmer', 'pande_wibowo_craftsperson', 'prajurit_gajah_guard', 'juragan_kartono_merchant'],
+    services: ['trade', 'quest', 'craft', 'rest'],
+  },
+  banjar_subak: {
+    id: 'banjar_subak',
+    name: 'Banjar Tirta Subak (Bali Highlands)',
+    biomeId: 'volcanic',
+    tier: 'tier3_ancient',
+    originPos: [520, 78, -480],
+    npcIds: ['pekaseh_wayan_engineer', 'jero_mangku_elder', 'made_farmer', 'ketut_craftsperson', 'nyoman_guard'],
+    services: ['trade', 'quest', 'craft'],
+  },
+  kampung_dayak: {
+    id: 'kampung_dayak',
+    name: 'Huma Betang Kahayan (Borneo Riverlands)',
+    biomeId: 'swamp',
+    tier: 'tier2_frontier',
+    originPos: [-600, 62, 580],
+    npcIds: ['damang_batu_elder', 'pemburu_nyaru_hunter', 'anang_fisher', 'juli_craftsperson', 'nahkoda_ujang_boat_trader'],
+    services: ['trade', 'quest', 'craft'],
+  },
+  desa_kete_kesu: {
+    id: 'desa_kete_kesu',
+    name: 'Rante Kete Kesu (Toraja Highlands)',
+    biomeId: 'highlands',
+    tier: 'tier3_ancient',
+    originPos: [720, 84, 180],
+    npcIds: ['ne_gandeng_elder', 'pande_batu_craftsperson', 'pong_tiku_hunter', 'indo_toding_farmer', 'pasukan_tedong_guard'],
+    services: ['trade', 'quest', 'craft'],
+  },
+  kampung_baliem: {
+    id: 'kampung_baliem',
+    name: 'Kurulu Silimo (Papuan Highlands)',
+    biomeId: 'alpine',
+    tier: 'tier3_ancient',
+    originPos: [-800, 88, -750],
+    npcIds: ['kepala_suku_mabel_elder', 'mama_yosina_merchant', 'karel_hunter', 'eli_farmer', 'titus_guard'],
+    services: ['trade', 'quest', 'craft'],
+  },
+  desa_sasak: {
+    id: 'desa_sasak',
+    name: 'Bale Tani Sade (Eastern Isles)',
+    biomeId: 'savanna',
+    tier: 'tier2_frontier',
+    originPos: [-280, 66, 850],
+    npcIds: ['amaq_lokok_elder', 'inan_marni_merchant', 'papuq_tani_farmer', 'gili_fisher', 'saudagar_laut_boat_trader'],
+    services: ['trade', 'quest', 'craft'],
   },
 };
 
@@ -93,11 +159,11 @@ export class SettlementManager {
 
   public static getReputationName(repLevel: string): string {
     switch (repLevel) {
-      case 'hostile': return 'Hostile';
-      case 'neutral': return 'Neutral';
-      case 'friendly': return 'Friendly';
-      case 'trusted': return 'Trusted';
-      case 'honored': return 'Honored';
+      case 'hostile': return 'Hostile (Ditolak)';
+      case 'neutral': return 'Neutral (Netral)';
+      case 'friendly': return 'Friendly (Sahabat Desa)';
+      case 'trusted': return 'Trusted (Warga Kehormatan)';
+      case 'honored': return 'Honored (Tetua & Ksatria Adat)';
       default: return 'Neutral';
     }
   }
@@ -109,8 +175,8 @@ export class SettlementManager {
     const newLevel = this.getReputationLevel(id);
 
     NotificationManager.push({
-      title: 'Reputation Changed',
-      message: `${SETTLEMENT_REGISTRY[id]?.name || id}: ${amount > 0 ? '+' : ''}${amount} Reputation (${this.getReputationName(newLevel)})`,
+      title: 'Reputasi Permukiman',
+      message: `${SETTLEMENT_REGISTRY[id]?.name || id}: ${amount > 0 ? '+' : ''}${amount} Reputasi (${this.getReputationName(newLevel)})`,
       priority: 'MEDIUM',
       icon: amount > 0 ? '🤝' : '⚠️',
       durationMs: 5000,
@@ -119,34 +185,94 @@ export class SettlementManager {
     if (oldLevel !== newLevel) {
       GameEventBus.emit('WORLD_EVENT_TRIGGERED', {
         eventType: 'reputation_level_up',
-        eventName: `Reputation with ${SETTLEMENT_REGISTRY[id]?.name || id} is now ${this.getReputationName(newLevel)}!`
+        eventName: `Reputasi di ${SETTLEMENT_REGISTRY[id]?.name || id} kini ${this.getReputationName(newLevel)}!`
       });
     }
   }
 
   public static getUpgradeRequirements(id: string, currentLevel: number): UpgradeRequirement[] {
     if (currentLevel >= 5) return [];
+    
+    // Regional building materials based on settlement origin
+    const isMinang = id === 'nagari_minang';
+    const isJawa = id === 'desa_majapahit';
+    const isBali = id === 'banjar_subak';
+    const isDayak = id === 'kampung_dayak';
+    const isToraja = id === 'desa_kete_kesu';
+    const isPapua = id === 'kampung_baliem';
+    const isSasak = id === 'desa_sasak';
+
     switch (currentLevel) {
-      case 1: // Campfire -> Blacksmith
-        return [
+      case 1: // Level 1 -> 2 (Desa Binaan Adat)
+        return isJawa ? [
+          { itemId: 'wood_planks', count: 20 },
+          { itemId: 'terracotta_tile', count: 12 },
+          { itemId: 'beras_wangi', count: 8 }
+        ] : isMinang ? [
+          { itemId: 'wood_planks', count: 20 },
+          { itemId: 'carved_beam', count: 6 },
+          { itemId: 'rendang_spices', count: 6 }
+        ] : isBali ? [
+          { itemId: 'carved_andesite', count: 16 },
+          { itemId: 'terrace_waterway', count: 8 },
+          { itemId: 'subak_terrace_rice', count: 8 }
+        ] : isDayak ? [
+          { itemId: 'ulin_planks', count: 20 },
+          { itemId: 'damar_resin', count: 6 },
+          { itemId: 'river_catfish', count: 6 }
+        ] : isToraja ? [
+          { itemId: 'carved_beam', count: 12 },
+          { itemId: 'ijuk_thatch', count: 16 },
+          { itemId: 'toraja_arabica', count: 6 }
+        ] : isPapua ? [
+          { itemId: 'alang_thatch', count: 24 },
+          { itemId: 'sago_flour', count: 12 },
+          { itemId: 'valley_sweet_potato', count: 8 }
+        ] : isSasak ? [
+          { itemId: 'woven_bamboo', count: 20 },
+          { itemId: 'alang_thatch', count: 16 },
+          { itemId: 'solar_sea_salt', count: 8 }
+        ] : [
           { itemId: 'wood_planks', count: 16 },
           { itemId: 'copper_ingot', count: 8 }
         ];
-      case 2: // Blacksmith -> Portal
-        return [
+
+      case 2: // Level 2 -> 3 (Pusat Perniagaan & Lumbung Adat)
+        return isJawa ? [
+          { itemId: 'volcanic_brick', count: 24 },
+          { itemId: 'teak_woodcraft', count: 6 },
+          { itemId: 'iron_ingot', count: 12 }
+        ] : isBali ? [
+          { itemId: 'split_gate_stone', count: 12 },
+          { itemId: 'paras_stone_carving', count: 6 },
+          { itemId: 'gaharu_incense', count: 8 }
+        ] : isMinang ? [
+          { itemId: 'silver_filigree', count: 4 },
+          { itemId: 'songket_emas', count: 2 },
+          { itemId: 'iron_ingot', count: 10 }
+        ] : isDayak ? [
+          { itemId: 'ulin_log', count: 16 },
+          { itemId: 'ulin_timber_crate', count: 4 },
+          { itemId: 'arowana_scales', count: 4 }
+        ] : [
           { itemId: 'iron_ingot', count: 12 },
           { itemId: 'coal', count: 16 }
         ];
-      case 3: // Portal -> Defensive Wall
+
+      case 3: // Level 3 -> 4 (Kawasan Megalit & Benteng Perlindungan)
         return [
           { itemId: 'stone_bricks', count: 24 },
+          { itemId: 'cultural_aether_lantern', count: 4 },
           { itemId: 'mythril_ingot', count: 8 }
         ];
-      case 4: // Defensive Wall -> Grand Terminal
+
+      case 4: // Level 4 -> 5 (Sanctuary Agung & Gerbang Pusaka Aether)
         return [
-          { itemId: 'aether_crystal', count: 12 },
-          { itemId: 'ancient_alloy', count: 2 }
+          { itemId: 'aether_altar_core', count: 1 },
+          { itemId: 'aether_conduit_floor', count: 12 },
+          { itemId: 'aether_crystal', count: 16 }
         ];
+
       default:
         return [];
     }
@@ -157,19 +283,19 @@ export class SettlementManager {
     if (state.level >= 5) return false;
 
     state.level += 1;
-    this.addReputation(id, 25); // Gain reputation for helping upgrade
+    this.addReputation(id, 25); // Gain substantial reputation for building the community
 
     NotificationManager.push({
-      title: 'Settlement Upgraded!',
-      message: `${SETTLEMENT_REGISTRY[id]?.name || id} has reached Level ${state.level}! New features and trades unlocked.`,
+      title: 'Permukiman Naik Tingkat!',
+      message: `${SETTLEMENT_REGISTRY[id]?.name || id} kini mencapai Tingkat (Level) ${state.level}! Perdagangan regional dan fasilitas baru terbuka.`,
       priority: 'HIGH',
-      icon: '🏢',
+      icon: '🏛️',
       durationMs: 8000,
     });
 
     GameEventBus.emit('WORLD_EVENT_TRIGGERED', {
       eventType: 'settlement_upgraded',
-      eventName: `${SETTLEMENT_REGISTRY[id]?.name || id} upgraded to Level ${state.level}`
+      eventName: `${SETTLEMENT_REGISTRY[id]?.name || id} berkembang ke Level ${state.level}`
     });
 
     return true;
@@ -179,7 +305,7 @@ export class SettlementManager {
     for (const s of Object.values(SETTLEMENT_REGISTRY)) {
       const dx = s.originPos[0] - wx;
       const dz = s.originPos[2] - wz;
-      if (dx * dx + dz * dz < 80 * 80) {
+      if (dx * dx + dz * dz < 100 * 100) {
         return s;
       }
     }
@@ -189,122 +315,144 @@ export class SettlementManager {
   public static getNPCDialogue(
     npcId: string, 
     questCompleted: boolean = false, 
-    settlementId?: string
-  ): { name: string; role: string; lines: string[]; trades?: any[] } {
+    settlementId?: string,
+    timeOfDay: number = 12.0
+  ): { 
+    name: string; 
+    role: string; 
+    roleTitle: string;
+    scheduleActivity: string;
+    scheduleDescription: string;
+    lines: string[]; 
+    trades?: any[];
+    reputationLevel: 'hostile' | 'neutral' | 'friendly' | 'trusted' | 'honored';
+    discountPercent: number;
+  } {
     const sId = settlementId || 'haven_camp';
     const state = this.getSettlementState(sId);
     const repLevel = this.getReputationLevel(sId);
+    const discountMultiplier = repLevel === 'friendly' ? 0.9 : repLevel === 'trusted' ? 0.8 : repLevel === 'honored' ? 0.7 : 1.0;
+    const discountPercent = repLevel === 'friendly' ? 10 : repLevel === 'trusted' ? 20 : repLevel === 'honored' ? 30 : 0;
 
-    // Hostile NPCs won't trade and have hostile dialogs
+    // Detect NPC role from ID
+    let role: NPCRoleType = 'farmer';
+    if (npcId.includes('merchant') || npcId.includes('juragan') || npcId.includes('torvald') || npcId.includes('mandeh')) role = 'merchant';
+    else if (npcId.includes('boat_trader') || npcId.includes('nahkoda') || npcId.includes('saudagar_laut')) role = 'boat_trader';
+    else if (npcId.includes('fisher') || npcId.includes('nelayan') || npcId.includes('anang') || npcId.includes('gili')) role = 'fisher';
+    else if (npcId.includes('craft') || npcId.includes('pande') || npcId.includes('udin') || npcId.includes('ketut') || npcId.includes('juli')) role = 'craftsperson';
+    else if (npcId.includes('guard') || npcId.includes('prajurit') || npcId.includes('warden') || npcId.includes('pasukan') || npcId.includes('titus')) role = 'guard';
+    else if (npcId.includes('elder') || npcId.includes('datuk') || npcId.includes('lurah') || npcId.includes('jero') || npcId.includes('damang') || npcId.includes('gandeng') || npcId.includes('mabel') || npcId.includes('lokok') || npcId.includes('bryan')) role = 'elder';
+    else if (npcId.includes('engineer') || npcId.includes('empu') || npcId.includes('pekaseh') || npcId.includes('milo') || npcId.includes('koren')) role = 'engineer';
+    else if (npcId.includes('hunter') || npcId.includes('pemburu') || npcId.includes('nyaru') || npcId.includes('karel') || npcId.includes('pong')) role = 'hunter';
+
+    const scheduleDef = NPCScheduleManager.getRoleDef(role);
+    const activeSchedule = NPCScheduleManager.getActiveSchedule(role, timeOfDay);
+
+    // Hostile NPCs refuse trade
     if (repLevel === 'hostile') {
       return {
-        name: npcId.includes('torvald') ? 'Torvald the Nomadic Merchant' : npcId.includes('bryan') ? 'Elder Bryan' : npcId.includes('alistair') ? 'Warden Alistair' : 'Pioneer Settler',
-        role: npcId.includes('torvald') ? 'merchant' : npcId.includes('bryan') ? 'elder' : npcId.includes('alistair') ? 'warden' : 'settler',
+        name: this.formatNPCName(npcId),
+        role,
+        roleTitle: scheduleDef.titleIndonesian,
+        scheduleActivity: 'Menolak Berbicara',
+        scheduleDescription: 'Warga bersikap waspada dan menolak interaksi karena reputasimu yang buruk.',
         lines: [
-          'Away with you, outcast! Your actions have turned us against you.',
-          'We do not trade with those who disrupt our peace.',
+          'Pergilah, orang asing! Tindakanmu telah merusak ketentraman pemukiman kami.',
+          'Kami tidak berdagang atau berbagi kidung dengan mereka yang melanggar hukum adat.',
         ],
         trades: [],
+        reputationLevel: repLevel,
+        discountPercent: 0,
       };
     }
 
-    const discountMultiplier = repLevel === 'friendly' ? 0.9 : repLevel === 'trusted' ? 0.8 : repLevel === 'honored' ? 0.7 : 1.0;
+    // Generate trade offers via SettlementEconomy
+    const isBoatTrader = role === 'boat_trader';
+    const isGeneralMerchant = role === 'merchant';
+    let trades: any[] = [];
 
-    // Apply discount to trades
-    const applyDiscount = (trades: any[]) => {
-      return trades.map(t => {
-        const discountedGiveCount = Math.max(1, Math.round(t.give.count * discountMultiplier));
-        return {
-          give: { itemId: t.give.itemId, count: discountedGiveCount },
-          receive: t.receive
-        };
-      });
-    };
-
-    if (npcId.includes('torvald') || npcId === 'merchant' || npcId.includes('merchant')) {
-      const baseTrades = [
-        { give: { itemId: 'wood_planks', count: 16 }, receive: { itemId: 'bread', count: 8 } },
-        { give: { itemId: 'copper_ingot', count: 4 }, receive: { itemId: 'seeds_wheat', count: 8 } },
-        { give: { itemId: 'gold_ingot', count: 2 }, receive: { itemId: 'healing_potion', count: 2 } },
+    if (isBoatTrader || isGeneralMerchant) {
+      trades = SettlementEconomy.getRegionalTradeOffers(sId, repLevel, isBoatTrader);
+    } else if (role === 'farmer') {
+      trades = [
+        { give: { itemId: 'seeds_wheat', count: Math.max(1, Math.round(16 * discountMultiplier)) }, receive: { itemId: 'bread', count: 8 } },
+        { give: { itemId: 'wood_planks', count: Math.max(1, Math.round(12 * discountMultiplier)) }, receive: { itemId: 'beras_wangi', count: 6 } },
       ];
-
-      // Unlock extra trades as settlement levels up
-      if (state.level >= 2) {
-        baseTrades.push({ give: { itemId: 'iron_ingot', count: 4 }, receive: { itemId: 'swiftness_potion', count: 2 } });
-      }
-      if (state.level >= 3) {
-        baseTrades.push({ give: { itemId: 'mythril_ingot', count: 2 }, receive: { itemId: 'gold_block', count: 1 } });
-      }
-      if (state.level >= 5) {
-        baseTrades.push({ give: { itemId: 'aether_crystal', count: 8 }, receive: { itemId: 'ancient_alloy', count: 1 } });
-      }
-
-      return {
-        name: 'Torvald the Nomadic Merchant',
-        role: 'merchant',
-        lines: [
-          `Greetings traveler! Safe haven is hard to come by beyond the plains.`,
-          `This settlement is currently at Level ${state.level}. ${state.level < 5 ? 'Help us upgrade to unlock deeper wares!' : 'We have achieved our pinnacle growth!'}`,
-          repLevel !== 'neutral' ? `Your standing here as a ${this.getReputationName(repLevel)} ally grants you a discount on barters!` : 'Bring me timber and copper ore, and I shall barter with you.',
-        ],
-        trades: applyDiscount(baseTrades),
-      };
+    } else if (role === 'fisher') {
+      trades = [
+        { give: { itemId: 'string_fiber', count: Math.max(1, Math.round(8 * discountMultiplier)) }, receive: { itemId: 'river_catfish', count: 4 } },
+        { give: { itemId: 'copper_ingot', count: Math.max(1, Math.round(4 * discountMultiplier)) }, receive: { itemId: 'ikan_cakalang_asap', count: 3 } },
+      ];
+    } else if (role === 'craftsperson') {
+      trades = [
+        { give: { itemId: 'stone', count: Math.max(1, Math.round(24 * discountMultiplier)) }, receive: { itemId: 'terracotta_pottery', count: 2 } },
+        { give: { itemId: 'oak_log', count: Math.max(1, Math.round(16 * discountMultiplier)) }, receive: { itemId: 'teak_woodcraft', count: 1 } },
+      ];
+    } else if (role === 'guard') {
+      trades = [
+        { give: { itemId: 'iron_ingot', count: Math.max(1, Math.round(6 * discountMultiplier)) }, receive: { itemId: 'iron_sword', count: 1 } },
+        { give: { itemId: 'cooked_meat', count: Math.max(1, Math.round(8 * discountMultiplier)) }, receive: { itemId: 'healing_potion', count: 2 } },
+      ];
+    } else if (role === 'engineer') {
+      trades = [
+        { give: { itemId: 'copper_ingot', count: Math.max(1, Math.round(8 * discountMultiplier)) }, receive: { itemId: 'terrace_waterway', count: 4 } },
+        { give: { itemId: 'aether_crystal', count: Math.max(1, Math.round(4 * discountMultiplier)) }, receive: { itemId: 'cultural_aether_lantern', count: 2 } },
+      ];
+    } else if (role === 'hunter') {
+      trades = [
+        { give: { itemId: 'arrow', count: Math.max(1, Math.round(16 * discountMultiplier)) }, receive: { itemId: 'daging_sei_asap', count: 4 } },
+        { give: { itemId: 'torch', count: Math.max(1, Math.round(12 * discountMultiplier)) }, receive: { itemId: 'damar_resin', count: 4 } },
+      ];
+    } else if (role === 'elder') {
+      trades = [
+        { give: { itemId: 'gold_ingot', count: Math.max(1, Math.round(4 * discountMultiplier)) }, receive: { itemId: 'gaharu_incense', count: 4 } },
+        { give: { itemId: 'aether_crystal', count: Math.max(1, Math.round(6 * discountMultiplier)) }, receive: { itemId: 'kris_pusaka', count: 1 } },
+      ];
     }
 
-    if (npcId.includes('bryan') || npcId.includes('elder')) {
-      const baseTrades = [
-        { give: { itemId: 'oak_log', count: 8 }, receive: { itemId: 'torch', count: 16 } },
-        { give: { itemId: 'seeds_wheat', count: 12 }, receive: { itemId: 'bread', count: 6 } },
-      ];
-
-      if (state.level >= 2) {
-        baseTrades.push({ give: { itemId: 'coal', count: 12 }, receive: { itemId: 'lantern', count: 3 } });
-      }
-      if (state.level >= 3) {
-        baseTrades.push({ give: { itemId: 'iron_ingot', count: 6 }, receive: { itemId: 'cooked_meat', count: 10 } });
-      }
-
-      return {
-        name: 'Elder Bryan of Suncrest',
-        role: 'elder',
-        lines: [
-          'The harvest thrives this season, yet the nocturnal shadows creep closer each dusk.',
-          `Help us build defenses and secure Suncrest Agricultural Hamlet (Level ${state.level}).`,
-          'Our doors are always open to helpful souls of the realm.',
-        ],
-        trades: applyDiscount(baseTrades),
-      };
-    }
-
-    if (npcId.includes('alistair') || npcId.includes('warden')) {
-      const baseTrades = [
-        { give: { itemId: 'iron_ingot', count: 6 }, receive: { itemId: 'iron_pickaxe', count: 1 } },
-        { give: { itemId: 'aether_crystal', count: 4 }, receive: { itemId: 'swiftness_potion', count: 2 } },
-      ];
-
-      if (state.level >= 3) {
-        baseTrades.push({ give: { itemId: 'mythril_ingot', count: 5 }, receive: { itemId: 'mythril_pickaxe', count: 1 } });
-      }
-      if (state.level >= 5) {
-        baseTrades.push({ give: { itemId: 'ancient_alloy', count: 1 }, receive: { itemId: 'mythril_chestplate', count: 1 } });
-      }
-
-      return {
-        name: 'Warden Alistair the Scout',
-        role: 'warden',
-        lines: [
-          'Stand vigilant, explorer. The deep stratum holds riches of mythril, but slumbering sentinels guard the halls.',
-          `Keep our Bastion Outpost (Level ${state.level}) fortified against the deep cavern horrors.`,
-        ],
-        trades: applyDiscount(baseTrades),
-      };
+    const lines = [...activeSchedule.dialoguePool];
+    if (repLevel === 'trusted' || repLevel === 'honored') {
+      lines.push(`Sebagai ${this.getReputationName(repLevel)}, kamu berhak atas diskon barter sebesar ${discountPercent}%!`);
     }
 
     return {
-      name: 'Pioneer Settler',
-      role: 'settler',
-      lines: ['The frontier is vast and full of forgotten mysteries. Travel safely!'],
+      name: this.formatNPCName(npcId),
+      role,
+      roleTitle: scheduleDef.titleIndonesian,
+      scheduleActivity: activeSchedule.activityName,
+      scheduleDescription: activeSchedule.activityDescription,
+      lines,
+      trades,
+      reputationLevel: repLevel,
+      discountPercent,
     };
+  }
+
+  private static formatNPCName(npcId: string): string {
+    if (npcId.includes('torvald')) return 'Torvald (Saudagar Pengelana)';
+    if (npcId.includes('maruhum')) return 'Datuk Maruhum (Penghulu Luhak Minang)';
+    if (npcId.includes('mandeh')) return 'Mandeh Siti (Puti Nagari Minang)';
+    if (npcId.includes('tejo')) return 'Ki Lurah Tejo (Sesepuh Desa Wilwatikta)';
+    if (npcId.includes('supa')) return 'Empu Supa (Pande Besi Pusaka Jawa)';
+    if (npcId.includes('wayan')) return 'Pekaseh Wayan (Empu Saluran Subak Bali)';
+    if (npcId.includes('mangku')) return 'Jero Mangku (Pemangku Pura Suci Bali)';
+    if (npcId.includes('damang')) return 'Damang Batu (Tetua Adat Huma Betang)';
+    if (npcId.includes('nyaru')) return 'Pemburu Nyaru (Penjejak Rimba Borneo)';
+    if (npcId.includes('gandeng')) return "Ne' Gandeng (Tetua Tongkonan Toraja)";
+    if (npcId.includes('pande_batu')) return 'Pande Batu Karst (Pengrajin Pa\'ssura)';
+    if (npcId.includes('mabel')) return 'Kepala Suku Mabel (Sesepuh Silimo Baliem)';
+    if (npcId.includes('yosina')) return 'Mama Yosina (Saudagar Noken Papua)';
+    if (npcId.includes('lokok')) return 'Amaq Lokok (Tetua Bale Sasak Sade)';
+    if (npcId.includes('marni')) return 'Inan Marni (Saudagar Tenun Sasak)';
+    if (npcId.includes('bryan')) return 'Elder Bryan (Tetua Suncrest)';
+    if (npcId.includes('alistair')) return 'Warden Alistair (Penjaga Bastion)';
+    if (npcId.includes('ujang')) return 'Nahkoda Ujang (Saudagar Perahu Sungai)';
+    if (npcId.includes('saudagar_laut')) return 'Saudagar Samudra (Pedagang Pinisi)';
+    
+    // Default formatted title
+    return npcId
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, l => l.toUpperCase());
   }
 
   public static serialize(): { [id: string]: SettlementState } {

@@ -14,6 +14,8 @@ export class SimulationSystem implements GameSystem {
   public readonly fixedDt: number = 1 / 60; // 60Hz fixed simulation timestep
   public readonly maxCatchUpSteps: number = 5;
 
+  private deathDispatched: boolean = false;
+
   constructor(runtime: GameRuntime) {
     this.runtime = runtime;
   }
@@ -60,6 +62,14 @@ export class SimulationSystem implements GameSystem {
       const isSwimming = player.isSwimming;
       const isMining = this.runtime.interactionSystem?.miningState?.active ?? false;
 
+      // Void Hazard (falling into the abyss below Y = -20)
+      if (player.position.y < -20) {
+        stats.takeDamage(dt * 35, 'void');
+        if (player.position.y < -70) {
+          stats.health = 0;
+        }
+      }
+
       // Altitude & Temperature calculation
       const currentBiome = world.biomeManager.getBiome(player.position.x, player.position.z);
       const altitude = player.position.y;
@@ -80,15 +90,29 @@ export class SimulationSystem implements GameSystem {
       );
 
       // Sound FX on low health or damage
-      if (stats.health < 25 && Math.random() < 0.02) {
+      if (stats.health > 0 && stats.health < 25 && Math.random() < 0.02) {
         audio.playDamage();
       }
 
-      // Check Player Death
-      if (stats.health <= 0 && !stats.isDead) {
+      // Reliable Player Death & Respawn Trigger
+      if (stats.health <= 0) {
         stats.isDead = true;
-        this.runtime.handlePlayerDeath();
+        if (!this.deathDispatched) {
+          this.deathDispatched = true;
+          this.runtime.handlePlayerDeath();
+        }
+      } else {
+        this.deathDispatched = false;
+        stats.isDead = false;
       }
+    } else {
+      // Creative mode: ensure player never dies in creative
+      if (player.position.y < -50) {
+        player.position.y = 80;
+        player.velocity.set(0, 0, 0);
+      }
+      this.deathDispatched = false;
+      stats.isDead = false;
     }
 
     // 4. Update Game Event / Discovery triggers for Biome change

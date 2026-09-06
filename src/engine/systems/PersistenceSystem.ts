@@ -72,7 +72,10 @@ export class PersistenceSystem implements GameSystem {
         intensity: weather ? weather.weather.intensity : 0,
       },
       stats: gameStats ? gameStats.getStats() : { blocksMined: 0, blocksPlaced: 0, monstersDefeated: 0, distanceTraveled: 0 },
-      modifiedBlocks: SaveManager.serializeModifiedBlocks(world),
+      modifiedBlocks: {
+        ...(this.runtime.globalModifiedBlocks || {}),
+        ...SaveManager.serializeModifiedBlocks(world)
+      },
       containers: BlockPlacementEngine.serializeContainers(),
       furnaces: FurnaceManager.serialize(),
       farmingPlots: FarmingManager.serialize(),

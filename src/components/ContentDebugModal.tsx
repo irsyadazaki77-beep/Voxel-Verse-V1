@@ -29,6 +29,7 @@ interface ContentDebugModalProps {
   playerPos: [number, number, number];
   onTeleport: (x: number, y: number, z: number) => void;
   onSpawnBoss: (type: 'ruin_sentinel' | 'boss_void_sovereign') => void;
+  onChangeDimension?: (dim: string) => void;
 }
 
 export const ContentDebugModal: React.FC<ContentDebugModalProps> = ({
@@ -37,6 +38,7 @@ export const ContentDebugModal: React.FC<ContentDebugModalProps> = ({
   playerPos,
   onTeleport,
   onSpawnBoss,
+  onChangeDimension,
 }) => {
   const [telemetry, setTelemetry] = useState(() => BalanceTelemetry.getData());
   const [summary, setSummary] = useState(() => BalanceTelemetry.getReportSummary());
@@ -246,6 +248,42 @@ export const ContentDebugModal: React.FC<ContentDebugModalProps> = ({
                   <div className="text-[10px] text-emerald-500/80 font-normal">Crop & mana boost</div>
                 </div>
               </button>
+
+              <button
+                id="btn_trigger_panen_subak"
+                onClick={() => handleTriggerEvent('panen_subak')}
+                className="flex items-center gap-2 p-2.5 rounded-xl bg-orange-950/30 border border-orange-800/40 hover:bg-orange-900/40 text-orange-300 text-xs font-semibold transition-colors text-left"
+              >
+                <Sparkles className="w-4 h-4 text-orange-400 shrink-0" />
+                <div>
+                  <div>Panen Raya Subak</div>
+                  <div className="text-[10px] text-orange-500/80 font-normal">Bali water & crop boost</div>
+                </div>
+              </button>
+
+              <button
+                id="btn_trigger_pasar_nagari"
+                onClick={() => handleTriggerEvent('pasar_nagari')}
+                className="flex items-center gap-2 p-2.5 rounded-xl bg-teal-950/30 border border-teal-800/40 hover:bg-teal-900/40 text-teal-300 text-xs font-semibold transition-colors text-left"
+              >
+                <Users className="w-4 h-4 text-teal-400 shrink-0" />
+                <div>
+                  <div>Pekan Nagari Minang</div>
+                  <div className="text-[10px] text-teal-500/80 font-normal">Artisan wares & barter discount</div>
+                </div>
+              </button>
+
+              <button
+                id="btn_trigger_kabut_mistis"
+                onClick={() => handleTriggerEvent('kabut_mistis')}
+                className="flex items-center gap-2 p-2.5 rounded-xl bg-violet-950/30 border border-violet-800/40 hover:bg-violet-900/40 text-violet-300 text-xs font-semibold transition-colors text-left"
+              >
+                <Moon className="w-4 h-4 text-violet-400 shrink-0" />
+                <div>
+                  <div>Kabut Mistis Toraja</div>
+                  <div className="text-[10px] text-violet-500/80 font-normal">Karst mist & double ore drop</div>
+                </div>
+              </button>
             </div>
           </div>
 
@@ -281,6 +319,34 @@ export const ContentDebugModal: React.FC<ContentDebugModalProps> = ({
                 <div>
                   <div className="font-bold text-xs text-purple-200">Shadow Sovereign (World Boss)</div>
                   <div className="text-[11px] text-purple-400">Void teleportation & dark bolts (Tier 5)</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* 2.5 Dimension Travel */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-purple-400" />
+              <span>Dimension Travel</span>
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onChangeDimension && onChangeDimension('overworld')}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-800/40 border border-zinc-700/60 hover:bg-zinc-800 text-left transition-colors"
+              >
+                <div>
+                  <div className="font-bold text-xs text-zinc-200">Overworld</div>
+                  <div className="text-[10px] text-zinc-500">The familiar lands</div>
+                </div>
+              </button>
+              <button
+                onClick={() => onChangeDimension && onChangeDimension('aether_expanse')}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-800/40 border border-purple-900/60 hover:bg-purple-900/40 text-left transition-colors"
+              >
+                <div>
+                  <div className="font-bold text-xs text-purple-300">Aether Expanse</div>
+                  <div className="text-[10px] text-purple-500/70">Floating Islands</div>
                 </div>
               </button>
             </div>

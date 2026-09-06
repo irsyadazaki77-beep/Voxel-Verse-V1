@@ -36,7 +36,9 @@ export type GameEventType =
   | 'EXPEDITION_FAILED'
   | 'REPUTATION_GAINED'
   | 'STABILITY_CHANGED'
-  | 'MONOLITH_ACTIVATED';
+  | 'MONOLITH_ACTIVATED'
+  | 'NEXUS_PILLAR_ACTIVATED'
+  | 'NEXUS_COMPLETED';
 
 export interface GameEventPayloads {
   BLOCK_MINED: { blockType: number; pos: [number, number, number]; toolUsed?: string };
@@ -70,12 +72,14 @@ export interface GameEventPayloads {
   CONTRACT_COMPLETED: { contractId?: string; contract?: any };
   TREASURE_MAP_DECIPHERED: { mapId?: string; targetPos?: [number, number, number]; map?: any };
   TREASURE_CACHE_DISCOVERED: { mapId?: string; loot?: any[]; map?: any };
-  ANOMALY_RESOLVED: { anomalyId?: string };
+  ANOMALY_RESOLVED: { anomalyId?: string; regionId?: string };
   ANOMALY_FAILED: { anomalyId?: string };
   SETTLEMENT_RAID_FAILED: { settlementId?: string };
   CORRUPTION_SPREAD: { amount?: number; region?: string };
   STABILITY_CHANGED: { stability: number; delta?: number; reason?: string };
   MONOLITH_ACTIVATED: { monolithId?: string; blessing?: string; monolith?: any };
+  NEXUS_PILLAR_ACTIVATED: { pillarId: string; totalActive: number };
+  NEXUS_COMPLETED: { timestamp: number };
 }
 
 type EventCallback<T extends GameEventType> = (payload: GameEventPayloads[T]) => void;

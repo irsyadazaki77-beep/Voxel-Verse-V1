@@ -1,3 +1,4 @@
+import { CulturalRegionManager } from './CulturalRegionManager';
 // Voxel World Engine: Procedural 3D Terrain, Texture Atlas, Streaming Chunks, Raycasting & World State
 import * as THREE from 'three';
 import { BlockType } from '../../types';
@@ -23,11 +24,14 @@ export interface RaycastHit {
 export class VoxelWorld {
   public seed: number;
   public preset: WorldPreset;
+  public dimensionId: string;
   public chunks: Map<string, Chunk> = new Map();
   public modifiedBlocks: Map<string, Map<string, BlockType>> = new Map(); // chunkKey -> localKey -> BlockType
   public worldGroup: THREE.Group;
   public biomeManager: BiomeManager;
+  public regionManager: CulturalRegionManager;
   private generatorCore: WorldGeneratorCore;
+  private aetherGenerator?: any; // To be implemented
 
   // Texture-mapped 3D Voxel Materials
   public solidMaterial: THREE.MeshStandardMaterial;
@@ -39,11 +43,13 @@ export class VoxelWorld {
   public previewMesh: THREE.Mesh;
   public scheduler: ChunkScheduler;
 
-  constructor(seed: number = 42819, preset: WorldPreset = 'standard') {
+  constructor(seed: number = 42819, preset: WorldPreset = 'standard', dimensionId: string = 'overworld') {
     this.seed = seed;
     this.preset = preset;
+    this.dimensionId = dimensionId;
     this.worldGroup = new THREE.Group();
-    this.biomeManager = new BiomeManager(seed);
+    this.biomeManager = new BiomeManager(seed, dimensionId);
+    this.regionManager = new CulturalRegionManager(seed);
     this.generatorCore = new WorldGeneratorCore(seed, preset);
     this.scheduler = new ChunkScheduler(this);
 
@@ -59,21 +65,31 @@ export class VoxelWorld {
     });
     
     this.solidMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.uCloudShadowDrift = { value: 0 };
+      shader.uniforms.uTime = { value: 0 };
+      shader.uniforms.uWetness = { value: 0 };
+      shader.uniforms.uSnowAccumulation = { value: 0 };
+      this.solidMaterial.userData.shader = shader;
       shader.vertexShader = `
         attribute vec2 localUv;
         attribute vec4 tileRect;
+        attribute float materialClass;
         varying vec2 vLocalUv;
         varying vec4 vTileRect;
         varying vec3 vWorldPos;
+        varying float vMaterialClass;
+        varying vec3 vWorldNormal;
         ${shader.vertexShader}
       `.replace(
         '#include <begin_vertex>',
         `
         vLocalUv = localUv;
         vTileRect = tileRect;
+        vMaterialClass = materialClass;
         #include <begin_vertex>
         vec4 wPos = modelMatrix * vec4(transformed, 1.0);
         vWorldPos = wPos.xyz;
+        vWorldNormal = normalize((modelMatrix * vec4(objectNormal, 0.0)).xyz);
         `
       );
       
@@ -81,6 +97,12 @@ export class VoxelWorld {
         varying vec2 vLocalUv;
         varying vec4 vTileRect;
         varying vec3 vWorldPos;
+        varying float vMaterialClass;
+        varying vec3 vWorldNormal;
+        uniform float uCloudShadowDrift;
+        uniform float uTime;
+        uniform float uWetness;
+        uniform float uSnowAccumulation;
         
         float hash(vec3 p) {
           p = fract(p * 0.3183099 + .1);
@@ -109,6 +131,82 @@ export class VoxelWorld {
         
         float variation = (h - 0.5) * 0.06;
         diffuseColor.rgb *= (1.0 + variation);
+
+        // MaterialClass Properties Resolver
+        float roughnessVal = 0.85;
+        float metalnessVal = 0.05;
+        vec3 emissiveVal = vec3(0.0);
+        
+        int mClass = int(vMaterialClass + 0.5);
+        if (mClass == 0) { // SOIL
+          roughnessVal = mix(0.90, 0.70, uWetness);
+          metalnessVal = 0.0;
+          diffuseColor.rgb *= mix(1.0, 0.70, uWetness);
+        } else if (mClass == 1) { // GRASS
+          roughnessVal = mix(0.95, 0.75, uWetness);
+          metalnessVal = 0.0;
+          diffuseColor.rgb *= mix(1.0, 0.72, uWetness);
+        } else if (mClass == 2) { // STONE
+          roughnessVal = mix(0.80, 0.45, uWetness);
+          metalnessVal = 0.1;
+          diffuseColor.rgb *= mix(1.0, 0.80, uWetness);
+        } else if (mClass == 3) { // WOOD
+          roughnessVal = mix(0.85, 0.60, uWetness);
+          metalnessVal = 0.0;
+          diffuseColor.rgb *= mix(1.0, 0.82, uWetness);
+        } else if (mClass == 4) { // METAL
+          roughnessVal = mix(0.30, 0.10, uWetness);
+          metalnessVal = 0.90;
+        } else if (mClass == 5) { // GLASS
+          roughnessVal = 0.08;
+          metalnessVal = 0.1;
+        } else if (mClass == 6) { // CRYSTAL
+          roughnessVal = 0.22;
+          metalnessVal = 0.2;
+          emissiveVal = diffuseColor.rgb * 0.60;
+        } else if (mClass == 7) { // AETHER
+          roughnessVal = 0.15;
+          metalnessVal = 0.4;
+          float pulse = 0.5 + 0.5 * sin(uTime * 4.0 + vWorldPos.x * 2.0 + vWorldPos.z * 2.0);
+          emissiveVal = vec3(0.12, 0.45, 0.92) * (0.35 + pulse * 0.65);
+        } else if (mClass == 8) { // LAVA
+          roughnessVal = 0.60;
+          metalnessVal = 0.1;
+          emissiveVal = vec3(1.0, 0.32, 0.0) * 1.5;
+        } else if (mClass == 10) { // FOLIAGE
+          roughnessVal = 0.95;
+          metalnessVal = 0.0;
+        }
+
+        // Snow accumulation response on top surfaces (vWorldNormal.y > 0.7)
+        if (vWorldNormal.y > 0.70 && uSnowAccumulation > 0.01) {
+          float snowAmount = smoothstep(0.1, 0.9, uSnowAccumulation * (0.6 + 0.4 * sin(vWorldPos.x * 0.5 + vWorldPos.z * 0.5)));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.98, 1.0), snowAmount * 0.90);
+          roughnessVal = mix(roughnessVal, 0.90, snowAmount);
+          metalnessVal = mix(metalnessVal, 0.0, snowAmount);
+        }
+
+        // Stylized dynamic cloud shadow approximation
+        float cShadow = smoothstep(0.35, 0.75, sin(vWorldPos.x * 0.016 + uCloudShadowDrift) * cos(vWorldPos.z * 0.016 + uCloudShadowDrift * 0.8));
+        diffuseColor.rgb *= (1.0 - cShadow * 0.13);
+        `
+      ).replace(
+        '#include <roughnessmap_fragment>',
+        `
+        #include <roughnessmap_fragment>
+        roughnessFactor = roughnessVal;
+        `
+      ).replace(
+        '#include <metalnessmap_fragment>',
+        `
+        #include <metalnessmap_fragment>
+        metalnessFactor = metalnessVal;
+        `
+      ).replace(
+        '#include <emissivemap_fragment>',
+        `
+        #include <emissivemap_fragment>
+        totalEmissiveRadiance = emissiveVal;
         `
       );
     };
@@ -125,23 +223,30 @@ export class VoxelWorld {
 
     this.transMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = { value: 0 };
+      shader.uniforms.uWetness = { value: 0 };
+      shader.uniforms.uSnowAccumulation = { value: 0 };
       this.transMaterial.userData.shader = shader;
       shader.vertexShader = `
         attribute vec2 localUv;
         attribute vec4 tileRect;
+        attribute float materialClass;
         varying vec2 vLocalUv;
         varying vec4 vTileRect;
         uniform float uTime;
         varying vec3 vWorldPos;
+        varying float vMaterialClass;
+        varying vec3 vWorldNormal;
         ${shader.vertexShader}
       `.replace(
         '#include <begin_vertex>',
         `
         vLocalUv = localUv;
         vTileRect = tileRect;
+        vMaterialClass = materialClass;
         #include <begin_vertex>
         vec4 wPos = modelMatrix * vec4(transformed, 1.0);
         vWorldPos = wPos.xyz;
+        vWorldNormal = normalize((modelMatrix * vec4(objectNormal, 0.0)).xyz);
         
         if (position.y > 0.3) {
           float phase = wPos.x * 2.5 + wPos.z * 2.5;
@@ -156,6 +261,11 @@ export class VoxelWorld {
         varying vec2 vLocalUv;
         varying vec4 vTileRect;
         varying vec3 vWorldPos;
+        varying float vMaterialClass;
+        varying vec3 vWorldNormal;
+        uniform float uTime;
+        uniform float uWetness;
+        uniform float uSnowAccumulation;
         
         float hash(vec3 p) {
           p = fract(p * 0.3183099 + .1);
@@ -186,6 +296,55 @@ export class VoxelWorld {
         if (vWorldPos.y > 0.3) {
           diffuseColor.rgb *= 1.1;
         }
+
+        // MaterialClass Properties Resolver
+        float roughnessVal = 0.50;
+        float metalnessVal = 0.05;
+        vec3 emissiveVal = vec3(0.0);
+        
+        int mClass = int(vMaterialClass + 0.5);
+        if (mClass == 5) { // GLASS
+          roughnessVal = 0.08;
+          metalnessVal = 0.1;
+        } else if (mClass == 6) { // CRYSTAL
+          roughnessVal = 0.22;
+          metalnessVal = 0.2;
+          emissiveVal = diffuseColor.rgb * 0.60;
+        } else if (mClass == 7) { // AETHER
+          roughnessVal = 0.15;
+          metalnessVal = 0.4;
+          float pulse = 0.5 + 0.5 * sin(uTime * 4.0 + vWorldPos.x * 2.0 + vWorldPos.z * 2.0);
+          emissiveVal = vec3(0.12, 0.45, 0.92) * (0.35 + pulse * 0.65);
+        } else if (mClass == 10) { // FOLIAGE
+          roughnessVal = 0.95;
+          metalnessVal = 0.0;
+        }
+
+        // Snow accumulation response on top surfaces (vWorldNormal.y > 0.7)
+        if (vWorldNormal.y > 0.70 && uSnowAccumulation > 0.01) {
+          float snowAmount = smoothstep(0.1, 0.9, uSnowAccumulation * (0.6 + 0.4 * sin(vWorldPos.x * 0.5 + vWorldPos.z * 0.5)));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.98, 1.0), snowAmount * 0.90);
+          roughnessVal = mix(roughnessVal, 0.90, snowAmount);
+          metalnessVal = mix(metalnessVal, 0.0, snowAmount);
+        }
+        `
+      ).replace(
+        '#include <roughnessmap_fragment>',
+        `
+        #include <roughnessmap_fragment>
+        roughnessFactor = roughnessVal;
+        `
+      ).replace(
+        '#include <metalnessmap_fragment>',
+        `
+        #include <metalnessmap_fragment>
+        metalnessFactor = metalnessVal;
+        `
+      ).replace(
+        '#include <emissivemap_fragment>',
+        `
+        #include <emissivemap_fragment>
+        totalEmissiveRadiance = emissiveVal;
         `
       );
     };
@@ -194,16 +353,28 @@ export class VoxelWorld {
       map: atlasTex,
       vertexColors: true,
       transparent: true,
-      opacity: 1.0, // Control opacity in shader
-      roughness: 0.15, // Softer highlight
-      metalness: 0.75, // Good reflection
+      opacity: 0.95,
+      roughness: 0.10, // Controlled specular roughness for water
+      metalness: 0.02, // Water is dielectric, not metal (metalness ~ 0)
       side: THREE.DoubleSide,
       depthWrite: false,
     });
 
     this.waterMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = { value: 0 };
+      shader.uniforms.uWaterBaseColor = { value: new THREE.Color(0.16, 0.62, 0.85) };
+      shader.uniforms.uWaterDeepColor = { value: new THREE.Color(0.02, 0.14, 0.38) };
+      shader.uniforms.uSkyZenithColor = { value: new THREE.Color(0.35, 0.62, 0.95) };
+      shader.uniforms.uSkyHorizonColor = { value: new THREE.Color(0.65, 0.82, 0.92) };
+      shader.uniforms.uSunDirection = { value: new THREE.Vector3(0, 1, 0) };
+      shader.uniforms.uSunColor = { value: new THREE.Color(1.0, 0.95, 0.85) };
+      shader.uniforms.uMoonDirection = { value: new THREE.Vector3(0, -1, 0) };
+      shader.uniforms.uMoonColor = { value: new THREE.Color(0.55, 0.72, 1.0) };
+      shader.uniforms.uRainIntensity = { value: 0.0 };
+      shader.uniforms.uWaterQuality = { value: 2.0 };
+      shader.uniforms.uCloudShadowDrift = { value: 0.0 };
       this.waterMaterial.userData.shader = shader;
+
       shader.vertexShader = `
         attribute vec2 localUv;
         attribute vec4 tileRect;
@@ -211,6 +382,7 @@ export class VoxelWorld {
         varying vec4 vTileRect;
         uniform float uTime;
         varying vec3 vWorldPosition;
+        varying vec3 vWorldNormal;
         ${shader.vertexShader}
       `.replace(
         '#include <begin_vertex>',
@@ -218,14 +390,32 @@ export class VoxelWorld {
         vLocalUv = localUv;
         vTileRect = tileRect;
         #include <begin_vertex>
-        // Subtle geometric waves to avoid diagonal seam artifacts
-        float wave1 = sin(transformed.x * 2.2 + uTime * 2.5) * 0.02;
-        float wave2 = cos(transformed.z * 2.2 + uTime * 2.0) * 0.02;
-        float wave3 = sin((transformed.x + transformed.z) * 1.5 + uTime * 3.0) * 0.015;
-        transformed.y += wave1 + wave2 + wave3;
-        
+
+        // Absolute continuous world position before displacement
+        // Prevents chunk seams, diagonal seams, and phase resets
+        vec4 wPosInit = modelMatrix * vec4(position, 1.0);
+
+        float wTime = uTime * 1.5;
+        vec2 wCoord = wPosInit.xz;
+
+        float wave1 = sin(wCoord.x * 1.6 + wTime * 1.4) * 0.022;
+        float wave2 = cos(wCoord.y * 1.4 + wTime * 1.2) * 0.018;
+        float wave3 = sin((wCoord.x * 0.9 + wCoord.y * 1.1) + wTime * 2.0) * 0.014;
+        float wave4 = cos((wCoord.x * 1.3 - wCoord.y * 1.0) + wTime * 1.6) * 0.010;
+
+        // Shoreline wave damping using smooth distance field in vColor.g
+        #ifdef USE_COLOR
+        float shoreDamp = clamp(1.0 - vColor.g * 0.72, 0.25, 1.0);
+        #else
+        float shoreDamp = 1.0;
+        #endif
+        float totalWaveDisp = (wave1 + wave2 + wave3 + wave4) * shoreDamp;
+
+        transformed.y += totalWaveDisp;
+
         vec4 wPos = modelMatrix * vec4(transformed, 1.0);
         vWorldPosition = wPos.xyz;
+        vWorldNormal = normalize((modelMatrix * vec4(objectNormal, 0.0)).xyz);
         `
       );
       
@@ -233,7 +423,19 @@ export class VoxelWorld {
         varying vec2 vLocalUv;
         varying vec4 vTileRect;
         varying vec3 vWorldPosition;
+        varying vec3 vWorldNormal;
         uniform float uTime;
+        uniform vec3 uWaterBaseColor;
+        uniform vec3 uWaterDeepColor;
+        uniform vec3 uSkyZenithColor;
+        uniform vec3 uSkyHorizonColor;
+        uniform vec3 uSunDirection;
+        uniform vec3 uSunColor;
+        uniform vec3 uMoonDirection;
+        uniform vec3 uMoonColor;
+        uniform float uRainIntensity;
+        uniform float uWaterQuality;
+        uniform float uCloudShadowDrift;
         ${shader.fragmentShader}
       `.replace(
         '#include <map_fragment>',
@@ -250,51 +452,120 @@ export class VoxelWorld {
         `
         #include <normal_fragment_begin>
         
-        // Normal perturbation (micro ripples) to break up specular highlights
-        float rippleTime = uTime * 1.5;
-        vec3 p = vWorldPosition * 1.5;
-        float dx = sin(p.z * 1.2 + rippleTime) * 0.04 + cos(p.y * 2.0 - rippleTime) * 0.02;
-        float dy = cos(p.x * 1.2 + rippleTime) * 0.04;
-        float dz = sin(p.x * 1.2 - rippleTime) * 0.04;
-        vec3 perturbWorld = vec3(dx, dy, dz);
-        vec3 perturbView = (viewMatrix * vec4(perturbWorld, 0.0)).xyz;
-        normal = normalize(normal + perturbView);
+        {
+          // Micro ripple normal perturbation in world space, then transformed to view space
+          float ripTime = uTime * 1.8;
+          vec2 rCoord = vWorldPosition.xz * 2.6;
+          
+          float r1x = cos(rCoord.x * 1.3 + rCoord.y * 0.7 + ripTime * 1.5) * 0.055;
+          float r1z = sin(rCoord.y * 1.2 - rCoord.x * 0.8 + ripTime * 1.3) * 0.055;
+          float r2x = sin(rCoord.x * 2.8 - ripTime * 2.0) * 0.030;
+          float r2z = cos(rCoord.y * 2.6 + ripTime * 1.8) * 0.030;
+          
+          // Rain-on-water concentric ripples
+          float rainRipplesX = 0.0;
+          float rainRipplesZ = 0.0;
+          if (uRainIntensity > 0.04) {
+            vec2 rainGrid = fract(vWorldPosition.xz * 2.2) - 0.5;
+            float rDist = length(rainGrid);
+            float splashWave = sin(rDist * 28.0 - uTime * 14.0) * exp(-rDist * 4.5);
+            rainRipplesX = splashWave * 0.07 * uRainIntensity;
+            rainRipplesZ = splashWave * 0.07 * uRainIntensity;
+          }
+          
+          vec3 worldPerturb = vec3(r1x + r2x + rainRipplesX, 0.0, r1z + r2z + rainRipplesZ);
+          vec3 viewPerturb = (viewMatrix * vec4(worldPerturb, 0.0)).xyz;
+          normal = normalize(normal + viewPerturb);
+        }
         `
       ).replace(
         '#include <color_fragment>',
         `
         #include <color_fragment>
         
-        vec3 vDir = normalize(-vViewPosition); // towards camera in view space
-        float fresnel = max(0.0, dot(vDir, normalize(vNormal)));
-        fresnel = clamp(1.0 - fresnel, 0.0, 1.0);
-        float fCurve = pow(fresnel, 3.0);
-        
-        // Depth from vertex color (R channel)
-        float depthVal = vColor.r;
-        
-        vec3 deepColor = vec3(0.01, 0.22, 0.45);
-        vec3 shallowColor = vec3(0.18, 0.68, 0.78);
-        vec3 nightSkySheen = vec3(0.18, 0.28, 0.45);
-        
-        // Depth-based color blending
-        vec3 waterColor = mix(shallowColor, deepColor, smoothstep(0.1, 0.8, depthVal));
-        
-        // Subtle shoreline foam (G channel)
-        float shoreVal = vColor.g;
-        float foamLines = sin(vWorldPosition.x * 5.0 + uTime * 2.0) * sin(vWorldPosition.z * 5.0 - uTime * 2.5);
-        float foam = shoreVal * smoothstep(0.4, 0.9, foamLines * 0.5 + 0.5) * 0.35;
-        waterColor = mix(waterColor, vec3(0.9, 0.95, 1.0), foam);
-        
-        // Sky sheen for grazing angles
-        waterColor = mix(waterColor, nightSkySheen, fCurve * 0.4);
-        
-        diffuseColor.rgb = mix(diffuseColor.rgb, waterColor, 0.8);
-        
-        // Depth and fresnel based transparency
-        float baseAlpha = mix(0.4, 0.95, depthVal); // Shallow is more transparent
-        diffuseColor.a = baseAlpha + fCurve * (1.0 - baseAlpha);
-        diffuseColor.a = clamp(diffuseColor.a, 0.0, 1.0);
+        {
+          // Micro ripple normal perturbation in world space
+          float ripTime = uTime * 1.8;
+          vec2 rCoord = vWorldPosition.xz * 2.6;
+          float r1x = cos(rCoord.x * 1.3 + rCoord.y * 0.7 + ripTime * 1.5) * 0.055;
+          float r1z = sin(rCoord.y * 1.2 - rCoord.x * 0.8 + ripTime * 1.3) * 0.055;
+          float r2x = sin(rCoord.x * 2.8 - ripTime * 2.0) * 0.030;
+          float r2z = cos(rCoord.y * 2.6 + ripTime * 1.8) * 0.030;
+          
+          float rainRipplesX = 0.0;
+          float rainRipplesZ = 0.0;
+          if (uRainIntensity > 0.04) {
+            vec2 rainGrid = fract(vWorldPosition.xz * 2.2) - 0.5;
+            float rDist = length(rainGrid);
+            float splashWave = sin(rDist * 28.0 - uTime * 14.0) * exp(-rDist * 4.5);
+            rainRipplesX = splashWave * 0.07 * uRainIntensity;
+            rainRipplesZ = splashWave * 0.07 * uRainIntensity;
+          }
+          vec3 worldPerturb = vec3(r1x + r2x + rainRipplesX, 0.0, r1z + r2z + rainRipplesZ);
+          vec3 worldN = normalize(vWorldNormal + worldPerturb);
+
+          // 4. Smooth nonlinear absorption (Beer-Lambert law)
+          #ifdef USE_COLOR
+          float depthMetric = vColor.r; // 0..1 (up to 12 blocks deep)
+          #else
+          float depthMetric = 0.5;
+          #endif
+          float depthAbsorption = 1.0 - exp(-depthMetric * 3.4);
+          
+          // 5. Environmental & Biome Water Color
+          vec3 waterBodyColor = mix(uWaterBaseColor, uWaterDeepColor, depthAbsorption);
+          
+          // Fresnel reflection (Schlick dielectric F0 ~ 0.025 for water)
+          vec3 worldVDir = normalize(cameraPosition - vWorldPosition);
+          float nDotV = max(0.0, dot(worldVDir, worldN));
+          float f0 = 0.025;
+          float fresnel = f0 + (1.0 - f0) * pow(clamp(1.0 - nDotV, 0.0, 1.0), 4.5);
+          
+          // Sky Reflection Approximation
+          vec3 worldReflect = reflect(-worldVDir, worldN);
+          float reflectElev = clamp(worldReflect.y * 1.4 + 0.1, 0.0, 1.0);
+          vec3 skyReflection = mix(uSkyHorizonColor, uSkyZenithColor, reflectElev);
+          
+          // Controlled Sun / Moon Specular Streak (follows normal, bounded, no whiteout)
+          vec3 lightDir = normalize(uSunDirection.y > -0.05 ? uSunDirection : uMoonDirection);
+          vec3 lightCol = uSunDirection.y > -0.05 ? uSunColor : uMoonColor * 0.7;
+          vec3 halfDir = normalize(lightDir + worldVDir);
+          float nDotH = max(0.0, dot(worldN, halfDir));
+          float specHighlight = pow(nDotH, 85.0);
+          float boundedStreak = (specHighlight * 1.8) / (specHighlight + 0.45);
+          vec3 specularStreak = lightCol * boundedStreak * 0.65;
+          
+          // Shoreline Foam & Dynamic Wave Surge (Smooth distance field in G channel)
+          #ifdef USE_COLOR
+          float shoreProximity = vColor.g;
+          #else
+          float shoreProximity = 0.0;
+          #endif
+          float shoreWave = sin(vWorldPosition.x * 2.2 + vWorldPosition.z * 1.8 - uTime * 2.8) * 0.5 + 0.5;
+          float foamBand = smoothstep(0.58 + shoreWave * 0.22, 1.0, shoreProximity);
+          float bubbleNoise = sin(vWorldPosition.x * 14.0 + uTime * 2.5) * cos(vWorldPosition.z * 14.0 - uTime * 2.2);
+          foamBand *= smoothstep(-0.25, 0.75, bubbleNoise);
+          
+          // Ultra-shallow wet edge tint
+          float shallowWetEdge = smoothstep(0.40, 0.95, shoreProximity);
+          waterBodyColor = mix(waterBodyColor, mix(uWaterBaseColor, vec3(0.35, 0.85, 0.95), 0.45), shallowWetEdge * 0.5);
+          
+          // Composite Water Color with Fresnel Reflection and Foam
+          vec3 compositeWater = mix(waterBodyColor, skyReflection, fresnel * 0.82);
+          vec3 seafoamColor = vec3(0.92, 0.97, 1.0);
+          compositeWater = mix(compositeWater, seafoamColor, foamBand * 0.88);
+          compositeWater += specularStreak;
+          
+          // Cloud shadow approximation on water surface
+          float wCloudShadow = smoothstep(0.35, 0.75, sin(vWorldPosition.x * 0.016 + uCloudShadowDrift) * cos(vWorldPosition.z * 0.016 + uCloudShadowDrift * 0.8));
+          compositeWater *= (1.0 - wCloudShadow * 0.14);
+          
+          diffuseColor.rgb = mix(diffuseColor.rgb, compositeWater, 0.88);
+          
+          // Depth- and Fresnel-based transparency
+          float baseAlpha = mix(0.48, 0.94, depthAbsorption);
+          diffuseColor.a = clamp(baseAlpha + fresnel * (1.0 - baseAlpha) + foamBand * 0.35, 0.0, 0.98);
+        }
         `
       );
     };
@@ -401,17 +672,40 @@ export class VoxelWorld {
 
   // Get procedural world data map for Debug Overlay Map
   public getDebugMapInfo(centerX: number, centerZ: number, radiusBlocks: number = 200, step: number = 8) {
-    const dataPoints: { x: number; z: number; height: number; biomeName: string; isWater: boolean }[] = [];
+    const dataPoints: {
+      x: number;
+      z: number;
+      height: number;
+      biomeName: string;
+      isWater: boolean;
+      regionId: string;
+      regionName: string;
+      regionColor: string;
+    }[] = [];
+    const regionColorMap: Record<string, string> = {
+      minang: '#10b981', // Emerald Valley
+      jawa: '#eab308',   // Golden Fertile Plains
+      bali: '#f97316',   // Volcanic Terraces
+      borneo: '#059669', // Deep River Rainforest
+      toraja: '#8b5cf6', // Mystical Karst Cliffs
+      papua: '#06b6d4',  // Glacial Alpine Highland
+      nusa: '#14b8a6',   // Coral Archipelago
+    };
+
     for (let x = centerX - radiusBlocks; x <= centerX + radiusBlocks; x += step) {
       for (let z = centerZ - radiusBlocks; z <= centerZ + radiusBlocks; z += step) {
         const biome = this.biomeManager.getBiome(x, z);
-        const h = this.getSpawnHeight(x, z);
+        const h = Math.round(this.generatorCore.getTerrainHeight(x, z));
+        const domRegion = this.regionManager.getDominantRegion(x, z);
         dataPoints.push({
           x,
           z,
           height: h,
           biomeName: biome.name,
           isWater: h <= SEA_LEVEL,
+          regionId: domRegion.id,
+          regionName: domRegion.displayName,
+          regionColor: regionColorMap[domRegion.id] || '#64748b',
         });
       }
     }
@@ -625,13 +919,59 @@ export class VoxelWorld {
 
   public waterTime: number = 0;
 
-  public update(deltaTime: number, camera?: THREE.PerspectiveCamera): void {
-    this.waterTime += deltaTime;
-    if (this.waterMaterial.userData.shader) {
-      this.waterMaterial.userData.shader.uniforms.uTime.value = this.waterTime;
+  public update(
+    deltaTime: number,
+    camera?: THREE.PerspectiveCamera,
+    envData?: {
+      waterBaseColor?: THREE.Color;
+      waterDeepColor?: THREE.Color;
+      skyZenithColor?: THREE.Color;
+      skyHorizonColor?: THREE.Color;
+      sunDirection?: THREE.Vector3;
+      sunColor?: THREE.Color;
+      moonDirection?: THREE.Vector3;
+      moonColor?: THREE.Color;
+      rainIntensity?: number;
+      waterQuality?: number;
+      cloudDrift?: number;
     }
-    if (this.transMaterial.userData.shader) {
-      this.transMaterial.userData.shader.uniforms.uTime.value = this.waterTime;
+  ): void {
+    this.waterTime += deltaTime;
+    const wShader = this.waterMaterial.userData.shader;
+    if (wShader) {
+      wShader.uniforms.uTime.value = this.waterTime;
+      if (envData) {
+        if (envData.waterBaseColor) wShader.uniforms.uWaterBaseColor.value.copy(envData.waterBaseColor);
+        if (envData.waterDeepColor) wShader.uniforms.uWaterDeepColor.value.copy(envData.waterDeepColor);
+        if (envData.skyZenithColor) wShader.uniforms.uSkyZenithColor.value.copy(envData.skyZenithColor);
+        if (envData.skyHorizonColor) wShader.uniforms.uSkyHorizonColor.value.copy(envData.skyHorizonColor);
+        if (envData.sunDirection) wShader.uniforms.uSunDirection.value.copy(envData.sunDirection);
+        if (envData.sunColor) wShader.uniforms.uSunColor.value.copy(envData.sunColor);
+        if (envData.moonDirection) wShader.uniforms.uMoonDirection.value.copy(envData.moonDirection);
+        if (envData.moonColor) wShader.uniforms.uMoonColor.value.copy(envData.moonColor);
+        if (envData.rainIntensity !== undefined) wShader.uniforms.uRainIntensity.value = envData.rainIntensity;
+        if (envData.waterQuality !== undefined) wShader.uniforms.uWaterQuality.value = envData.waterQuality;
+        if (envData.cloudDrift !== undefined) wShader.uniforms.uCloudShadowDrift.value = envData.cloudDrift;
+      }
+    }
+
+    const wetness = envData && envData.rainIntensity !== undefined ? envData.rainIntensity : 0.0;
+    const snowAccum = this.preset === 'mountainous' ? Math.max(0.2, wetness) : (this.preset === 'standard' ? wetness * 0.5 : 0.0);
+
+    const sShader = this.solidMaterial.userData.shader;
+    if (sShader) {
+      sShader.uniforms.uTime.value = this.waterTime;
+      sShader.uniforms.uWetness.value = wetness;
+      sShader.uniforms.uSnowAccumulation.value = snowAccum;
+      if (envData && envData.cloudDrift !== undefined) {
+        sShader.uniforms.uCloudShadowDrift.value = envData.cloudDrift;
+      }
+    }
+    const tShader = this.transMaterial.userData.shader;
+    if (tShader) {
+      tShader.uniforms.uTime.value = this.waterTime;
+      tShader.uniforms.uWetness.value = wetness;
+      tShader.uniforms.uSnowAccumulation.value = snowAccum;
     }
     if (camera) {
       this.scheduler.updateFrustumCulling(camera);

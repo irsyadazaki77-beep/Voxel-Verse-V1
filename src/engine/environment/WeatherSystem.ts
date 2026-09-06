@@ -1,4 +1,5 @@
-// Dynamic Weather Engine: Rain, Snow, Thunderstorms, Lightning & Wind Dynamics
+// Dynamic GPU Weather Engine 4.0
+// Features: GPU Directional Streak Rain Shader with Wind Deflection, GPU Turbulent Snowflake Flurries, Controlled Storm Lightning (No Whiteout)
 import * as THREE from 'three';
 import { WeatherState } from '../../types';
 
@@ -11,71 +12,211 @@ export class WeatherSystem {
     durationLeft: 180,
   };
 
-  public rainParticles: THREE.Points;
-  public snowParticles: THREE.Points;
+  public rainMesh: THREE.LineSegments;
+  public snowMesh: THREE.Points;
   public weatherGroup: THREE.Group;
   public scene: THREE.Scene;
 
   public isLightningFlash: boolean = false;
   private lightningTimer: number = 0;
+  private weatherTime: number = 0;
 
-  private rainPositions: Float32Array;
-  private snowPositions: Float32Array;
-  private particleCount = 1400;
+  private rainMaterial: THREE.ShaderMaterial;
+  private snowMaterial: THREE.ShaderMaterial;
+
+  private static readonly RAIN_STREAK_COUNT = 2400;
+  private static readonly SNOW_FLAKE_COUNT = 1800;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.weatherGroup = new THREE.Group();
 
-    // 1. Rain Particles
-    this.rainPositions = new Float32Array(this.particleCount * 3);
-    for (let i = 0; i < this.particleCount * 3; i += 3) {
-      this.rainPositions[i] = (Math.random() - 0.5) * 45;
-      this.rainPositions[i + 1] = Math.random() * 32;
-      this.rainPositions[i + 2] = (Math.random() - 0.5) * 45;
+    // 1. GPU Directional Streak Rain System
+    // Each streak is composed of 2 vertices (top: 0, bottom: 1)
+    const rainStreakCount = WeatherSystem.RAIN_STREAK_COUNT;
+    const rainPositions = new Float32Array(rainStreakCount * 2 * 3);
+    const rainSeeds = new Float32Array(rainStreakCount * 2 * 3);
+    const rainFactors = new Float32Array(rainStreakCount * 2);
+    const rainLengths = new Float32Array(rainStreakCount * 2);
+
+    for (let i = 0; i < rainStreakCount; i++) {
+      const idx = i * 2;
+      const sx = (Math.random() - 0.5) * 48.0;
+      const sy = Math.random() * 32.0;
+      const sz = (Math.random() - 0.5) * 48.0;
+      const len = 1.2 + Math.random() * 1.4; // 1.2m - 2.6m varying streaks
+
+      for (let v = 0; v < 2; v++) {
+        const vIdx = (idx + v) * 3;
+        rainPositions[vIdx] = 0;
+        rainPositions[vIdx + 1] = 0;
+        rainPositions[vIdx + 2] = 0;
+
+        rainSeeds[vIdx] = sx;
+        rainSeeds[vIdx + 1] = sy;
+        rainSeeds[vIdx + 2] = sz;
+
+        rainFactors[idx + v] = v === 0 ? 0.0 : 1.0;
+        rainLengths[idx + v] = len;
+      }
     }
+
     const rainGeo = new THREE.BufferGeometry();
-    rainGeo.setAttribute('position', new THREE.BufferAttribute(this.rainPositions, 3));
-    const rainMat = new THREE.PointsMaterial({
-      color: 0x99ccff,
-      size: 0.15,
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+    rainGeo.setAttribute('aSeed', new THREE.BufferAttribute(rainSeeds, 3));
+    rainGeo.setAttribute('aStreakFactor', new THREE.BufferAttribute(rainFactors, 1));
+    rainGeo.setAttribute('aStreakLength', new THREE.BufferAttribute(rainLengths, 1));
+
+    this.rainMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uFallSpeed: { value: 26.0 },
+        uWindVector: { value: new THREE.Vector3(0, 0, 0) },
+        uPlayerPos: { value: new THREE.Vector3(0, 0, 0) },
+        uCameraPos: { value: new THREE.Vector3(0, 0, 0) },
+        uIntensity: { value: 0.0 },
+      },
+      vertexShader: `
+        attribute vec3 aSeed;
+        attribute float aStreakFactor;
+        attribute float aStreakLength;
+        uniform float uTime;
+        uniform float uFallSpeed;
+        uniform vec3 uWindVector;
+        uniform vec3 uPlayerPos;
+        uniform vec3 uCameraPos;
+        uniform float uIntensity;
+        varying float vAlpha;
+
+        void main() {
+          vec3 boxSize = vec3(48.0, 32.0, 48.0);
+          vec3 basePos = aSeed;
+          basePos.y -= uTime * uFallSpeed;
+          basePos.xz += uWindVector.xz * (uTime * 0.7);
+
+          // Continuous wrapping box centered around player
+          vec3 localOffset = mod(basePos + boxSize * 0.5, boxSize) - boxSize * 0.5;
+          vec3 streakCenter = uPlayerPos + localOffset;
+
+          // Wind tilt deflection
+          vec3 fallDir = normalize(vec3(uWindVector.x * 0.28, -1.0, uWindVector.z * 0.28));
+          vec3 worldPos = streakCenter + fallDir * (aStreakFactor - 0.5) * aStreakLength;
+
+          // Near and far camera fade
+          float camDist = length(worldPos - uCameraPos);
+          vAlpha = smoothstep(1.5, 3.5, camDist) * (1.0 - smoothstep(20.0, 24.0, camDist)) * uIntensity;
+
+          gl_Position = projectionMatrix * viewMatrix * vec4(worldPos, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying float vAlpha;
+        void main() {
+          if (vAlpha < 0.01) discard;
+          vec3 rainColor = vec3(0.75, 0.88, 1.0);
+          gl_FragColor = vec4(rainColor, vAlpha * 0.65);
+        }
+      `,
       transparent: true,
-      opacity: 0.0,
       depthWrite: false,
     });
-    this.rainParticles = new THREE.Points(rainGeo, rainMat);
-    this.weatherGroup.add(this.rainParticles);
 
-    // 2. Snow Particles
-    this.snowPositions = new Float32Array(this.particleCount * 3);
-    for (let i = 0; i < this.particleCount * 3; i += 3) {
-      this.snowPositions[i] = (Math.random() - 0.5) * 45;
-      this.snowPositions[i + 1] = Math.random() * 32;
-      this.snowPositions[i + 2] = (Math.random() - 0.5) * 45;
+    this.rainMesh = new THREE.LineSegments(rainGeo, this.rainMaterial);
+    this.rainMesh.frustumCulled = false;
+    this.weatherGroup.add(this.rainMesh);
+
+    // 2. GPU Turbulent Snowflake Flurry System
+    const snowCount = WeatherSystem.SNOW_FLAKE_COUNT;
+    const snowSeeds = new Float32Array(snowCount * 3);
+    const snowFlakeIds = new Float32Array(snowCount);
+    const snowSizes = new Float32Array(snowCount);
+
+    for (let i = 0; i < snowCount; i++) {
+      const idx = i * 3;
+      snowSeeds[idx] = (Math.random() - 0.5) * 48.0;
+      snowSeeds[idx + 1] = Math.random() * 30.0;
+      snowSeeds[idx + 2] = (Math.random() - 0.5) * 48.0;
+
+      snowFlakeIds[i] = Math.random();
+      snowSizes[i] = 0.22 + Math.random() * 0.28; // 0.22m - 0.50m varied snowflakes
     }
-    const snowGeo = new THREE.BufferGeometry();
-    snowGeo.setAttribute('position', new THREE.BufferAttribute(this.snowPositions, 3));
-    const snowMat = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 0.38,
-      transparent: true,
-      opacity: 0,
-    });
-    this.snowParticles = new THREE.Points(snowGeo, snowMat);
-    this.weatherGroup.add(this.snowParticles);
 
-    scene.add(this.weatherGroup);
+    const snowGeo = new THREE.BufferGeometry();
+    snowGeo.setAttribute('position', new THREE.BufferAttribute(snowSeeds, 3)); // initial dummy
+    snowGeo.setAttribute('aSeed', new THREE.BufferAttribute(snowSeeds, 3));
+    snowGeo.setAttribute('aFlakeId', new THREE.BufferAttribute(snowFlakeIds, 1));
+    snowGeo.setAttribute('aFlakeSize', new THREE.BufferAttribute(snowSizes, 1));
+
+    this.snowMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uWindVector: { value: new THREE.Vector3(0, 0, 0) },
+        uPlayerPos: { value: new THREE.Vector3(0, 0, 0) },
+        uCameraPos: { value: new THREE.Vector3(0, 0, 0) },
+        uIntensity: { value: 0.0 },
+      },
+      vertexShader: `
+        attribute vec3 aSeed;
+        attribute float aFlakeId;
+        attribute float aFlakeSize;
+        uniform float uTime;
+        uniform vec3 uWindVector;
+        uniform vec3 uPlayerPos;
+        uniform vec3 uCameraPos;
+        uniform float uIntensity;
+        varying float vAlpha;
+
+        void main() {
+          vec3 boxSize = vec3(48.0, 30.0, 48.0);
+          vec3 basePos = aSeed;
+          basePos.y -= uTime * 4.4;
+          
+          // Harmonic horizontal turbulence on GPU:
+          basePos.x += uWindVector.x * (uTime * 0.5) + sin(basePos.y * 0.35 + uTime * 2.2 + aFlakeId * 12.0) * 0.65;
+          basePos.z += uWindVector.z * (uTime * 0.5) + cos(basePos.y * 0.30 + uTime * 1.8 + aFlakeId * 10.0) * 0.65;
+
+          vec3 localOffset = mod(basePos + boxSize * 0.5, boxSize) - boxSize * 0.5;
+          vec3 worldPos = uPlayerPos + localOffset;
+
+          float camDist = length(worldPos - uCameraPos);
+          vAlpha = smoothstep(1.2, 3.0, camDist) * (1.0 - smoothstep(18.0, 24.0, camDist)) * uIntensity;
+
+          vec4 mvPosition = viewMatrix * vec4(worldPos, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          gl_PointSize = aFlakeSize * (260.0 / -mvPosition.z);
+        }
+      `,
+      fragmentShader: `
+        varying float vAlpha;
+        void main() {
+          if (vAlpha < 0.01) discard;
+          // Soft circular stylized snowflake
+          float r = length(gl_PointCoord - vec2(0.5));
+          if (r > 0.5) discard;
+          float softEdge = 1.0 - smoothstep(0.20, 0.5, r);
+          gl_FragColor = vec4(vec3(0.96, 0.98, 1.0), vAlpha * softEdge * 0.85);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+    });
+
+    this.snowMesh = new THREE.Points(snowGeo, this.snowMaterial);
+    this.snowMesh.frustumCulled = false;
+    this.weatherGroup.add(this.snowMesh);
+
+    this.scene.add(this.weatherGroup);
   }
 
   public update(deltaTime: number, playerPos: THREE.Vector3, isColdBiome: boolean): void {
     const dt = Math.min(deltaTime, 0.1);
+    this.weatherTime += dt;
     this.weather.durationLeft -= dt;
 
     // Wind dynamics
     this.weather.windAngle += dt * 0.02;
 
     if (this.weather.durationLeft <= 0) {
-      // Pick next weather
       const rand = Math.random();
       if (rand < 0.50) {
         this.weather.type = 'clear';
@@ -93,85 +234,60 @@ export class WeatherSystem {
       this.weather.durationLeft = 120 + Math.random() * 120;
     }
 
-    // Lightning strike logic during storms
+    // Controlled Storm Lightning (never washed out, bounded transient duration)
     if (this.weather.type === 'storm') {
       this.lightningTimer -= dt;
       if (this.lightningTimer <= 0) {
-        if (Math.random() < 0.15) {
+        if (Math.random() < 0.16) {
           this.isLightningFlash = true;
-          this.lightningTimer = 0.15; // 150ms flash
+          this.lightningTimer = 0.14; // 140ms bounded flash
         } else {
           this.isLightningFlash = false;
-          this.lightningTimer = 3.0 + Math.random() * 8.0;
+          this.lightningTimer = 3.5 + Math.random() * 7.5;
         }
-      } else if (this.isLightningFlash && this.lightningTimer < 0.05) {
+      } else if (this.isLightningFlash && this.lightningTimer < 0.04) {
         this.isLightningFlash = false;
       }
     } else {
       this.isLightningFlash = false;
     }
 
-    this.weatherGroup.position.copy(playerPos);
+    // Wind vector calculation
+    const windSpeed = this.weather.windSpeed || 2.0;
+    const windX = Math.cos(this.weather.windAngle) * windSpeed;
+    const windZ = Math.sin(this.weather.windAngle) * windSpeed;
 
-    // Wind offset vectors
-    const windDx = Math.cos(this.weather.windAngle) * this.weather.windSpeed * dt * 0.8;
-    const windDz = Math.sin(this.weather.windAngle) * this.weather.windSpeed * dt * 0.8;
-
-    // Update Rain
-    const rainMat = this.rainParticles.material as THREE.PointsMaterial;
     const isRaining = this.weather.type === 'rain' || this.weather.type === 'storm';
-    rainMat.opacity = THREE.MathUtils.lerp(rainMat.opacity, isRaining ? 0.78 : 0, dt * 2.0);
-
-    if (rainMat.opacity > 0.05) {
-      this.rainParticles.visible = true;
-      const pos = this.rainParticles.geometry.attributes.position.array as Float32Array;
-      const speed = this.weather.type === 'storm' ? 34 : 22;
-      for (let i = 0; i < pos.length; i += 3) {
-        pos[i] += windDx * 2.0;
-        pos[i + 1] -= dt * speed;
-        pos[i + 2] += windDz * 2.0;
-
-        if (pos[i + 1] < -5) {
-          pos[i] = (Math.random() - 0.5) * 45;
-          pos[i + 1] = 28;
-          pos[i + 2] = (Math.random() - 0.5) * 45;
-        }
-      }
-      this.rainParticles.geometry.attributes.position.needsUpdate = true;
-    } else {
-      this.rainParticles.visible = false;
-    }
-
-    // Update Snow
-    const snowMat = this.snowParticles.material as THREE.PointsMaterial;
+    const targetRainIntensity = isRaining ? this.weather.intensity : 0.0;
     const isSnowing = this.weather.type === 'snow';
-    snowMat.opacity = THREE.MathUtils.lerp(snowMat.opacity, isSnowing ? 0.88 : 0, dt * 2.0);
+    const targetSnowIntensity = isSnowing ? this.weather.intensity : 0.0;
 
-    if (snowMat.opacity > 0.05) {
-      this.snowParticles.visible = true;
-      const pos = this.snowParticles.geometry.attributes.position.array as Float32Array;
-      for (let i = 0; i < pos.length; i += 3) {
-        pos[i] += windDx + Math.sin(Date.now() * 0.002 + i) * 0.03;
-        pos[i + 1] -= dt * 4.8;
-        pos[i + 2] += windDz + Math.cos(Date.now() * 0.002 + i) * 0.03;
+    // Smoothly interpolate uniform intensities (GPU handles positions with zero CPU array loops!)
+    const curRainInt = this.rainMaterial.uniforms.uIntensity.value;
+    const newRainInt = THREE.MathUtils.lerp(curRainInt, targetRainIntensity, dt * 2.5);
+    this.rainMaterial.uniforms.uIntensity.value = newRainInt;
+    this.rainMaterial.uniforms.uTime.value = this.weatherTime;
+    this.rainMaterial.uniforms.uFallSpeed.value = this.weather.type === 'storm' ? 36.0 : 26.0;
+    this.rainMaterial.uniforms.uWindVector.value.set(windX, 0, windZ);
+    this.rainMaterial.uniforms.uPlayerPos.value.copy(playerPos);
+    this.rainMaterial.uniforms.uCameraPos.value.copy(playerPos);
+    this.rainMesh.visible = newRainInt > 0.01;
 
-        if (pos[i + 1] < -5) {
-          pos[i] = (Math.random() - 0.5) * 45;
-          pos[i + 1] = 28;
-          pos[i + 2] = (Math.random() - 0.5) * 45;
-        }
-      }
-      this.snowParticles.geometry.attributes.position.needsUpdate = true;
-    } else {
-      this.snowParticles.visible = false;
-    }
+    const curSnowInt = this.snowMaterial.uniforms.uIntensity.value;
+    const newSnowInt = THREE.MathUtils.lerp(curSnowInt, targetSnowIntensity, dt * 2.5);
+    this.snowMaterial.uniforms.uIntensity.value = newSnowInt;
+    this.snowMaterial.uniforms.uTime.value = this.weatherTime;
+    this.snowMaterial.uniforms.uWindVector.value.set(windX, 0, windZ);
+    this.snowMaterial.uniforms.uPlayerPos.value.copy(playerPos);
+    this.snowMaterial.uniforms.uCameraPos.value.copy(playerPos);
+    this.snowMesh.visible = newSnowInt > 0.01;
   }
 
   public dispose(): void {
     this.scene.remove(this.weatherGroup);
-    this.rainParticles.geometry.dispose();
-    (this.rainParticles.material as THREE.Material).dispose();
-    this.snowParticles.geometry.dispose();
-    (this.snowParticles.material as THREE.Material).dispose();
+    this.rainMesh.geometry.dispose();
+    this.rainMaterial.dispose();
+    this.snowMesh.geometry.dispose();
+    this.snowMaterial.dispose();
   }
 }

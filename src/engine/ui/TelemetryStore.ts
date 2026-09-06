@@ -13,6 +13,7 @@ export interface TelemetryData {
   level: number;
   xp: number;
   biomeName: string;
+  culturalRegionName?: string;
   playerPos: [number, number, number];
   playerYaw: number;
   fps: number;
@@ -43,6 +44,17 @@ export interface TelemetryData {
     ambientIntensity?: number;
     hemiIntensity?: number;
     exposure?: number;
+    loadedChunks?: number;
+    generatedChunks?: number;
+    meshedChunks?: number;
+    visibleChunks?: number;
+    pendingGeneration?: number;
+    pendingMeshing?: number;
+    pendingUpload?: number;
+    culledChunks?: number;
+    worldGroupChildren?: number;
+    solidMeshCount?: number;
+    waterMeshCount?: number;
   };
 }
 
@@ -81,7 +93,18 @@ export class TelemetryStore {
       dynamicScale: 1.0,
       bottleneck: 'BALANCED',
       activeEntities: 0,
-      activeParticles: 0
+      activeParticles: 0,
+      loadedChunks: 0,
+      generatedChunks: 0,
+      meshedChunks: 0,
+      visibleChunks: 0,
+      pendingGeneration: 0,
+      pendingMeshing: 0,
+      pendingUpload: 0,
+      culledChunks: 0,
+      worldGroupChildren: 0,
+      solidMeshCount: 0,
+      waterMeshCount: 0
     }
   };
   
