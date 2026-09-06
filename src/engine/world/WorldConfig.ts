@@ -95,3 +95,22 @@ export interface GeologicalStrataDef {
 
 // Structure Region Grid Size (in Chunks) for multi-chunk deterministic placement
 export const STRUCTURE_REGION_SIZE = 16; // 1 region = 16x16 chunks (256x256 blocks)
+
+// Dimension-aware Chunk Key Helpers
+export function makeDimensionChunkKey(dimensionId: string, cx: number, cz: number): string {
+  return `${dimensionId}:${cx},${cz}`;
+}
+
+export function parseDimensionChunkKey(key: string): { dimensionId: string; cx: number; cz: number } {
+  if (key.includes(':')) {
+    const colonIdx = key.indexOf(':');
+    const dimensionId = key.substring(0, colonIdx);
+    const coordsStr = key.substring(colonIdx + 1);
+    const [cx, cz] = coordsStr.split(',').map(Number);
+    return { dimensionId, cx: Number.isFinite(cx) ? cx : 0, cz: Number.isFinite(cz) ? cz : 0 };
+  } else {
+    // Legacy key format "cx,cz"
+    const [cx, cz] = key.split(',').map(Number);
+    return { dimensionId: 'overworld', cx: Number.isFinite(cx) ? cx : 0, cz: Number.isFinite(cz) ? cz : 0 };
+  }
+}

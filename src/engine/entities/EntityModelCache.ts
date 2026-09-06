@@ -49,6 +49,17 @@ export class EntityModelCache {
     return group;
   }
 
+  public static isShared(geoOrMat: THREE.BufferGeometry | THREE.Material): boolean {
+    for (const data of this.cache.values()) {
+      if (data.geometry === geoOrMat) return true;
+      if (data.materials.includes(geoOrMat as THREE.Material)) return true;
+    }
+    for (const geo of this.partGeometryCache.values()) {
+      if (geo === geoOrMat) return true;
+    }
+    return false;
+  }
+
   public static clear(): void {
     this.cache.forEach((data) => {
       data.geometry.dispose();

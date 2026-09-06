@@ -6,6 +6,7 @@ import { FarmingManager } from '../world/FarmingManager';
 import { VoxelWorld } from '../world/VoxelWorld';
 import { InventoryManager } from '../items/InventoryManager';
 import { IndexedDBStorage, STORE_WORLDS, STORE_RECOVERY } from './IndexedDBStorage';
+import { makeDimensionChunkKey, parseDimensionChunkKey } from '../world/WorldConfig';
 import { Logger } from '../ui/Logger';
 
 export const CURRENT_SAVE_VERSION = 3;
@@ -119,6 +120,17 @@ export class SaveManager {
       data.activatedMonoliths = Array.isArray(data.activatedMonoliths) ? data.activatedMonoliths : [];
       data.artifactState = data.artifactState || { unlocked: [], equipped: [null, null, null] };
       data.dungeonExpedition = data.dungeonExpedition || null;
+    }
+
+    // Migrate legacy chunk keys ("3,-8" -> "overworld:3,-8")
+    if (data.modifiedBlocks && typeof data.modifiedBlocks === 'object') {
+      const migratedBlocks: Record<string, any> = {};
+      Object.entries(data.modifiedBlocks).forEach(([key, val]) => {
+        const parsed = parseDimensionChunkKey(key);
+        const canonicalKey = makeDimensionChunkKey(parsed.dimensionId, parsed.cx, parsed.cz);
+        migratedBlocks[canonicalKey] = val;
+      });
+      data.modifiedBlocks = migratedBlocks;
     }
 
     return data;
@@ -591,12 +603,17 @@ export class SaveManager {
   public static applySaveToWorld(world: VoxelWorld, data: WorldSaveData): void {
     world.modifiedBlocks.clear();
     if (data.modifiedBlocks) {
-      Object.entries(data.modifiedBlocks).forEach(([chunkKey, blocksObj]) => {
-        const localMap = new Map<string, BlockType>();
-        Object.entries(blocksObj).forEach(([localKey, blockType]) => {
-          localMap.set(localKey, blockType as BlockType);
-        });
-        world.modifiedBlocks.set(chunkKey, localMap);
+      Object.entries(data.modifiedBlocks).forEach(([rawChunkKey, blocksObj]) => {
+        const parsed = parseDimensionChunkKey(rawChunkKey);
+        const canonicalKey = makeDimensionChunkKey(parsed.dimensionId, parsed.cx, parsed.cz);
+        if (parsed.dimensionId === world.dimensionId) {
+          const localMap = new Map<string, BlockType>();
+          Object.entries(blocksObj).forEach(([localKey, blockType]) => {
+            localMap.set(localKey, blockType as BlockType);
+          });
+          world.modifiedBlocks.set(canonicalKey, localMap);
+          world.modifiedBlocks.set(`${parsed.cx},${parsed.cz}`, localMap);
+        }
       });
     }
 
@@ -609,9 +626,12 @@ export class SaveManager {
     const result: { [chunkKey: string]: { [localKey: string]: number } } = {};
     world.modifiedBlocks.forEach((localMap, chunkKey) => {
       if (localMap.size > 0) {
-        result[chunkKey] = {};
+        const parsed = parseDimensionChunkKey(chunkKey);
+        const dim = chunkKey.includes(':') ? parsed.dimensionId : (world.dimensionId || 'overworld');
+        const canonicalKey = makeDimensionChunkKey(dim, parsed.cx, parsed.cz);
+        result[canonicalKey] = {};
         localMap.forEach((blockType, localKey) => {
-          result[chunkKey][localKey] = blockType;
+          result[canonicalKey][localKey] = blockType;
         });
       }
     });

@@ -17,6 +17,7 @@ export interface GenerationTask extends BaseTask {
   type: 'generate';
   seed: number;
   preset?: WorldPreset;
+  dimensionId?: string;
   modifiedBlocks?: Record<string, number>;
   onComplete: (buffer: ArrayBuffer) => void;
 }
@@ -24,8 +25,9 @@ export interface GenerationTask extends BaseTask {
 export interface MeshingTask extends BaseTask {
   type: 'mesh';
   sourceRevision?: number;
-  centerBuffer: ArrayBuffer;
-  neighborBuffers: Record<string, ArrayBuffer>;
+  haloBuffer?: ArrayBuffer;
+  centerBuffer?: ArrayBuffer;
+  neighborBuffers?: Record<string, ArrayBuffer>;
   onComplete: (meshData: TransferableMeshData, sourceRevision: number) => void;
 }
 
@@ -122,8 +124,8 @@ export class ChunkWorkerPool {
 
   private executeSync(task: WorkerTask) {
     if (task.type === 'generate') {
-      if (!this.cpuFallbackGenerator || this.cpuFallbackGenerator.seed !== task.seed || this.cpuFallbackGenerator.preset !== (task.preset || 'standard')) {
-        this.cpuFallbackGenerator = new WorldGeneratorCore(task.seed, task.preset || 'standard');
+      if (!this.cpuFallbackGenerator || this.cpuFallbackGenerator.seed !== task.seed || this.cpuFallbackGenerator.preset !== (task.preset || 'standard') || (this.cpuFallbackGenerator.params && this.cpuFallbackGenerator.params.dimensionId !== task.dimensionId)) {
+        this.cpuFallbackGenerator = new WorldGeneratorCore(task.seed, task.preset || 'standard', { dimensionId: task.dimensionId });
       }
       try {
         const blocks = this.cpuFallbackGenerator.generateChunkData(task.cx, task.cz, task.modifiedBlocks);
@@ -210,7 +212,9 @@ export class ChunkWorkerPool {
     this.taskQueue = this.taskQueue.filter(t => {
       const dx = t.cx - playerCX;
       const dz = t.cz - playerCZ;
-      const keep = dx * dx + dz * dz <= maxRadSq;
+      const distSq = dx * dx + dz * dz;
+      // Protect core radius (never cancel radius <= 3 / distSq <= 9)
+      const keep = distSq <= 9 || distSq <= maxRadSq;
       if (!keep) {
         this.taskKeySet.delete(`${t.type}_${t.cx}_${t.cz}_${t.sessionToken}`);
       }
@@ -269,39 +273,53 @@ export class ChunkWorkerPool {
             cz: task.cz,
             seed: task.seed,
             preset: task.preset,
+            dimensionId: task.dimensionId,
             modifiedBlocks: task.modifiedBlocks,
           };
           worker.postMessage(input);
         } else if (task.type === 'mesh') {
-          const input: MeshTaskInput = {
-            type: 'mesh',
-            taskId: task.taskId,
-            cx: task.cx,
-            cz: task.cz,
-            sourceRevision: task.sourceRevision ?? 0,
-            centerBuffer: task.centerBuffer,
-            neighborBuffers: task.neighborBuffers
-          };
-          
-          const transfers = [
-            input.centerBuffer.slice(0)
-          ];
-          for (const key in input.neighborBuffers) {
-            transfers.push(input.neighborBuffers[key].slice(0));
-          }
-          
-          const clonedInput: MeshTaskInput = {
-            ...input,
-            centerBuffer: transfers[0],
-            neighborBuffers: {}
-          };
-          
-          let idx = 1;
-          for (const key in input.neighborBuffers) {
-            clonedInput.neighborBuffers[key] = transfers[idx++];
-          }
+          if (task.haloBuffer) {
+            const input: MeshTaskInput = {
+              type: 'mesh',
+              taskId: task.taskId,
+              cx: task.cx,
+              cz: task.cz,
+              sourceRevision: task.sourceRevision ?? 0,
+              haloBuffer: task.haloBuffer
+            };
+            // Transfer haloBuffer directly with zero copy!
+            worker.postMessage(input, [task.haloBuffer]);
+          } else {
+            const input: MeshTaskInput = {
+              type: 'mesh',
+              taskId: task.taskId,
+              cx: task.cx,
+              cz: task.cz,
+              sourceRevision: task.sourceRevision ?? 0,
+              centerBuffer: task.centerBuffer,
+              neighborBuffers: task.neighborBuffers
+            };
+            
+            const transfers: ArrayBuffer[] = [];
+            if (input.centerBuffer) transfers.push(input.centerBuffer.slice(0));
+            
+            const clonedNeighbors: Record<string, ArrayBuffer> = {};
+            if (input.neighborBuffers) {
+              for (const key in input.neighborBuffers) {
+                const sliced = input.neighborBuffers[key].slice(0);
+                transfers.push(sliced);
+                clonedNeighbors[key] = sliced;
+              }
+            }
+            
+            const clonedInput: MeshTaskInput = {
+              ...input,
+              centerBuffer: transfers[0],
+              neighborBuffers: clonedNeighbors
+            };
 
-          worker.postMessage(clonedInput, transfers);
+            worker.postMessage(clonedInput, transfers);
+          }
         }
       }
     }

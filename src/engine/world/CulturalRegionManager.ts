@@ -652,6 +652,11 @@ export class CulturalRegionManager {
   private humidNoise: SimplexNoise;
   private continentalNoise: SimplexNoise;
 
+  private blendCache: Map<string, { region: CulturalRegionDef; weight: number }[]> = new Map();
+  private profileCache: Map<string, RegionTerrainProfile> = new Map();
+  private resourceCache: Map<string, RegionResourceModifiers> = new Map();
+  private static readonly MAX_CACHE_SIZE = 8192;
+
   constructor(seed: number) {
     this.regionNoise = new SimplexNoise(seed + 9999);
     this.tempNoise = new SimplexNoise(seed + 101);
@@ -659,11 +664,21 @@ export class CulturalRegionManager {
     this.continentalNoise = new SimplexNoise(seed + 303);
   }
 
+  public clearCache(): void {
+    this.blendCache.clear();
+    this.profileCache.clear();
+    this.resourceCache.clear();
+  }
+
   /**
    * Evaluates the smooth, continuous cultural region blend at world coordinates (wx, wz).
    * Guaranteed deterministic, continuous across space with no hard box borders or seams.
    */
   public getRegionBlend(wx: number, wz: number): { region: CulturalRegionDef; weight: number }[] {
+    const cacheKey = `${wx}_${wz}`;
+    const cached = this.blendCache.get(cacheKey);
+    if (cached) return cached;
+
     // Macro scale: Regions span 1200 - 2500 blocks for natural geographic pacing
     const macroScale = 0.00045;
     const temp = this.tempNoise.fbm2D(wx * 0.0012, wz * 0.0012, 3, 0.5);
@@ -725,6 +740,11 @@ export class CulturalRegionManager {
     if (w3 > 0.08) {
       result.push({ region: top3.region, weight: w3 });
     }
+
+    if (this.blendCache.size >= CulturalRegionManager.MAX_CACHE_SIZE) {
+      this.blendCache.clear();
+    }
+    this.blendCache.set(cacheKey, result);
 
     return result;
   }

@@ -94,6 +94,17 @@ export class Chunk {
     this.state = ChunkState.GENERATED;
   }
 
+  public updateShadowLOD(distSq: number): void {
+    if (!this.solidMesh) return;
+    if (distSq <= 4) {
+      this.solidMesh.castShadow = true;
+    } else if (distSq <= 16) {
+      this.solidMesh.castShadow = ((this.cx + this.cz) & 1) === 0;
+    } else {
+      this.solidMesh.castShadow = false;
+    }
+  }
+
   public applyTransferableMesh(
     meshData: TransferableMeshData,
     solidMaterial: THREE.Material,

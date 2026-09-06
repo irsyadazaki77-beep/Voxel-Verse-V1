@@ -4,6 +4,7 @@ import { EntityState, ItemStack, BossCombatState } from '../../types';
 import { CraftingSystem } from '../items/CraftingSystem';
 import { VoxelWorld } from '../world/VoxelWorld';
 import { EntityModelBuilder } from './EntityModelBuilder';
+import { EntityModelCache } from './EntityModelCache';
 import { Pathfinder } from '../ai/Pathfinder';
 import { GameEventBus } from '../events/GameEventBus';
 
@@ -93,8 +94,6 @@ export class EntityManager {
     this.entityGroup.remove(mesh);
     if (this.projectilePool.length < 30) {
       this.projectilePool.push(mesh);
-    } else {
-      mesh.geometry?.dispose();
     }
   }
 
@@ -1122,10 +1121,14 @@ export class EntityManager {
       this.entityGroup.remove(mesh);
       mesh.traverse(child => {
         if (child instanceof THREE.Mesh) {
-          child.geometry?.dispose();
+          if (child.geometry && !EntityModelCache.isShared(child.geometry)) {
+            child.geometry.dispose();
+          }
           if (Array.isArray(child.material)) {
-            child.material.forEach(m => m.dispose());
-          } else if (child.material) {
+            child.material.forEach(m => {
+              if (m && !EntityModelCache.isShared(m)) m.dispose();
+            });
+          } else if (child.material && !EntityModelCache.isShared(child.material)) {
             child.material.dispose();
           }
         }
@@ -1136,7 +1139,7 @@ export class EntityManager {
 
     for (const gItem of this.groundItems) {
       this.entityGroup.remove(gItem.mesh);
-      if (gItem.mesh.material instanceof THREE.Material) {
+      if (gItem.mesh.material instanceof THREE.Material && !EntityModelCache.isShared(gItem.mesh.material)) {
         gItem.mesh.material.dispose();
       }
     }
@@ -1147,12 +1150,6 @@ export class EntityManager {
     }
     this.projectiles = [];
 
-    for (const poolMesh of this.projectilePool) {
-      poolMesh.geometry?.dispose();
-      if (poolMesh.material instanceof THREE.Material) {
-        poolMesh.material.dispose();
-      }
-    }
     this.projectilePool = [];
 
     if (EntityManager.projectileGeometry) {

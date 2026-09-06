@@ -54,6 +54,13 @@ export class AetherNetworkManager {
     return AetherNetworkManager.instance;
   }
 
+  public reset(): void {
+    this.nodeMap.clear();
+    this.networks.clear();
+    this.dirtyNodes.clear();
+    this.networkCounter = 0;
+  }
+
   public setWorld(world: VoxelWorld): void {
     this.world = world;
   }

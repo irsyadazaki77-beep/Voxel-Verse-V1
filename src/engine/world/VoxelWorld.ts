@@ -8,7 +8,7 @@ import { StructureGenerator } from './StructureGenerator';
 import { TextureAtlas } from './TextureAtlas';
 import { ChunkScheduler } from './ChunkScheduler';
 import { WorldGeneratorCore } from './WorldGeneratorCore';
-import { SEA_LEVEL, WORLD_PRESETS, WorldPreset } from './WorldConfig';
+import { SEA_LEVEL, WORLD_PRESETS, WorldPreset, makeDimensionChunkKey } from './WorldConfig';
 import { MiningVisualEngine } from './MiningVisualEngine';
 
 export { SEA_LEVEL };
@@ -50,7 +50,7 @@ export class VoxelWorld {
     this.worldGroup = new THREE.Group();
     this.biomeManager = new BiomeManager(seed, dimensionId);
     this.regionManager = new CulturalRegionManager(seed);
-    this.generatorCore = new WorldGeneratorCore(seed, preset);
+    this.generatorCore = new WorldGeneratorCore(seed, preset, { dimensionId: this.dimensionId });
     this.scheduler = new ChunkScheduler(this);
 
     // Load procedural 16x16 pixel texture atlas
@@ -605,8 +605,12 @@ export class VoxelWorld {
     if (wy < 0 || wy >= CHUNK_SIZE_Y) return BlockType.AIR;
     const cx = Math.floor(wx / CHUNK_SIZE_X);
     const cz = Math.floor(wz / CHUNK_SIZE_Z);
-    const chunk = this.getChunk(cx, cz);
-    if (!chunk) return BlockType.AIR;
+    let chunk = this.getChunk(cx, cz);
+    if (!chunk) {
+      chunk = this.generateChunk(cx, cz);
+      this.chunks.set(this.getChunkKey(cx, cz), chunk);
+      this.worldGroup.add(chunk.group);
+    }
 
     const lx = ((wx % CHUNK_SIZE_X) + CHUNK_SIZE_X) % CHUNK_SIZE_X;
     const lz = ((wz % CHUNK_SIZE_Z) + CHUNK_SIZE_Z) % CHUNK_SIZE_Z;
@@ -651,15 +655,19 @@ export class VoxelWorld {
     return changed;
   }
 
-  // Generate raw chunk voxels based on multi-frequency 3D noise, biomes, caves & vegetation
   public generateChunk(cx: number, cz: number): Chunk {
     const chunk = new Chunk(cx, cz);
     const cKey = this.getChunkKey(cx, cz);
+    const dimKey = makeDimensionChunkKey(this.dimensionId, cx, cz);
 
     const modifiedBlocks: Record<string, number> = {};
+    if (this.modifiedBlocks.has(dimKey)) {
+      this.modifiedBlocks.get(dimKey)!.forEach((blockType, localKey) => {
+        modifiedBlocks[localKey] = blockType;
+      });
+    }
     if (this.modifiedBlocks.has(cKey)) {
-      const deltas = this.modifiedBlocks.get(cKey)!;
-      deltas.forEach((blockType, localKey) => {
+      this.modifiedBlocks.get(cKey)!.forEach((blockType, localKey) => {
         modifiedBlocks[localKey] = blockType;
       });
     }

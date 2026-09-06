@@ -123,81 +123,86 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Short delay for visual progress feedback
       setTimeout(async () => {
-        // Initialize GameRuntime inside container
-        if (containerRef.current) {
-          const runtime = new GameRuntime(
-            containerRef.current,
-            worldId,
-            worldName,
-            seed,
-            gameMode,
-            SettingsManager.get(),
-            preset,
-            existingSave
-          );
-
-          // Register bidirectional sync callbacks
-          runtime.registerCallbacks({
-            onBossUpdated: (boss) => setActiveBossState(boss),
-            onTargetHitChanged: (hit) => setTargetHitState(hit),
-            onInventoryUpdated: (inv) => setInventoryState(inv),
-            onEquipmentUpdated: (eq) => setEquipmentState(eq),
-            onActiveHotbarIndexChanged: (idx) => setActiveHotbarIndex(idx),
-            onPointerLockChange: (locked) => setIsPointerLocked(locked),
-            onOpenModal: (modalType, data) => {
-              if (modalType === 'dialogue') {
-                setActiveDialogueEntity(data);
-              } else if (modalType === 'chest') {
-                setActiveChestPos(data);
-              } else if (modalType === 'furnace') {
-                setActiveFurnacePos(data);
-              } else if (modalType === 'anvil') {
-                setActiveAnvilPos(data);
-              } else if (modalType === 'engineering') {
-                setActiveEngineeringPos(data);
-              }
-              setModal(modalType);
-            },
-            onPlayerDeath: () => setModal('death'),
-          });
-
-          runtimeRef.current = runtime;
-          (window as any).__voxelRuntime = runtime;
-
-          if (isMultiplayer) {
-            setLoadingStage("Connecting to Authoritative Realm Server...");
-            setLoadingProgress(85);
-
-            // Construct secure ws protocol pointing directly to the authoritative Express gateway
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const serverUrl = `${protocol}//${window.location.host}/ws`;
-            console.log('[GameCanvas] Connecting to authoritative server:', serverUrl);
-
-            if (sessionToken) {
-              NetworkSession.getInstance().sessionToken = sessionToken;
-            }
-
-            const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
-
-            const sessionStarted = await NetworkSession.getInstance().startSession(
-              runtime.scene,
-              true,
-              nameToUse,
-              true,
-              serverUrl
+        try {
+          // Initialize GameRuntime inside container
+          if (containerRef.current) {
+            const runtime = new GameRuntime(
+              containerRef.current,
+              worldId,
+              worldName,
+              seed,
+              gameMode,
+              SettingsManager.get(),
+              preset,
+              existingSave
             );
 
-            if (!sessionStarted) {
-              setConnectionError("Failed to connect to the authoritative realm server. Please try again later.");
-              runtime.stop();
-              return;
+            // Register bidirectional sync callbacks
+            runtime.registerCallbacks({
+              onBossUpdated: (boss) => setActiveBossState(boss),
+              onTargetHitChanged: (hit) => setTargetHitState(hit),
+              onInventoryUpdated: (inv) => setInventoryState(inv),
+              onEquipmentUpdated: (eq) => setEquipmentState(eq),
+              onActiveHotbarIndexChanged: (idx) => setActiveHotbarIndex(idx),
+              onPointerLockChange: (locked) => setIsPointerLocked(locked),
+              onOpenModal: (modalType, data) => {
+                if (modalType === 'dialogue') {
+                  setActiveDialogueEntity(data);
+                } else if (modalType === 'chest') {
+                  setActiveChestPos(data);
+                } else if (modalType === 'furnace') {
+                  setActiveFurnacePos(data);
+                } else if (modalType === 'anvil') {
+                  setActiveAnvilPos(data);
+                } else if (modalType === 'engineering') {
+                  setActiveEngineeringPos(data);
+                }
+                setModal(modalType);
+              },
+              onPlayerDeath: () => setModal('death'),
+            });
+
+            runtimeRef.current = runtime;
+            (window as any).__voxelRuntime = runtime;
+
+            if (isMultiplayer) {
+              setLoadingStage("Connecting to Authoritative Realm Server...");
+              setLoadingProgress(85);
+
+              // Construct secure ws protocol pointing directly to the authoritative Express gateway
+              const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+              const serverUrl = `${protocol}//${window.location.host}/ws`;
+              console.log('[GameCanvas] Connecting to authoritative server:', serverUrl);
+
+              if (sessionToken) {
+                NetworkSession.getInstance().sessionToken = sessionToken;
+              }
+
+              const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
+
+              const sessionStarted = await NetworkSession.getInstance().startSession(
+                runtime.scene,
+                true,
+                nameToUse,
+                true,
+                serverUrl
+              );
+
+              if (!sessionStarted) {
+                setConnectionError("Failed to connect to the authoritative realm server. Please try again later.");
+                runtime.stop();
+                return;
+              }
             }
+
+            runtime.start();
+
+            setIsWorldLoaded(true);
+            setLoadingProgress(100);
           }
-
-          runtime.start();
-
-          setIsWorldLoaded(true);
-          setLoadingProgress(100);
+        } catch (err: any) {
+          console.error("Fatal error during GameRuntime initialization:", err);
+          setConnectionError("Runtime Initialization Error: " + (err.message || String(err)));
         }
       }, 500);
     };
@@ -494,6 +499,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           entity={activeDialogueEntity}
           inventory={inventoryState}
           setInventory={setInventoryState}
+          timeOfDay={runtimeRef.current?.sky?.timeOfDay ?? 12.0}
           onClose={() => setModal('none')}
         />
       )}

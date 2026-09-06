@@ -18,17 +18,26 @@ export const MenuVoxelDiorama: React.FC = () => {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
 
-    // 1. WebGL Renderer Setup
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      alpha: true,
-      antialias: true,
-      powerPreference: 'high-performance',
-    });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    let renderer: THREE.WebGLRenderer | null = null;
+    let reqId: number | null = null;
+
+    try {
+      // 1. WebGL Renderer Setup
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        alpha: true,
+        antialias: true,
+        powerPreference: 'high-performance',
+        failIfMajorPerformanceCaveat: false,
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+    } catch (e) {
+      console.warn('[MenuVoxelDiorama] WebGL context initialization failed or not supported:', e);
+      return;
+    }
 
     // 2. Scene & Fog (Atmospheric Dark Navy matching UI background)
     const scene = new THREE.Scene();
@@ -436,7 +445,9 @@ export const MenuVoxelDiorama: React.FC = () => {
       fireMesh.scale.y = 0.9 + Math.sin(elapsed * 14) * 0.25;
       campLight.intensity = 1.6 + Math.sin(elapsed * 10) * 0.4;
 
-      renderer.render(scene, camera);
+      if (renderer) {
+        renderer.render(scene, camera);
+      }
     };
 
     animate();
@@ -459,7 +470,9 @@ export const MenuVoxelDiorama: React.FC = () => {
       materials.forEach((m) => m.dispose());
 
       // Dispose Renderer
-      renderer.dispose();
+      if (renderer) {
+        renderer.dispose();
+      }
     };
   }, []);
 

@@ -348,8 +348,14 @@ async function startServer() {
       return;
     }
 
-    const validPresets = ['standard', 'flat', 'mountainous', 'islands'];
-    const preset = validPresets.includes(worldPreset) ? worldPreset : 'standard';
+    let preset = worldPreset;
+    if (preset === 'flat') preset = 'flattish';
+    if (preset === 'islands') preset = 'archipelago';
+
+    const validPresets = ['standard', 'continental', 'archipelago', 'mountainous', 'flattish'];
+    if (!validPresets.includes(preset)) {
+      preset = 'standard';
+    }
     const seed = Number.isFinite(Number(worldSeed)) ? Math.floor(Number(worldSeed)) : Math.floor(Math.random() * 9999999);
     const realmId = `realm_${crypto.randomUUID().substring(0, 8)}`;
 

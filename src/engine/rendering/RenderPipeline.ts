@@ -149,6 +149,7 @@ export class RenderPipeline {
     this.currentHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
 
     this.initPipeline();
+    this.initGpuTimer();
   }
 
   private calculateBloomResolution(width: number, height: number): [number, number] {
@@ -283,7 +284,50 @@ export class RenderPipeline {
     }
   }
 
+  public lastGpuTimeMs: number = 0;
+  private timerExtension: any = null;
+  private gpuQuery: any = null;
+  private isQueryActive: boolean = false;
+
+  private initGpuTimer(): void {
+    try {
+      const gl = this.renderer.getContext();
+      if (gl && typeof (gl as any).getExtension === 'function') {
+        this.timerExtension = (gl as any).getExtension('EXT_disjoint_timer_query_webgl2');
+        if (this.timerExtension && typeof (gl as any).createQuery === 'function') {
+          this.gpuQuery = (gl as any).createQuery();
+        }
+      }
+    } catch {
+      // Fallback to CPU timer if extension unsupported
+    }
+  }
+
+  public getGpuTimeMs(): number {
+    return this.lastGpuTimeMs;
+  }
+
   public render(deltaTime: number, isEyesInWater: boolean = false, exposure: number = 1.0): void {
+    const gl = this.renderer.getContext() as any;
+    let queryBegan = false;
+
+    if (this.timerExtension && this.gpuQuery && gl) {
+      if (this.isQueryActive) {
+        const available = gl.getQueryParameter(this.gpuQuery, gl.QUERY_RESULT_AVAILABLE);
+        const disjoint = gl.getParameter(this.timerExtension.GPU_DISJOINT_EXT);
+        if (available && !disjoint) {
+          const timeNs = gl.getQueryParameter(this.gpuQuery, gl.QUERY_RESULT);
+          this.lastGpuTimeMs = timeNs / 1e6;
+          gl.beginQuery(this.timerExtension.TIME_ELAPSED_EXT, this.gpuQuery);
+          queryBegan = true;
+        }
+      } else {
+        gl.beginQuery(this.timerExtension.TIME_ELAPSED_EXT, this.gpuQuery);
+        this.isQueryActive = true;
+        queryBegan = true;
+      }
+    }
+
     if (this.isPostProcessingActive && this.composer) {
       if (this.postPass) {
         this.postPass.uniforms.uTime.value += deltaTime;
@@ -293,6 +337,10 @@ export class RenderPipeline {
       this.composer.render(deltaTime);
     } else {
       this.renderer.render(this.scene, this.camera);
+    }
+
+    if (queryBegan && gl) {
+      gl.endQuery(this.timerExtension.TIME_ELAPSED_EXT);
     }
   }
 

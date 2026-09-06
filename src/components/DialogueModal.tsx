@@ -10,6 +10,7 @@ interface DialogueModalProps {
   entity: EntityState;
   inventory: (ItemStack | null)[];
   setInventory: React.Dispatch<React.SetStateAction<(ItemStack | null)[]>>;
+  timeOfDay?: number;
   onClose: () => void;
 }
 
@@ -17,6 +18,7 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
   entity,
   inventory,
   setInventory,
+  timeOfDay = 12.0,
   onClose,
 }) => {
   const [dialogueIndex, setDialogueIndex] = useState(0);
@@ -35,7 +37,7 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
   let discountPercent = 0;
 
   if (settlement) {
-    const npcData = SettlementManager.getNPCDialogue(entity.modelType || entity.id, false, settlement.id);
+    const npcData = SettlementManager.getNPCDialogue(entity.modelType || entity.id, false, settlement.id, timeOfDay);
     dialogueLines = npcData.lines;
     trades = npcData.trades || [];
     npcName = npcData.name;
@@ -47,7 +49,7 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
   } else {
     const roleDef = NPCScheduleManager.getRoleDef(npcRole);
     roleTitle = roleDef.titleIndonesian;
-    const sched = NPCScheduleManager.getActiveSchedule(npcRole, 12);
+    const sched = NPCScheduleManager.getActiveSchedule(npcRole, timeOfDay);
     scheduleActivity = sched.activityName;
     scheduleDescription = sched.activityDescription;
   }

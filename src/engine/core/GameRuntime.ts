@@ -28,7 +28,7 @@ import { GameEventBus } from '../events/GameEventBus';
 import { FurnaceManager } from '../world/FurnaceManager';
 import { FarmingManager } from '../world/FarmingManager';
 import { GameStatsManager } from '../player/GameStatsManager';
-import { WorldPreset } from '../world/WorldConfig';
+import { WorldPreset, parseDimensionChunkKey } from '../world/WorldConfig';
 import { FirstPersonViewmodel } from '../player/FirstPersonViewmodel';
 import { CameraMotionSystem } from '../player/CameraMotionSystem';
 import { ArtifactSynergyManager } from '../artifacts/ArtifactSynergyManager';
@@ -408,6 +408,13 @@ export class GameRuntime {
     this.worldStreamingSystem = new WorldStreamingSystem(this);
     this.environmentSystem = new EnvironmentSystem(this);
     this.persistenceSystem = new PersistenceSystem(this);
+
+    // Pre-warm materials, shaders, & pipeline programs to eliminate runtime stutter
+    try {
+      this.renderer.compile(this.scene, this.camera);
+    } catch {
+      // Ignore pre-warm failure if GL context not fully initialized
+    }
     this.telemetrySystem = new TelemetrySystem(this);
     this.renderSystem = new RenderSystem(this);
 
@@ -629,26 +636,27 @@ export class GameRuntime {
   public async changeDimension(dimensionId: string): Promise<void> {
     Logger.info('GameRuntime', `Changing dimension to ${dimensionId}...`);
     
+    // 1. Save persistent state before tear down
     if (this.persistenceSystem) {
       await this.persistenceSystem.saveGame();
     }
     
-    this.scene.remove(this.world.worldGroup);
-    this.world.chunks.forEach(chunk => chunk.dispose());
-    this.world.chunks.clear();
-    // dirty queue clear omitted
-    // integration queue omitted
-    
-    
-    // Sync current world modifications to global state before clearing
+    // 2. Sync current world modifications to global state
     const currentSerialized = SaveManager.serializeModifiedBlocks(this.world);
     this.globalModifiedBlocks = { ...this.globalModifiedBlocks, ...currentSerialized };
 
-    this.world = new VoxelWorld(this.seed, this.world.preset, dimensionId);
+    // 3. Teardown / Dispose Old World instance
+    const oldPreset = this.world ? this.world.preset : 'standard';
+    this.scene.remove(this.world.worldGroup);
+    this.world.dispose();
+
+    // 4. Instantiate New VoxelWorld for target dimension
+    this.world = new VoxelWorld(this.seed, oldPreset, dimensionId);
     
-    // Hydrate the new world with its specific modified blocks from global state
+    // 5. Hydrate the new world with its specific modified blocks from global state
     Object.entries(this.globalModifiedBlocks).forEach(([chunkKey, blocks]) => {
-      if (chunkKey.startsWith(dimensionId + ':') || (dimensionId === 'overworld' && !chunkKey.includes(':'))) {
+      const parsed = parseDimensionChunkKey(chunkKey);
+      if (parsed.dimensionId === dimensionId) {
         const localMap = new Map<string, number>();
         Object.entries(blocks).forEach(([localKey, blockType]) => {
           localMap.set(localKey, blockType as number);
@@ -659,16 +667,20 @@ export class GameRuntime {
 
     this.scene.add(this.world.worldGroup);
     
-    if (dimensionId === 'aether_expanse') {
-       // Using the profile directly instead of custom colors if we implement it that way
-       // The environment system should automatically pick it up via BiomeManager!
-       // So we just need to reset player position to island height!
+    // 6. Rebind World-Dependent Systems
+    AetherNetworkManager.getInstance().setWorld(this.world);
+    if (this.worldStreamingSystem) {
+      this.worldStreamingSystem.forceUpdate();
     }
     
-    this.player.position.set(0, 100, 0);
+    // 7. Find safe spawn & preload spawn chunks
+    const safeSpawn = this.world.findSafeSpawn(this.seed);
+    this.world.preloadSpawnChunks(safeSpawn[0], safeSpawn[2], 2);
+
+    this.player.position.set(safeSpawn[0], safeSpawn[1], safeSpawn[2]);
     this.player.velocity.set(0, 0, 0);
     
-    Logger.info('GameRuntime', `Dimension change complete.`);
+    Logger.info('GameRuntime', `Dimension change complete to ${dimensionId}. Safe spawn at [${safeSpawn.map(n => typeof n === 'number' ? n.toFixed(1) : n).join(', ')}].`);
   }
 
 

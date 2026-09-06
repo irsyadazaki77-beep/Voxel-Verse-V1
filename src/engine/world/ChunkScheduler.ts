@@ -77,12 +77,82 @@ export class ChunkScheduler {
     return this.dirtyQueue.size;
   }
 
+  public static buildHaloBuffer(chunk: Chunk, world: VoxelWorld): ArrayBuffer {
+    const halo = new Uint8Array(18 * 128 * 18);
+    const center = chunk.blocks;
+    if (!center) return halo.buffer;
+
+    const cx = chunk.cx;
+    const cz = chunk.cz;
+
+    // 1. Copy center chunk (16x128x16) into px: 1..16, pz: 1..16
+    for (let ly = 0; ly < 128; ly++) {
+      const srcY = ly * 256;
+      const dstY = ly * 324;
+      for (let lz = 0; lz < 16; lz++) {
+        const srcOffset = lz * 16 + srcY;
+        const dstOffset = (lz + 1) * 18 + 1 + dstY;
+        halo.set(center.subarray(srcOffset, srcOffset + 16), dstOffset);
+      }
+    }
+
+    // 2. Fill borders from 8 neighbors if present
+    const offsets = [
+      [-1, 0], [1, 0], [0, -1], [0, 1],
+      [-1, -1], [1, -1], [-1, 1], [1, 1]
+    ];
+
+    for (let i = 0; i < offsets.length; i++) {
+      const [ox, oz] = offsets[i];
+      const nChunkKey = world.getChunkKey(cx + ox, cz + oz);
+      const nChunk = world.chunks.get(nChunkKey);
+      if (!nChunk || !nChunk.blocks) continue;
+      const nBlocks = nChunk.blocks;
+
+      const srcLxStart = ox === 1 ? 0 : (ox === -1 ? 15 : 0);
+      const srcLxEnd = ox === 1 ? 0 : (ox === -1 ? 15 : 15);
+      const srcLzStart = oz === 1 ? 0 : (oz === -1 ? 15 : 0);
+      const srcLzEnd = oz === 1 ? 0 : (oz === -1 ? 15 : 15);
+
+      for (let ly = 0; ly < 128; ly++) {
+        const srcY = ly * 256;
+        const dstY = ly * 324;
+        for (let lz = srcLzStart; lz <= srcLzEnd; lz++) {
+          const pz = oz === 0 ? lz + 1 : (oz === -1 ? 0 : 17);
+          for (let lx = srcLxStart; lx <= srcLxEnd; lx++) {
+            const px = ox === 0 ? lx + 1 : (ox === -1 ? 0 : 17);
+            halo[px + pz * 18 + dstY] = nBlocks[lx + lz * 16 + srcY];
+          }
+        }
+      }
+    }
+
+    return halo.buffer;
+  }
+
+  private static spiralOffsets: [number, number][] = [];
+  private static initializedOffsets = false;
+
+  private static initSpiralOffsets(): void {
+    if (this.initializedOffsets) return;
+    this.initializedOffsets = true;
+    const maxR = 24;
+    for (let dx = -maxR; dx <= maxR; dx++) {
+      for (let dz = -maxR; dz <= maxR; dz++) {
+        this.spiralOffsets.push([dx, dz]);
+      }
+    }
+    this.spiralOffsets.sort((a, b) => (a[0] * a[0] + a[1] * a[1]) - (b[0] * b[0] + b[1] * b[1]));
+  }
+
   public update(
     playerPos: THREE.Vector3,
     cameraDir: THREE.Vector3,
     renderDistance: number = 4,
     frameBudgetMs: number = 3.0
   ): void {
+    ChunkScheduler.initSpiralOffsets();
+    
     const startTime = performance.now();
     const playerCX = Math.floor(playerPos.x / CHUNK_SIZE_X);
     const playerCZ = Math.floor(playerPos.z / CHUNK_SIZE_Z);
@@ -96,15 +166,26 @@ export class ChunkScheduler {
     let tasksEnqueuedThisFrame = 0;
     const maxNewTasksPerCall = 4; // Prevent worker starvation / CPU spike
 
-    for (let dx = -loadRadius; dx <= loadRadius; dx++) {
-      for (let dz = -loadRadius; dz <= loadRadius; dz++) {
-        const distSq = dx * dx + dz * dz;
-        if (distSq <= loadRadiusSq) {
-          const cx = playerCX + dx;
-          const cz = playerCZ + dz;
-          const key = this.world.getChunkKey(cx, cz);
+    discoveryLoop:
+    for (let i = 0; i < ChunkScheduler.spiralOffsets.length; i++) {
+      const [dx, dz] = ChunkScheduler.spiralOffsets[i];
+      const distSq = dx * dx + dz * dz;
+      
+      if (distSq > loadRadiusSq) {
+        // Since offsets are sorted by distance, we can safely stop checking further
+        break discoveryLoop;
+      }
 
-          const isVeryNear = distSq <= 4; // 2 chunks radius close-range fail-safe
+      const isVeryNear = distSq <= 4; // 2 chunks radius close-range fail-safe
+
+      // Enforce frame budget check unless very near player
+      if (!isVeryNear && performance.now() - startTime >= frameBudgetMs) {
+        break discoveryLoop;
+      }
+
+      const cx = playerCX + dx;
+      const cz = playerCZ + dz;
+      const key = this.world.getChunkKey(cx, cz);
 
           if (!this.world.chunks.has(key)) {
             // Check Warm Cache first (fast synchronous recovery)
@@ -143,6 +224,7 @@ export class ChunkScheduler {
                 cz,
                 seed: this.world.seed,
                 preset: this.world.preset,
+                dimensionId: this.world.dimensionId,
                 priority,
                 sessionToken: this.workerPool.currentSessionToken,
                 modifiedBlocks: modBlocksObj,
@@ -172,8 +254,6 @@ export class ChunkScheduler {
               });
             }
           }
-        }
-      }
     }
 
     // Cancel queued tasks for chunks that are now out of range
@@ -183,14 +263,26 @@ export class ChunkScheduler {
     for (const [key, chunk] of this.world.chunks.entries()) {
       const dx = chunk.cx - playerCX;
       const dz = chunk.cz - playerCZ;
+      const distSq = dx * dx + dz * dz;
 
-      if (dx * dx + dz * dz > unloadRadiusSq) {
+      if (distSq > unloadRadiusSq) {
         this.world.worldGroup.remove(chunk.group);
         this.world.chunks.delete(key);
         this.dirtyQueue.delete(key);
 
-        // Place into Warm Cache for 10 seconds before full disposal
+        // Place into Warm Cache for 10 seconds before full disposal (capped at 100 entries)
+        if (this.warmCache.size >= 100) {
+          const oldestKey = this.warmCache.keys().next().value;
+          if (oldestKey !== undefined) {
+            const old = this.warmCache.get(oldestKey);
+            if (old) old.chunk.dispose();
+            this.warmCache.delete(oldestKey);
+          }
+        }
         this.warmCache.set(key, { chunk, unloadTime: Date.now() });
+      } else {
+        // Update Shadow LOD based on distance
+        chunk.updateShadowLOD(distSq);
       }
     }
 
@@ -211,7 +303,25 @@ export class ChunkScheduler {
     let meshingTasksEnqueued = 0;
     const maxMeshTasksPerCall = 3;
 
-    for (const key of this.dirtyQueue) {
+    // Convert Set to Array and sort by distance to prevent near-chunk starvation
+    const dirtyBatch = Array.from(this.dirtyQueue);
+    dirtyBatch.sort((a, b) => {
+      const ca = this.world.chunks.get(a);
+      const cb = this.world.chunks.get(b);
+      if (!ca) return 1;
+      if (!cb) return -1;
+      const da = (ca.cx - playerCX) ** 2 + (ca.cz - playerCZ) ** 2;
+      const db = (cb.cx - playerCX) ** 2 + (cb.cz - playerCZ) ** 2;
+      return da - db;
+    });
+
+    for (const key of dirtyBatch) {
+      // Guarantee at least some meshing progress even if generation took the whole budget,
+      // but break if we exceed the budget and have already enqueued tasks.
+      if (meshingTasksEnqueued >= maxMeshTasksPerCall || (meshingTasksEnqueued > 0 && performance.now() - startTime >= frameBudgetMs)) {
+        break;
+      }
+
       const chunk = this.world.chunks.get(key);
       if (chunk && chunk.isDirty && chunk.state !== ChunkState.QUEUED && chunk.state !== ChunkState.GENERATING && chunk.state !== ChunkState.MESHING) {
         const cx = chunk.cx;
@@ -226,17 +336,8 @@ export class ChunkScheduler {
           break; // Stop enqueuing far meshes if limit is hit
         }
 
-        // Prepare neighbor buffers using zero-allocation coordinate offsets
-        const neighborBuffers: Record<string, ArrayBuffer> = {};
-        for (let i = 0; i < ChunkScheduler.NEIGHBOR_OFFSETS.length; i++) {
-          const [ox, oz] = ChunkScheduler.NEIGHBOR_OFFSETS[i];
-          const nx = cx + ox;
-          const nz = cz + oz;
-          const nChunk = this.world.chunks.get(this.world.getChunkKey(nx, nz));
-          if (nChunk && nChunk.blocks) {
-            neighborBuffers[`${nx}_${nz}`] = nChunk.blocks.buffer;
-          }
-        }
+        // Build compact 18x128x18 halo buffer (41.4 KB transferable vs 295 KB 9 full chunks)
+        const haloBuffer = ChunkScheduler.buildHaloBuffer(chunk, this.world);
 
         chunk.state = ChunkState.MESHING;
         chunk.isDirty = false;
@@ -266,8 +367,9 @@ export class ChunkScheduler {
           sourceRevision: chunkSourceRev,
           priority: meshPriority,
           sessionToken: this.workerPool.currentSessionToken,
+          haloBuffer,
           centerBuffer: chunk.blocks!.buffer,
-          neighborBuffers,
+          neighborBuffers: {},
           onComplete: (meshData, sourceRevision) => {
             const targetChunk = this.world.chunks.get(key);
             if (targetChunk) {
@@ -280,6 +382,7 @@ export class ChunkScheduler {
               );
               if (applied) {
                 targetChunk.state = ChunkState.READY;
+                targetChunk.updateShadowLOD(distSq);
                 uploads++;
               } else {
                 // Chunk voxels changed while worker was meshing; mark dirty so it re-meshes with new revision

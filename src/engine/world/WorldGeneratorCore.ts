@@ -28,7 +28,7 @@ export class WorldGeneratorCore {
     this.seed = seed;
     this.preset = preset;
     const basePreset = WORLD_PRESETS[preset] || WORLD_PRESETS.standard;
-    this.params = { ...basePreset, ...(config || {}) };
+    this.params = { dimensionId: 'overworld', ...basePreset, ...(config || {}) };
     this.regionManager = new CulturalRegionManager(seed);
 
     this.contNoise = new SimplexNoise(seed);
@@ -264,13 +264,45 @@ export class WorldGeneratorCore {
       }
     }
 
-    // 3. MULTI-BIOME PROCEDURAL STRUCTURES & TREES
-    const dominantRegion = this.regionManager.getDominantRegion(cx * 16 + 8, cz * 16 + 8);
-    let regionStructureGenerated = false;
+    // 3. MULTI-BIOME PROCEDURAL STRUCTURES & TREES (MULTI-CHUNK BLUEPRINTS)
+    // Check candidate structure origins from neighbor chunks [cx-2..cx+2, cz-2..cz+2]
+    for (let ocx = cx - 2; ocx <= cx + 2; ocx++) {
+      for (let ocz = cz - 2; ocz <= cz + 2; ocz++) {
+        const originHash = Math.abs(Math.imul(ocx, 73856093) ^ Math.imul(ocz, 19349663) ^ Math.imul(this.seed, 83492791));
+        if ((originHash % 33) === 0) {
+          const originWx = ocx * 16 + 8;
+          const originWz = ocz * 16 + 8;
+          const originRegion = this.regionManager.getDominantRegion(originWx, originWz);
+          if (originRegion.structurePool.length > 0) {
+            const sType = originRegion.structurePool[originHash % originRegion.structurePool.length];
+            const structBlocks = StructureGenerator.generateNusantaraStructure(sType);
+            if (structBlocks.length > 0) {
+              // Get ground height at originWx, originWz
+              const localOlx = 8, localOlz = 8;
+              const originY = (ocx === cx && ocz === cz) ? heightMap[localOlx + localOlz * 16] : p.seaLevel + 4;
+              if (originY >= p.seaLevel) {
+                for (const item of structBlocks) {
+                  const bWx = originWx + item.dx;
+                  const bWy = originY + 1 + item.dy;
+                  const bWz = originWz + item.dz;
 
-    // Check chunk-level cultural structure generation (3% chance per chunk)
-    const chunkHash = Math.abs(Math.imul(cx, 73856093) ^ Math.imul(cz, 19349663));
-    const shouldSpawnCultural = (chunkHash % 33) === 0;
+                  const targetCx = Math.floor(bWx / 16);
+                  const targetCz = Math.floor(bWz / 16);
+
+                  if (targetCx === cx && targetCz === cz && bWy >= 0 && bWy < 128) {
+                    const lx = bWx - cx * 16;
+                    const lz = bWz - cz * 16;
+                    blocks[getIndex(lx, bWy, lz)] = item.block;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const dominantRegion = this.regionManager.getDominantRegion(cx * 16 + 8, cz * 16 + 8);
 
     for (let lx = 3; lx < 13; lx++) {
       const wx = cx * 16 + lx;
@@ -280,23 +312,11 @@ export class WorldGeneratorCore {
         
         if (height < p.seaLevel + 1) continue;
 
-        // Generate Cultural Region Structure
-        if (!regionStructureGenerated && shouldSpawnCultural && lx === 8 && lz === 8 && dominantRegion.structurePool.length > 0) {
-           const pool = dominantRegion.structurePool;
-           const sType = pool[chunkHash % pool.length];
-           const structBlocks = StructureGenerator.generateNusantaraStructure(sType);
-           if (structBlocks.length > 0) {
-              this.applyStructureToChunkLocal(structBlocks, lx, height + 1, lz, blocks, getIndex);
-              regionStructureGenerated = true;
-              continue;
-           }
-        }
-        
         const topBlock = blocks[getIndex(lx, height, lz)];
         
         if (topBlock === 2) {
           const treeVal = this.detailNoise.noise2D(wx * 0.35 + 100, wz * 0.35 + 100);
-          const treeChance = dominantRegion.vegetationProfile.treeChance * 10; // Scaled to noise threshold
+          const treeChance = dominantRegion.vegetationProfile.treeChance * 10;
           if (treeVal > (1.0 - Math.min(0.25, treeChance))) {
             const primaryTrees = dominantRegion.vegetationProfile.primaryTrees;
             const treeKind = primaryTrees[(wx + wz) % primaryTrees.length];
@@ -409,7 +429,8 @@ export class WorldGeneratorCore {
 
   private generateSkyrootTree(wx: number, wy: number, wz: number): Record<string, number> {
     const blocks: Record<string, number> = {};
-    const height = Math.floor(6 + Math.random() * 4);
+    const posHash = Math.abs(Math.imul(wx, 31237) ^ Math.imul(wy, 654321) ^ Math.imul(wz, 99991) ^ this.seed);
+    const height = 6 + (posHash % 4);
     
     // Trunk
     for (let i = 0; i < height; i++) {
@@ -422,7 +443,8 @@ export class WorldGeneratorCore {
       for (let dx = -radius; dx <= radius; dx++) {
         for (let dz = -radius; dz <= radius; dz++) {
           if (dx === 0 && dz === 0 && y < wy + height) continue; // Skip inner trunk unless top
-          if (Math.abs(dx) === radius && Math.abs(dz) === radius && Math.random() > 0.5) continue; // Round corners
+          const cornerHash = Math.abs(Math.imul(wx + dx, 17) ^ Math.imul(y, 101) ^ Math.imul(wz + dz, 13) ^ this.seed);
+          if (Math.abs(dx) === radius && Math.abs(dz) === radius && (cornerHash % 2 === 0)) continue; // Round corners
           
           blocks[`${wx + dx},${y},${wz + dz}`] = BlockType.SKYROOT_LEAVES;
         }

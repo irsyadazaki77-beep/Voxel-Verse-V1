@@ -1356,49 +1356,58 @@ export class StructureGenerator {
     return blocks;
   }
 
+  private static structureCache: Map<string, VoxelBlockPlacement[]> = new Map();
+
   public static generateNusantaraStructure(type: string): VoxelBlockPlacement[] {
+    const cached = StructureGenerator.structureCache.get(type);
+    if (cached) return cached;
+
+    let result: VoxelBlockPlacement[];
     switch (type) {
       // Minang
-      case 'rumah_gadang': return NusantaraBuildingKit.generateRumahGadang(false);
-      case 'rangkiang': return NusantaraBuildingKit.generateRangkiang('si_bayau_bayau');
-      case 'surau': return NusantaraBuildingKit.generateSurau();
-      case 'sawah_gazebo': return NusantaraBuildingKit.generateRangkiang('sitinjau_lauik');
+      case 'rumah_gadang': result = NusantaraBuildingKit.generateRumahGadang(false); break;
+      case 'rangkiang': result = NusantaraBuildingKit.generateRangkiang('si_bayau_bayau'); break;
+      case 'surau': result = NusantaraBuildingKit.generateSurau(); break;
+      case 'sawah_gazebo': result = NusantaraBuildingKit.generateRangkiang('sitinjau_lauik'); break;
       // Jawa
-      case 'joglo': return NusantaraBuildingKit.generateJoglo();
-      case 'limasan': return NusantaraBuildingKit.generateLimasan();
-      case 'pendopo': return NusantaraBuildingKit.generatePendopo();
+      case 'joglo': result = NusantaraBuildingKit.generateJoglo(); break;
+      case 'limasan': result = NusantaraBuildingKit.generateLimasan(); break;
+      case 'pendopo': result = NusantaraBuildingKit.generatePendopo(); break;
       case 'candi':
-      case 'ancient_ruins': return NusantaraBuildingKit.generateAncientTempleComplex();
+      case 'ancient_ruins': result = NusantaraBuildingKit.generateAncientTempleComplex(); break;
       case 'gapura_bata':
-      case 'gapura': return NusantaraBuildingKit.generateGapuraMajapahit();
+      case 'gapura': result = NusantaraBuildingKit.generateGapuraMajapahit(); break;
       // Bali
       case 'pura':
-      case 'candi_bentar': return NusantaraBuildingKit.generateCandiBentar();
+      case 'candi_bentar': result = NusantaraBuildingKit.generateCandiBentar(); break;
       case 'kori_agung':
-      case 'kori_gate': return NusantaraBuildingKit.generateKoriAgung();
-      case 'subak_gate': return NusantaraBuildingKit.generateSubakWaterDivision();
-      case 'meru_tower': return NusantaraBuildingKit.generateMeruTower(5);
-      case 'bale_kulkul': return NusantaraBuildingKit.generatePendopo();
+      case 'kori_gate': result = NusantaraBuildingKit.generateKoriAgung(); break;
+      case 'subak_gate': result = NusantaraBuildingKit.generateSubakWaterDivision(); break;
+      case 'meru_tower': result = NusantaraBuildingKit.generateMeruTower(5); break;
+      case 'bale_kulkul': result = NusantaraBuildingKit.generatePendopo(); break;
       // Borneo
-      case 'betang': return NusantaraBuildingKit.generateRumahBetang(24);
-      case 'river_pier': return NusantaraBuildingKit.generateRiverPier(8);
-      case 'stilt_fishery': return NusantaraBuildingKit.generateRiverPier(6);
+      case 'betang': result = NusantaraBuildingKit.generateRumahBetang(24); break;
+      case 'river_pier': result = NusantaraBuildingKit.generateRiverPier(8); break;
+      case 'stilt_fishery': result = NusantaraBuildingKit.generateRiverPier(6); break;
       // Toraja
-      case 'tongkonan': return NusantaraBuildingKit.generateTongkonan();
+      case 'tongkonan': result = NusantaraBuildingKit.generateTongkonan(); break;
       case 'alang_granary':
-      case 'alang': return NusantaraBuildingKit.generateAlangSurap();
-      case 'cliff_vault': return NusantaraBuildingKit.generateCliffSanctuary();
+      case 'alang': result = NusantaraBuildingKit.generateAlangSurap(); break;
+      case 'cliff_vault': result = NusantaraBuildingKit.generateCliffSanctuary(); break;
       // Papua
-      case 'honai': return NusantaraBuildingKit.generateHonai();
-      case 'pilamo': return NusantaraBuildingKit.generateHonai();
-      case 'highland_watchpost': return NusantaraBuildingKit.generateSasakLumbung();
+      case 'honai': result = NusantaraBuildingKit.generateHonai(); break;
+      case 'pilamo': result = NusantaraBuildingKit.generateHonai(); break;
+      case 'highland_watchpost': result = NusantaraBuildingKit.generateSasakLumbung(); break;
       // Eastern Isles
-      case 'sasak_lumbung': return NusantaraBuildingKit.generateSasakLumbung();
+      case 'sasak_lumbung': result = NusantaraBuildingKit.generateSasakLumbung(); break;
       case 'uma_kalada':
-      case 'uma_mbaru': return NusantaraBuildingKit.generateUmaKalada();
-      case 'coastal_stilt': return NusantaraBuildingKit.generateRiverPier(8);
-      default: return [];
+      case 'uma_mbaru': result = NusantaraBuildingKit.generateUmaKalada(); break;
+      case 'coastal_stilt': result = NusantaraBuildingKit.generateRiverPier(8); break;
+      default: result = []; break;
     }
+
+    StructureGenerator.structureCache.set(type, result);
+    return result;
   }
 
 }
