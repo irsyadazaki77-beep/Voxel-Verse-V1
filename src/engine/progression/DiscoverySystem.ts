@@ -38,6 +38,14 @@ export class DiscoverySystem {
       this.recordDiscovery(data.biomeId, data.biomeName, 'biome', `Explored the ${data.biomeName} territory.`, 25, data.pos);
     });
 
+    GameEventBus.on('SETTLEMENT_VISITED', (data) => {
+      this.recordDiscovery(data.settlementId, data.name, 'structure', `Discovered regional settlement: ${data.name}.`, 50, data.pos);
+    });
+
+    GameEventBus.on('MONOLITH_ACTIVATED', (data) => {
+      this.recordDiscovery(data.monolithId, data.name, 'landmark', `Resonated with ancient Aether Leyline Conduit: ${data.name}.`, 60, data.pos);
+    });
+
     GameEventBus.on('STRUCTURE_DISCOVERED', (data) => {
       this.recordDiscovery(data.structureId, data.name, 'structure', `Uncovered ancient architectural site: ${data.name}.`, 40, data.pos);
     });

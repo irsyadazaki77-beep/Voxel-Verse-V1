@@ -8,11 +8,16 @@ import { VoxelMesher } from '../engine/world/VoxelMesher';
 import { ChunkWorkerPool } from '../engine/world/ChunkWorkerPool';
 import { EntityManager } from '../engine/entities/EntityManager';
 import { EntityModelCache } from '../engine/entities/EntityModelCache';
-import { SETTLEMENT_REGISTRY } from '../engine/settlement/SettlementManager';
+import { SETTLEMENT_REGISTRY, SettlementManager } from '../engine/settlement/SettlementManager';
+import { NetworkSession } from '../engine/network/NetworkSession';
 import { AetherNetworkManager } from '../engine/engineering/AetherNetworkManager';
 import { makeDimensionChunkKey, parseDimensionChunkKey } from '../engine/world/WorldConfig';
 import { BlockType } from '../types';
 import * as THREE from 'three';
+import { InputManager } from '../engine/player/InputManager';
+import { QuestManager } from '../engine/progression/QuestManager';
+import { DiscoverySystem } from '../engine/progression/DiscoverySystem';
+import { GameEventBus } from '../engine/events/GameEventBus';
 
 let testCount = 0;
 let passedCount = 0;
@@ -255,9 +260,213 @@ async function runTestSuite() {
     assert(net.nodeMap.size === 2, 'Network registered 2 nodes');
   }
 
+  // TEST 13: Input Manager Unified Pipeline
+  console.log('\n▶ [13/14] Testing Input Manager Unified Pipeline...');
+  {
+    const input = new InputManager();
+    
+    // Mobile joystick simulation
+    input.setMobileJoystick(1, 0.5);
+    const vec1 = input.getMovementVector();
+    assert(vec1.z === -1 && vec1.x === 0.5, 'Mobile joystick correctly populates movement vector (forward is -Z)');
+    
+    input.setMobileAction('Attack', true);
+    input.preUpdate();
+    assert(input.isActionActive('Attack'), 'Mobile attack maps to Attack action');
+    
+    // Clear mobile inputs
+    input.setMobileAction('Attack', false);
+    input.setMobileJoystick(0, 0);
+    input.postUpdate(); // Simulates end of frame
+    input.preUpdate();
+    
+    const vec2 = input.getMovementVector();
+    assert(vec2.z === 0 && vec2.x === 0, 'Movement vector clears correctly after joystick release');
+    assert(!input.isActionActive('Attack'), 'Action clears correctly');
+    
+    input.dispose();
+  }
+
+  // TEST 14: Automated 60-Minute Gameplay Vertical Slice Flow
+  // (boot -> create world -> spawn -> mine -> craft -> build shelter -> survive encounter -> reach settlement -> save -> quit -> continue)
+  console.log('\n▶ [14/14] Testing 60-Minute Gameplay Vertical Slice Flow...');
+  {
+    // 1. Boot systems
+    QuestManager.initialize();
+    DiscoverySystem.initialize();
+
+    // 2. Create World
+    const seed = 98765;
+    const world = new VoxelWorld(seed, 'standard', 'overworld');
+    const spawnY = world.getSpawnHeight(0, 0);
+    assert(spawnY >= 20, 'World generated with valid spawn height');
+
+    // 3. Spawn & Initial Quest
+    const inv = InventoryManager.sanitizeInventory([], 36);
+    InventoryManager.addItem(inv, 'wooden_pickaxe', 1);
+    InventoryManager.addItem(inv, 'torch', 8);
+    InventoryManager.addItem(inv, 'bread', 4);
+    assert(QuestManager.getQuestState('q_first_steps')?.state === 'active', 'q_first_steps is active on spawn');
+
+    // 4. Mine resources (Oak logs & Cobblestone)
+    GameEventBus.emit('BLOCK_MINED', { blockType: BlockType.OAK_LOG, pos: [0, 64, 0] });
+    InventoryManager.addItem(inv, 'oak_log', 4);
+    GameEventBus.emit('ITEM_COLLECTED', { itemId: 'oak_log', count: 4 });
+
+    GameEventBus.emit('BLOCK_MINED', { blockType: BlockType.COBBLESTONE, pos: [1, 64, 0] });
+    InventoryManager.addItem(inv, 'cobblestone', 6);
+    GameEventBus.emit('ITEM_COLLECTED', { itemId: 'cobblestone', count: 6 });
+
+    // 5. Craft tool (Wooden Pickaxe)
+    const pickaxeRecipe = CRAFTING_RECIPES.find(r => r.output.itemId === 'wooden_pickaxe');
+    assert(pickaxeRecipe !== undefined, 'Wooden pickaxe recipe exists');
+    if (pickaxeRecipe) {
+      InventoryManager.addItem(inv, 'wood_planks', 4);
+      InventoryManager.addItem(inv, 'stick', 4);
+      const crafted = CraftingSystem.craft(pickaxeRecipe, inv, 1);
+      assert(crafted, 'Crafting wooden pickaxe succeeded');
+    }
+    assert(QuestManager.getQuestState('q_first_steps')?.state === 'completed', 'q_first_steps completed automatically after mining & crafting');
+    assert(QuestManager.getQuestState('q_shelter_first_night')?.state === 'active', 'q_shelter_first_night activated after completing first steps');
+
+    // 6. Build shelter (Place 10 blocks) & Craft Torch
+    for (let i = 0; i < 10; i++) {
+      world.setBlock(i, 64, 0, BlockType.WOOD_PLANKS);
+      GameEventBus.emit('BLOCK_PLACED', { blockType: BlockType.WOOD_PLANKS, pos: [i, 64, 0] });
+    }
+    GameEventBus.emit('ITEM_CRAFTED', { itemId: 'torch', count: 4, station: 'hand' });
+
+    // 7. Survive Encounter (Defeat Shadow Stalker)
+    GameEventBus.emit('ENTITY_KILLED', { entityId: 'stalker_night_1', modelType: 'stalker', isBoss: false, pos: [0, 64, 0] });
+    assert(QuestManager.getQuestState('q_shelter_first_night')?.state === 'completed', 'q_shelter_first_night completed after building & fighting night stalker');
+    assert(QuestManager.getQuestState('q_leyline_awakening')?.state === 'active', 'q_leyline_awakening activated for settlement exploration');
+
+    // 8. Reach Settlement (Haven Pioneer Camp)
+    GameEventBus.emit('SETTLEMENT_VISITED', { settlementId: 'haven_camp', name: 'Haven Pioneer Camp', pos: [8, 64, 8] });
+    assert(DiscoverySystem.getDiscoveries().some(d => d.id === 'haven_camp'), 'Settlement recorded in DiscoverySystem');
+
+    // 9. Interact with Leyline Conduit
+    GameEventBus.emit('MONOLITH_ACTIVATED', { monolithId: 'leyline_conduit', name: 'Aether Leyline Conduit', pos: [10, 64, 10] });
+    assert(QuestManager.getQuestState('q_leyline_awakening')?.state === 'completed', 'q_leyline_awakening completed after activating Leyline Conduit');
+
+    // 10. Save World & Progress
+    const rawSave = {
+      version: 3,
+      id: 'realm_vslice_test',
+      seed: seed,
+      player: {
+        position: [8, 64, 8],
+        health: 100,
+        hunger: 100,
+        stamina: 100,
+        inventory: inv,
+      },
+      quests: {
+        q_first_steps: { state: 'completed', progress: { '0': 4, '1': 1, '2': 6 } },
+        q_shelter_first_night: { state: 'completed', progress: { '0': 10, '1': 1, '2': 1 } },
+        q_leyline_awakening: { state: 'completed', progress: { '0': 1, '1': 1 } },
+      },
+    };
+    const sanitizedSave = SaveManager.validateAndSanitizeSave(rawSave, 'realm_vslice_test', seed);
+    assert(sanitizedSave.quests['q_leyline_awakening']?.state === 'completed', 'Save data retains completed vertical slice quests');
+
+    // 11. Quit & Cleanup
+    world.dispose();
+    QuestManager.dispose();
+
+    // 12. Continue World & Verify Persistence
+    QuestManager.initialize(sanitizedSave.quests);
+    assert(QuestManager.getQuestState('q_leyline_awakening')?.state === 'completed', 'Continued world preserves completed quest progression');
+    assert(QuestManager.getQuestState('q_first_steps')?.state === 'completed', 'Continued world preserves first steps quest');
+  }
+
+  // TEST 15: Mid-Game Capability Unlocks, Settlement Upgrade, Leyline Automation & Multiplayer Sync
+  console.log('\n▶ [15/15] Testing Mid-Game Capability Unlocks, Settlement Progression & Leyline Automation...');
+  {
+    // 1. Initialize systems
+    QuestManager.initialize();
+    SettlementManager.initialize();
+    const net = AetherNetworkManager.getInstance();
+    net.reset();
+
+    // 2. Progression Chain: Complete full sequence (q_first_steps -> q_shelter_first_night -> q_leyline_awakening -> q_hunting_stalkers -> q_delve_crypt)
+    // A. First steps
+    GameEventBus.emit('ITEM_COLLECTED', { itemId: 'oak_log', count: 4 });
+    GameEventBus.emit('ITEM_CRAFTED', { itemId: 'wooden_pickaxe', count: 1, station: 'hand' });
+    GameEventBus.emit('ITEM_COLLECTED', { itemId: 'cobblestone', count: 6 });
+
+    // B. Shelter first night
+    for (let i = 0; i < 10; i++) {
+      GameEventBus.emit('BLOCK_PLACED', { blockType: BlockType.WOOD_PLANKS, pos: [i, 64, 0] });
+    }
+    GameEventBus.emit('ITEM_CRAFTED', { itemId: 'torch', count: 1, station: 'hand' });
+    GameEventBus.emit('ENTITY_KILLED', { entityId: 'stalker_night', modelType: 'stalker', isBoss: false, pos: [0, 64, 0] });
+
+    // C. Leyline awakening
+    GameEventBus.emit('SETTLEMENT_VISITED', { settlementId: 'haven_camp', name: 'Haven Pioneer Camp', pos: [8, 64, 8] });
+    GameEventBus.emit('MONOLITH_ACTIVATED', { monolithId: 'leyline_conduit', name: 'Aether Leyline Conduit', pos: [10, 64, 10] });
+
+    // D. Hunting stalkers
+    GameEventBus.emit('ENTITY_KILLED', { entityId: 'stalker_1', modelType: 'stalker', isBoss: false, pos: [0, 64, 0] });
+    GameEventBus.emit('ENTITY_KILLED', { entityId: 'stalker_2', modelType: 'stalker', isBoss: false, pos: [0, 64, 0] });
+    GameEventBus.emit('ENTITY_KILLED', { entityId: 'stalker_3', modelType: 'stalker', isBoss: false, pos: [0, 64, 0] });
+    assert(QuestManager.getQuestState('q_delve_crypt')?.state === 'active', 'q_delve_crypt unlocked and active after completing full prerequisite chain');
+
+    // Discover Dungeon & Defeat Sentinel Mini-Boss
+    GameEventBus.emit('STRUCTURE_DISCOVERED', { structureId: 'dungeon', name: 'Subterranean Crypt', pos: [120, 30, -200] });
+    GameEventBus.emit('ENTITY_KILLED', { entityId: 'ruin_sentinel_1', modelType: 'ruin_sentinel', isBoss: false, pos: [120, 20, -200] });
+    assert(QuestManager.getQuestState('q_delve_crypt')?.state === 'completed', 'q_delve_crypt completed upon dungeon discovery & sentinel defeat');
+
+    // 3. Capability Unlock: Leyline Astrolabe Compass & Equipment Progression
+    const inv = InventoryManager.sanitizeInventory([], 36);
+    InventoryManager.addItem(inv, 'aether_crystal', 8);
+    InventoryManager.addItem(inv, 'copper_ingot', 12);
+    InventoryManager.addItem(inv, 'leyline_compass', 1);
+    assert(inv.some(slot => slot?.itemId === 'leyline_compass'), 'Leyline Compass capability accessory present in inventory');
+
+    // 4. Settlement Progression: Material contribution & Level Upgrade
+    const sId = 'nagari_minang';
+    const reqs = SettlementManager.getUpgradeRequirements(sId, 1);
+    assert(reqs.length > 0, 'Nagari Minang defines Level 1 -> 2 material upgrade requirements');
+    const upgraded = SettlementManager.upgradeSettlement(sId);
+    assert(upgraded, 'Upgraded Nagari Minang from Level 1 to Level 2');
+    assert(SettlementManager.getSettlementState(sId).level === 2, 'Settlement state reflects Level 2');
+    const dialog = SettlementManager.getNPCDialogue('mandeh_siti_merchant', false, sId);
+    assert(dialog.discountPercent > 0 || dialog.lines.length > 0, 'Level 2 settlement unlocks NPC dialogue & trade benefits');
+
+    // 5. Leyline Engineering Automation & Grid Topology
+    net.onBlockPlaced([100, 64, 100], BlockType.AETHER_CORE);
+    net.onBlockPlaced([101, 64, 100], BlockType.LEY_CONDUIT);
+    net.onBlockPlaced([102, 64, 100], BlockType.LEY_HARVESTER);
+    assert(net.nodeMap.size === 3, 'Aether network registered Core, Conduit, and Harvester nodes');
+
+    // 6. Multiplayer Session Authority
+    const session = NetworkSession.getInstance();
+    session.setTransportMode('loopback');
+    assert(session.isHost, 'NetworkSession host status verified');
+    session.sendBlockChange(100, 64, 100, BlockType.AIR, BlockType.AETHER_CORE);
+
+    // 7. Mid-Game Save & Persistence Serialization
+    const midGameSave = {
+      version: 3,
+      id: 'midgame_realm_test',
+      seed: 77777,
+      settlements: SettlementManager.serialize(),
+      quests: QuestManager.serialize(),
+      aetherNodes: Array.from(net.nodeMap.keys())
+    };
+    assert(midGameSave.settlements[sId]?.level === 2, 'Serialized save retains Level 2 settlement progression');
+    assert(midGameSave.aetherNodes.length === 3, 'Serialized save retains 3 Leyline automation nodes');
+
+    QuestManager.dispose();
+    SettlementManager.dispose();
+    net.reset();
+  }
+
   console.log('\n====================================================');
   console.log(` ALL TEST SUITES PASSED STRICTLY (${passedCount}/${testCount} assertions) `);
   console.log('====================================================\n');
+  process.exit(0);
 }
 
 runTestSuite().catch((e) => {

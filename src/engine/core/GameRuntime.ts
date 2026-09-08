@@ -506,6 +506,7 @@ export class GameRuntime {
 
   public addItemToInventory(itemId: string, count: number): void {
     InventoryManager.addItem(this.inventory, itemId, count);
+    GameEventBus.emit('ITEM_COLLECTED', { itemId, count });
     this.emitInventoryUpdated();
   }
 
@@ -728,21 +729,24 @@ export class GameRuntime {
       this.player.applyDamageFeedback();
     }, this.sky.timeOfDay || 12);
 
-    // 4. Input Mouse Pitch/Yaw Sync & Hotbar Wheel Cycling
-    if (this.inputManager.isPointerLocked) {
+    // 4. Input Sync (Mouse/Mobile/Gamepad Pitch/Yaw & Hotbar Wheel)
+    this.inputManager.preUpdate();
+    
+    const lookDeltas = this.inputManager.getLookDeltas();
+    if (lookDeltas.dx !== 0 || lookDeltas.dy !== 0) {
       this.player.handleMouseMove(
-        this.inputManager.mouseDeltaX,
-        this.inputManager.mouseDeltaY,
+        lookDeltas.dx,
+        lookDeltas.dy,
         this.settings.controls.mouseSensitivity,
         this.settings.controls.invertY
       );
+    }
 
-      if (this.inputManager.mouseWheelDelta !== 0) {
-        const delta = Math.sign(this.inputManager.mouseWheelDelta);
-        this.activeHotbarIndex = (this.activeHotbarIndex + delta + 9) % 9;
-        if (this.callbacks.onActiveHotbarIndexChanged) {
-          this.callbacks.onActiveHotbarIndexChanged(this.activeHotbarIndex);
-        }
+    if (this.inputManager.mouseWheelDelta !== 0) {
+      const delta = Math.sign(this.inputManager.mouseWheelDelta);
+      this.activeHotbarIndex = (this.activeHotbarIndex + delta + 9) % 9;
+      if (this.callbacks.onActiveHotbarIndexChanged) {
+        this.callbacks.onActiveHotbarIndexChanged(this.activeHotbarIndex);
       }
     }
     this.player.syncInputs(this.inputManager, this.gameMode);

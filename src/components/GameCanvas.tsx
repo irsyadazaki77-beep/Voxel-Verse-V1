@@ -328,7 +328,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           onClick={() => {
             containerRef.current?.requestPointerLock();
           }}
-          className="absolute inset-0 z-40 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center cursor-pointer select-none animate-fade-in"
+          className="absolute inset-0 z-40 bg-black/40 backdrop-blur-[2px] hidden md:flex flex-col items-center justify-center cursor-pointer select-none animate-fade-in"
         >
           <div className="bg-[#0c0e14]/90 border border-sky-400/40 p-6 rounded-3xl shadow-2xl text-center space-y-3 max-w-sm pointer-events-auto">
             <div className="w-12 h-12 mx-auto rounded-2xl bg-sky-500/20 border border-sky-400 flex items-center justify-center text-sky-400 text-xl font-bold animate-bounce">
@@ -515,35 +515,40 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       <MobileControls
         onMove={(forward, strafe) => {
           if (runtimeRef.current) {
-            runtimeRef.current.player.keys.forward = forward > 0.3;
-            runtimeRef.current.player.keys.backward = forward < -0.3;
-            runtimeRef.current.player.keys.left = strafe < -0.3;
-            runtimeRef.current.player.keys.right = strafe > 0.3;
+            runtimeRef.current.inputManager.setMobileJoystick(forward, strafe);
           }
         }}
-        onJump={() => {
+        onLook={(dx, dy) => {
           if (runtimeRef.current) {
-            runtimeRef.current.player.keys.jump = true;
-            setTimeout(() => {
-              if (runtimeRef.current) runtimeRef.current.player.keys.jump = false;
-            }, 150);
+            runtimeRef.current.inputManager.setMobileLook(dx, dy);
           }
         }}
-        onSprint={() => {
+        onJump={(active) => {
           if (runtimeRef.current) {
-            runtimeRef.current.player.keys.sprint = !runtimeRef.current.player.keys.sprint;
+            runtimeRef.current.inputManager.setMobileAction('Jump', active);
           }
         }}
-        onAttack={() => {
+        onSprint={(active) => {
           if (runtimeRef.current) {
-            runtimeRef.current.player.triggerSwing();
+            runtimeRef.current.inputManager.setMobileAction('Sprint', active);
           }
         }}
-        onPlace={() => {
-          // Block placement action
+        onAttack={(active) => {
+          if (runtimeRef.current) {
+            runtimeRef.current.inputManager.setMobileAction('Attack', active);
+          }
         }}
-        onOpenInventory={() => setModal('inventory')}
-        onOpenCrafting={() => setModal('crafting')}
+        onPlace={(active) => {
+          if (runtimeRef.current) {
+            runtimeRef.current.inputManager.setMobileAction('Use', active);
+          }
+        }}
+        onOpenInventory={() => {
+          if (runtimeRef.current) runtimeRef.current.inputManager.triggerMobileAction('Inventory');
+        }}
+        onOpenCrafting={() => {
+          if (runtimeRef.current) runtimeRef.current.inputManager.triggerMobileAction('Crafting');
+        }}
       />
     </div>
   );

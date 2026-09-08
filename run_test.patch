@@ -1,0 +1,45 @@
+--- src/tests/runTests.ts
++++ src/tests/runTests.ts
+@@ -10,6 +10,7 @@
+ import { AetherNetworkManager } from '../engine/engineering/AetherNetworkManager';
+ import { SETTLEMENT_REGISTRY } from '../engine/world/NusantaraSettlementGenerator';
+ import { parseDimensionChunkKey, makeDimensionChunkKey } from '../engine/storage/SaveManager';
++import { InputManager } from '../engine/player/InputManager';
+ 
+ let testCount = 0;
+ let passedCount = 0;
+@@ -213,9 +214,35 @@
+     assert(net.nodeMap.size === 2, 'Network registered 2 nodes');
+   }
+ 
++  // TEST 13: Input Manager Unified Pipeline
++  console.log('\n▶ [13/13] Testing Input Manager Unified Pipeline...');
++  {
++    const input = new InputManager();
++    
++    // Mobile joystick simulation
++    input.setMobileJoystick(1, 0.5);
++    const vec1 = input.getMovementVector();
++    assert(vec1.z === -1 && vec1.x === 0.5, 'Mobile joystick correctly populates movement vector (forward is -Z)');
++    
++    input.setMobileAction('Attack', true);
++    input.preUpdate();
++    assert(input.isActionActive('Attack'), 'Mobile attack maps to Attack action');
++    
++    // Clear mobile inputs
++    input.setMobileAction('Attack', false);
++    input.setMobileJoystick(0, 0);
++    input.postUpdate(); // Simulates end of frame
++    input.preUpdate();
++    
++    const vec2 = input.getMovementVector();
++    assert(vec2.z === 0 && vec2.x === 0, 'Movement vector clears correctly after joystick release');
++    assert(!input.isActionActive('Attack'), 'Action clears correctly');
++    
++    input.dispose();
++  }
++
+   console.log('\n====================================================');
+   console.log(` ALL TEST SUITES PASSED STRICTLY (${passedCount}/${testCount} assertions) `);
+   console.log('====================================================\n');
+ }

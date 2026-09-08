@@ -2,6 +2,7 @@
 import { CraftingRecipe, ItemStack } from '../../types';
 import { ITEM_DEFS } from './ItemRegistry';
 import { InventoryManager } from './InventoryManager';
+import { GameEventBus } from '../events/GameEventBus';
 
 export const CRAFTING_RECIPES: CraftingRecipe[] = [
   // ==========================================
@@ -1346,6 +1347,12 @@ export class CraftingSystem {
     InventoryManager.addItem(inventory, recipe.output.itemId, totalOutputCount);
 
     const xpEarned = (recipe.xpReward || 1) * countToCraft;
+
+    GameEventBus.emit('ITEM_CRAFTED', {
+      itemId: recipe.output.itemId,
+      count: totalOutputCount,
+      station: recipe.station,
+    });
 
     return {
       success: true,

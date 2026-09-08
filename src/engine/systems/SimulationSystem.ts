@@ -5,12 +5,15 @@ import { BlockType } from '../../types';
 import { GameEventBus } from '../events/GameEventBus';
 import { QuestManager } from '../progression/QuestManager';
 import { AetherNetworkManager } from '../engineering/AetherNetworkManager';
+import { SETTLEMENT_REGISTRY } from '../settlement/SettlementManager';
 
 export class SimulationSystem implements GameSystem {
   public readonly name = 'SimulationSystem';
   private runtime: GameRuntime;
   private accumulator: number = 0;
   private lastBiomeId: string = '';
+  private visitedSettlements: Set<string> = new Set();
+  private settlementCheckTimer: number = 0;
   public readonly fixedDt: number = 1 / 60; // 60Hz fixed simulation timestep
   public readonly maxCatchUpSteps: number = 5;
 
@@ -115,7 +118,7 @@ export class SimulationSystem implements GameSystem {
       stats.isDead = false;
     }
 
-    // 4. Update Game Event / Discovery triggers for Biome change
+    // 4. Update Game Event / Discovery triggers for Biome & Settlement proximity
     const biome = world.biomeManager.getBiome(player.position.x, player.position.z);
     const biomeId = biome.name.toLowerCase().replace(/\s+/g, '_');
     if (biomeId !== this.lastBiomeId) {
@@ -126,6 +129,28 @@ export class SimulationSystem implements GameSystem {
         pos: [player.position.x, player.position.y, player.position.z],
       });
       QuestManager.advanceObjective('visit', biome.name, 1);
+    }
+
+    this.settlementCheckTimer += dt;
+    if (this.settlementCheckTimer >= 0.5) {
+      this.settlementCheckTimer = 0;
+      const px = player.position.x;
+      const pz = player.position.z;
+
+      Object.values(SETTLEMENT_REGISTRY).forEach(settlement => {
+        if (!this.visitedSettlements.has(settlement.id)) {
+          const [sx, , sz] = settlement.originPos;
+          const distSq = (px - sx) * (px - sx) + (pz - sz) * (pz - sz);
+          if (distSq <= 64 * 64) {
+            this.visitedSettlements.add(settlement.id);
+            GameEventBus.emit('SETTLEMENT_VISITED', {
+              settlementId: settlement.id,
+              name: settlement.name,
+              pos: settlement.originPos,
+            });
+          }
+        }
+      });
     }
 
     // 5. Update Aether Engineering Network

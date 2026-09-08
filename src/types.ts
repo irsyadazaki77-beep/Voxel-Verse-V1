@@ -644,7 +644,7 @@ export interface ArtifactDef {
   iconColor: string;
 }
 
-export type QuestObjectiveType = 'kill' | 'collect' | 'visit' | 'discover' | 'craft' | 'boss';
+export type QuestObjectiveType = 'kill' | 'collect' | 'visit' | 'discover' | 'craft' | 'boss' | 'place' | 'activate';
 
 export interface QuestObjective {
   type: QuestObjectiveType;

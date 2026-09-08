@@ -77,7 +77,7 @@ export interface GameEventPayloads {
   SETTLEMENT_RAID_FAILED: { settlementId?: string };
   CORRUPTION_SPREAD: { amount?: number; region?: string };
   STABILITY_CHANGED: { stability: number; delta?: number; reason?: string };
-  MONOLITH_ACTIVATED: { monolithId?: string; blessing?: string; monolith?: any };
+  MONOLITH_ACTIVATED: { monolithId?: string; blessing?: string; monolith?: any; name?: string; pos?: [number, number, number] };
   NEXUS_PILLAR_ACTIVATED: { pillarId: string; totalActive: number };
   NEXUS_COMPLETED: { timestamp: number };
 }

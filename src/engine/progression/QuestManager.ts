@@ -13,21 +13,68 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
     giverSettlement: 'Haven Camp',
     category: 'storyline',
     tier: 'tier1_haven',
-    description: 'Tebang kayu rimba, buat perkakas dasar, dan temukan situs suci permukiman perintis.',
+    description: 'Kumpulkan kayu rimba, rakit perkakas dasar, dan tambang batu kali untuk bertahan di frontier.',
     objectives: [
-      { type: 'craft', description: 'Craft a Wooden Pickaxe at a Crafting Bench', targetId: 'wooden_pickaxe', requiredCount: 1 },
-      { type: 'collect', description: 'Kumpulkan 8 Batu Kali (River Cobblestone)', targetId: 'cobblestone', requiredCount: 8 },
-      { type: 'discover', description: 'Temukan Bangunan Suci atau Pondok Pengelana', targetId: 'shrine', requiredCount: 1 },
+      { type: 'collect', description: 'Kumpulkan 4 Kayu Rimba (Oak Log)', targetId: 'oak_log', requiredCount: 4 },
+      { type: 'craft', description: 'Rakit Beliung Kayu (Wooden Pickaxe)', targetId: 'wooden_pickaxe', requiredCount: 1 },
+      { type: 'collect', description: 'Tambang 6 Batu Kali (River Cobblestone)', targetId: 'cobblestone', requiredCount: 6 },
     ],
     rewards: {
-      xp: 50,
+      xp: 80,
       items: [
-        { itemId: 'copper_ingot', count: 4 },
-        { itemId: 'bread', count: 6 },
+        { itemId: 'torch', count: 16 },
+        { itemId: 'bread', count: 8 },
       ],
       unlockedRecipe: 'copper_pickaxe',
       reputation: { settlementId: 'haven_camp', amount: 15 },
     },
+  },
+  q_shelter_first_night: {
+    id: 'q_shelter_first_night',
+    title: 'Shelter Before Nightfall',
+    giverName: 'Torvald (Saudagar Pengelana)',
+    giverSettlement: 'Haven Camp',
+    category: 'storyline',
+    tier: 'tier1_haven',
+    description: 'Teriknya siang mulai memudar. Bangun tempat berlindung dari papan/batu, pasang obor, dan hadapi ancaman malam.',
+    objectives: [
+      { type: 'place', description: 'Pasang 10 Blok Bangunan Shelter', targetId: 'block', requiredCount: 10 },
+      { type: 'craft', description: 'Buat Obor / Lampu Penerang (Torch)', targetId: 'torch', requiredCount: 1 },
+      { type: 'kill', description: 'Halau 1 Bayangan Malam (Shadow Stalker / Bandit)', targetId: 'stalker', requiredCount: 1 },
+    ],
+    rewards: {
+      xp: 120,
+      items: [
+        { itemId: 'copper_ingot', count: 4 },
+        { itemId: 'healing_potion', count: 2 },
+      ],
+      reputation: { settlementId: 'haven_camp', amount: 20 },
+      unlockedRecipe: 'ley_conduit',
+    },
+    prerequisites: ['q_first_steps'],
+  },
+  q_leyline_awakening: {
+    id: 'q_leyline_awakening',
+    title: 'Beacon of Nusantara',
+    giverName: 'Datu Wisanggeni (Juru Leyline)',
+    giverSettlement: 'Nagari Lembah Harau',
+    category: 'storyline',
+    tier: 'tier2_frontier',
+    description: 'Ikuti gema denyut Aether dan asap pembakaran menuju Permukiman Perintis Nusantara terdekat, lalu aktifkan Conduits Leyline.',
+    objectives: [
+      { type: 'discover', description: 'Temukan Permukiman Nusantara (Haven Camp / Nagari Minang)', targetId: 'settlement', requiredCount: 1 },
+      { type: 'activate', description: 'Resonansikan Monolit / Conduit Leyline Aether', targetId: 'leyline', requiredCount: 1 },
+    ],
+    rewards: {
+      xp: 200,
+      items: [
+        { itemId: 'aether_crystal', count: 4 },
+        { itemId: 'copper_ingot', count: 6 },
+      ],
+      reputation: { settlementId: 'nagari_minang', amount: 25 },
+      unlockedRecipe: 'aether_core',
+    },
+    prerequisites: ['q_shelter_first_night'],
   },
   q_hunting_stalkers: {
     id: 'q_hunting_stalkers',
@@ -48,7 +95,7 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
       ],
       reputation: { settlementId: 'suncrest_hamlet', amount: 20 },
     },
-    prerequisites: ['q_first_steps'],
+    prerequisites: ['q_leyline_awakening'],
   },
   
   // Nusantara Living Settlement Regional Quests
@@ -315,12 +362,16 @@ export class QuestManager {
 
   private static matchesTarget(objTarget: string, eventTarget: string): boolean {
     if (objTarget === eventTarget) return true;
+    if (objTarget === 'block' || objTarget === 'any_block') return true;
     const ALIASES: Record<string, string[]> = {
-      'cobblestone': ['cobblestone', '3', 'river_cobblestone'],
-      'stalker': ['stalker', 'shadow_stalker'],
+      'cobblestone': ['cobblestone', '3', '4', 'river_cobblestone'],
+      'oak_log': ['oak_log', '8', 'wood_log'],
+      'stalker': ['stalker', 'shadow_stalker', 'bandit', 'wolf', 'goblin'],
       'ruin_sentinel': ['ruin_sentinel', 'boss_ruin_sentinel'],
       'boss_void_sovereign': ['boss_void_sovereign', 'void_sovereign', 'boss_void_sovereign_1'],
       'shrine': ['shrine', 'ancient_shrine', 'explorer_cabin', 'pura_shrine', 'altar'],
+      'settlement': ['settlement', 'haven_camp', 'nagari_minang', 'suncrest_hamlet', 'banjar_subak', 'desa_majapahit', 'kampung_dayak', 'desa_kete_kesu', 'kampung_baliem', 'desa_sasak', 'ferrite_outpost'],
+      'leyline': ['leyline', 'monolith', 'ley_conduit', 'aether_conduit', 'nexus_pillar', 'aether_core', 'leyline_nexus'],
       'dungeon': ['dungeon', 'dungeon_entrance', 'subterranean_dungeon']
     };
     const list = ALIASES[objTarget];
@@ -328,7 +379,8 @@ export class QuestManager {
   }
 
   private static setupEventListeners(): void {
-    this.dispose();
+    this.eventUnsubscribes.forEach(un => un());
+    this.eventUnsubscribes = [];
 
     this.eventUnsubscribes.push(
       GameEventBus.on('ENTITY_KILLED', (data) => {
@@ -355,6 +407,40 @@ export class QuestManager {
     this.eventUnsubscribes.push(
       GameEventBus.on('ITEM_COLLECTED', (data) => {
         this.advanceObjective('collect', data.itemId, data.count);
+      })
+    );
+
+    this.eventUnsubscribes.push(
+      GameEventBus.on('BLOCK_PLACED', (data) => {
+        this.advanceObjective('place', data.blockType.toString(), 1);
+        this.advanceObjective('place', 'block', 1);
+      })
+    );
+
+    this.eventUnsubscribes.push(
+      GameEventBus.on('BLOCK_MINED', (data) => {
+        this.advanceObjective('collect', data.blockType.toString(), 1);
+      })
+    );
+
+    this.eventUnsubscribes.push(
+      GameEventBus.on('SETTLEMENT_VISITED', (data) => {
+        this.advanceObjective('discover', data.settlementId, 1);
+        this.advanceObjective('discover', 'settlement', 1);
+      })
+    );
+
+    this.eventUnsubscribes.push(
+      GameEventBus.on('MONOLITH_ACTIVATED', (data) => {
+        this.advanceObjective('activate', data.monolithId || 'leyline', 1);
+        this.advanceObjective('activate', 'leyline', 1);
+      })
+    );
+
+    this.eventUnsubscribes.push(
+      GameEventBus.on('NEXUS_PILLAR_ACTIVATED', (data) => {
+        this.advanceObjective('activate', data.pillarId, 1);
+        this.advanceObjective('activate', 'leyline', 1);
       })
     );
 
@@ -468,6 +554,10 @@ export class QuestManager {
         }
       }
     });
+  }
+
+  public static getQuestState(qId: string): { state: QuestState; progress: number[] } | undefined {
+    return this.questStates.get(qId);
   }
 
   public static getActiveQuests(): { def: QuestDef; progress: number[]; state: QuestState }[] {

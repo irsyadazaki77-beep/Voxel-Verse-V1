@@ -245,12 +245,18 @@ export class PlayerController {
     }
   }
 
+  public movementVector: { x: number, z: number } = { x: 0, z: 0 };
+
   // Synchronize with InputManager if provided
   public syncInputs(input: InputManager, gameMode: GameMode): void {
-    this.keys.forward = input.isActionActive('MoveForward');
-    this.keys.backward = input.isActionActive('MoveBackward');
-    this.keys.left = input.isActionActive('MoveLeft');
-    this.keys.right = input.isActionActive('MoveRight');
+    const moveVec = input.getMovementVector();
+    this.movementVector.x = moveVec.x;
+    this.movementVector.z = moveVec.z;
+    
+    this.keys.forward = input.isActionActive('MoveForward') || moveVec.z < -0.1;
+    this.keys.backward = input.isActionActive('MoveBackward') || moveVec.z > 0.1;
+    this.keys.left = input.isActionActive('MoveLeft') || moveVec.x < -0.1;
+    this.keys.right = input.isActionActive('MoveRight') || moveVec.x > 0.1;
     this.keys.jump = input.isActionActive('Jump');
     this.keys.sprint = input.isActionActive('Sprint');
     this.keys.crouch = input.isActionActive('Crouch');
@@ -410,18 +416,15 @@ export class PlayerController {
     }
 
     // 4. Movement Input Vector (Zero-allocation pure math)
-    let inputZ = 0;
-    let inputX = 0;
-    if (this.keys.forward) inputZ -= 1;
-    if (this.keys.backward) inputZ += 1;
-    if (this.keys.left) inputX -= 1;
-    if (this.keys.right) inputX += 1;
-
+    let inputZ = this.movementVector.z;
+    let inputX = this.movementVector.x;
+    
     let moveX = 0;
     let moveZ = 0;
     const lenSq = inputX * inputX + inputZ * inputZ;
     if (lenSq > 0) {
-      const invLen = 1 / Math.sqrt(lenSq);
+      // If magnitude is greater than 1, normalize it. Otherwise keep it for analog movement.
+      const invLen = lenSq > 1.0 ? 1 / Math.sqrt(lenSq) : 1;
       const normX = inputX * invLen;
       const normZ = inputZ * invLen;
       const cosY = Math.cos(this.yaw);

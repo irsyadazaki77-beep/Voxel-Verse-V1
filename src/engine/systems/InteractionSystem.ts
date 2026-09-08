@@ -12,6 +12,7 @@ import { ITEM_DEFS } from '../items/ItemRegistry';
 import { GameEventBus } from '../events/GameEventBus';
 import { NetworkSession } from '../network/NetworkSession';
 import { AetherNetworkManager } from '../engineering/AetherNetworkManager';
+import { NotificationManager } from '../ui/NotificationManager';
 
 export interface MiningState {
   active: boolean;
@@ -181,6 +182,34 @@ export class InteractionSystem implements GameSystem {
 
       if (hitBlock === BlockType.ANVIL_SMITHING) {
         this.runtime.openModal('anvil', hit.blockPos);
+        return;
+      }
+
+      if (
+        hitBlock === BlockType.LEY_CONDUIT ||
+        hitBlock === BlockType.AETHER_CORE ||
+        hitBlock === BlockType.AETHER_CORE_ADVANCED ||
+        hitBlock === BlockType.ANCIENT_RUNE_STONE ||
+        hitBlock === BlockType.AETHER_GATE_FRAME
+      ) {
+        audio.playUIClick();
+        particles.spawnBlockBreakParticles(
+          new THREE.Vector3(hit.blockPos[0] + 0.5, hit.blockPos[1] + 0.5, hit.blockPos[2] + 0.5),
+          BlockType.GLOWSTONE_CRYSTAL
+        );
+        GameEventBus.emit('MONOLITH_ACTIVATED', {
+          monolithId: 'leyline_conduit',
+          name: 'Aether Leyline Conduit',
+          pos: hit.blockPos,
+        });
+        NotificationManager.push({
+          title: 'Aether Leyline Aligned',
+          message: 'Gema daya Aether Nusantara beresonansi sempurna!',
+          priority: 'HIGH',
+          colorTheme: 'emerald',
+          durationMs: 3500,
+        });
+        player.triggerSwing();
         return;
       }
 
