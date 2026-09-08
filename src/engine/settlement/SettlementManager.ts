@@ -4,10 +4,14 @@ import { GameEventBus } from '../events/GameEventBus';
 import { NotificationManager } from '../ui/NotificationManager';
 import { NPCScheduleManager, NPCRoleType, SchedulePhase } from './NPCScheduleManager';
 import { SettlementEconomy } from './SettlementEconomy';
+import { StructureRecognitionEngine, RecognizedStructure } from './StructureRecognitionEngine';
+import { VoxelWorld } from '../world/VoxelWorld';
 
 export interface SettlementState {
   level: number; // 1 to 5
   reputation: number; // -100 to 100
+  recognizedStructures?: RecognizedStructure[];
+  isLeylinePowered?: boolean;
 }
 
 export const SETTLEMENT_REGISTRY: Record<string, SettlementDef> = {
@@ -115,7 +119,7 @@ export class SettlementManager {
   public static initialize(savedProgress?: { [id: string]: SettlementState }): void {
     this.states.clear();
     Object.keys(SETTLEMENT_REGISTRY).forEach(id => {
-      this.states.set(id, { level: 1, reputation: 0 });
+      this.states.set(id, { level: 1, reputation: 0, recognizedStructures: [], isLeylinePowered: false });
     });
 
     if (savedProgress) {
@@ -123,7 +127,9 @@ export class SettlementManager {
         if (SETTLEMENT_REGISTRY[id]) {
           this.states.set(id, {
             level: state.level || 1,
-            reputation: state.reputation !== undefined ? state.reputation : 0
+            reputation: state.reputation !== undefined ? state.reputation : 0,
+            recognizedStructures: state.recognizedStructures ? [...state.recognizedStructures] : [],
+            isLeylinePowered: Boolean(state.isLeylinePowered)
           });
         }
       });
@@ -132,9 +138,108 @@ export class SettlementManager {
 
   public static getSettlementState(id: string): SettlementState {
     if (!this.states.has(id)) {
-      this.states.set(id, { level: 1, reputation: 0 });
+      this.states.set(id, { level: 1, reputation: 0, recognizedStructures: [], isLeylinePowered: false });
     }
     return this.states.get(id)!;
+  }
+
+  public static registerStructure(settlementId: string, structure: RecognizedStructure): void {
+    const state = this.getSettlementState(settlementId);
+    if (!state.recognizedStructures) {
+      state.recognizedStructures = [];
+    }
+    const idx = state.recognizedStructures.findIndex(s => s.id === structure.id);
+    if (idx >= 0) {
+      state.recognizedStructures[idx] = structure;
+    } else {
+      state.recognizedStructures.push(structure);
+    }
+    StructureRecognitionEngine.registerStructure(structure);
+    this.addReputation(settlementId, 10);
+
+    NotificationManager.push({
+      title: 'Struktur Bangunan Diakui Permukiman!',
+      message: `${SETTLEMENT_REGISTRY[settlementId]?.name || settlementId} mengakui ${structure.name} (Kualitas: ${structure.qualityRating}/100)!`,
+      priority: 'HIGH',
+      icon: '🏗️',
+      durationMs: 6000,
+    });
+  }
+
+  public static evaluatePlayerStructure(
+    world: VoxelWorld | null,
+    pos: [number, number, number],
+    settlementId?: string
+  ): RecognizedStructure | null {
+    const targetSettlement = settlementId || this.getSettlementByPos(pos[0], pos[2])?.id || 'haven_camp';
+    const struct = StructureRecognitionEngine.scanStructureAt(world, pos, 8, targetSettlement);
+    if (struct) {
+      this.registerStructure(targetSettlement, struct);
+    }
+    return struct;
+  }
+
+  public static getRecognizedStructures(settlementId: string): RecognizedStructure[] {
+    const state = this.getSettlementState(settlementId);
+    return state.recognizedStructures || [];
+  }
+
+  public static isLeylinePowered(settlementId: string): boolean {
+    return Boolean(this.getSettlementState(settlementId).isLeylinePowered);
+  }
+
+  public static setLeylinePowered(settlementId: string, powered: boolean): void {
+    const state = this.getSettlementState(settlementId);
+    if (state.isLeylinePowered !== powered) {
+      state.isLeylinePowered = powered;
+      if (powered) {
+        NotificationManager.push({
+          title: 'Otomatisasi Leyline Terhubung!',
+          message: `${SETTLEMENT_REGISTRY[settlementId]?.name || settlementId} kini mendapat aliran energi Leyline terotomatisasi! (+20% Diskon Barter & Fasilitas Otomatis)`,
+          priority: 'HIGH',
+          icon: '⚡',
+          durationMs: 7000,
+        });
+      }
+    }
+  }
+
+  public static getSettlementBonus(settlementId: string): {
+    housingCapacity: number;
+    discountBonusPercent: number;
+    productionMultiplier: number;
+    defenseRating: number;
+    isLeylinePowered: boolean;
+  } {
+    const state = this.getSettlementState(settlementId);
+    const structs = state.recognizedStructures || [];
+
+    let housing = 5 * state.level;
+    let discount = 0;
+    let production = 1.0 + (state.level - 1) * 0.1;
+    let defense = 10 * state.level;
+
+    structs.forEach(s => {
+      if (s.category === 'house') housing += 4;
+      if (s.category === 'workshop') { discount += 5; production += 0.2; }
+      if (s.category === 'farm') { production += 0.15; }
+      if (s.category === 'defense') { defense += 25; }
+      if (s.category === 'leyline_hub') { discount += 10; production += 0.25; }
+    });
+
+    if (state.isLeylinePowered) {
+      discount += 15;
+      production += 0.3;
+      defense += 20;
+    }
+
+    return {
+      housingCapacity: housing,
+      discountBonusPercent: discount,
+      productionMultiplier: production,
+      defenseRating: defense,
+      isLeylinePowered: Boolean(state.isLeylinePowered),
+    };
   }
 
   public static getReputationLevel(id: string): 'hostile' | 'neutral' | 'friendly' | 'trusted' | 'honored' {
@@ -411,8 +516,23 @@ export class SettlementManager {
     }
 
     const lines = [...activeSchedule.dialoguePool];
+    
+    // Check player-built structures and Leyline power for dynamic dialogue
+    const bonuses = this.getSettlementBonus(sId);
+    const structs = this.getRecognizedStructures(sId);
+
+    if (structs.some(s => s.category === 'house')) {
+      lines.push('Bangunan hunian buatanmu memberikan tempat berlindung yang aman bagi warga!');
+    }
+    if (structs.some(s => s.category === 'workshop')) {
+      lines.push('Bengkel kerja buatanmu mempercepat pembuatan perkakas desa!');
+    }
+    if (bonuses.isLeylinePowered) {
+      lines.push('Jaringan energi Leyline mengaliri seluruh mesin dan penerangan permukiman ini!');
+    }
+
     if (repLevel === 'trusted' || repLevel === 'honored') {
-      lines.push(`Sebagai ${this.getReputationName(repLevel)}, kamu berhak atas diskon barter sebesar ${discountPercent}%!`);
+      lines.push(`Sebagai ${this.getReputationName(repLevel)}, kamu berhak atas total diskon barter sebesar ${discountPercent + bonuses.discountBonusPercent}%!`);
     }
 
     return {
@@ -424,7 +544,7 @@ export class SettlementManager {
       lines,
       trades,
       reputationLevel: repLevel,
-      discountPercent,
+      discountPercent: Math.min(50, discountPercent + bonuses.discountBonusPercent),
     };
   }
 
@@ -458,7 +578,12 @@ export class SettlementManager {
   public static serialize(): { [id: string]: SettlementState } {
     const data: { [id: string]: SettlementState } = {};
     this.states.forEach((val, key) => {
-      data[key] = val;
+      data[key] = {
+        level: val.level,
+        reputation: val.reputation,
+        recognizedStructures: val.recognizedStructures ? [...val.recognizedStructures] : [],
+        isLeylinePowered: Boolean(val.isLeylinePowered)
+      };
     });
     return data;
   }

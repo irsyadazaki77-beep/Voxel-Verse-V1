@@ -111,105 +111,162 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   }, []);
 
-  // Async load save data
+  // Async load save data & progressive non-blocking world initialization pipeline
   useEffect(() => {
+    let isCancelled = false;
+
     const loadData = async () => {
-      setLoadingStage("Loading Save Data...");
-      setLoadingProgress(30);
-      const existingSave = await SaveManager.loadWorldAsync(worldId);
-      
-      setLoadingProgress(70);
-      setLoadingStage("Generating Spawns & Biomes...");
+      try {
+        console.log('[GameCanvas] [LoadingPipeline] Stage 1/5: Initializing Engine...');
+        setLoadingStage("Initializing Voxel Engine...");
+        setLoadingProgress(15);
+        await new Promise(r => setTimeout(r, 60));
+        if (isCancelled) return;
 
-      // Short delay for visual progress feedback
-      setTimeout(async () => {
-        try {
-          // Initialize GameRuntime inside container
-          if (containerRef.current) {
-            const runtime = new GameRuntime(
-              containerRef.current,
-              worldId,
-              worldName,
-              seed,
-              gameMode,
-              SettingsManager.get(),
-              preset,
-              existingSave
-            );
+        console.log('[GameCanvas] [LoadingPipeline] Stage 2/5: Loading Save Data for world:', worldId);
+        setLoadingStage("Loading Save Data & World Registry...");
+        setLoadingProgress(40);
+        const existingSave = await SaveManager.loadWorldAsync(worldId);
+        if (isCancelled) return;
 
-            // Register bidirectional sync callbacks
-            runtime.registerCallbacks({
-              onBossUpdated: (boss) => setActiveBossState(boss),
-              onTargetHitChanged: (hit) => setTargetHitState(hit),
-              onInventoryUpdated: (inv) => setInventoryState(inv),
-              onEquipmentUpdated: (eq) => setEquipmentState(eq),
-              onActiveHotbarIndexChanged: (idx) => setActiveHotbarIndex(idx),
-              onPointerLockChange: (locked) => setIsPointerLocked(locked),
-              onOpenModal: (modalType, data) => {
-                if (modalType === 'dialogue') {
-                  setActiveDialogueEntity(data);
-                } else if (modalType === 'chest') {
-                  setActiveChestPos(data);
-                } else if (modalType === 'furnace') {
-                  setActiveFurnacePos(data);
-                } else if (modalType === 'anvil') {
-                  setActiveAnvilPos(data);
-                } else if (modalType === 'engineering') {
-                  setActiveEngineeringPos(data);
-                }
-                setModal(modalType);
-              },
-              onPlayerDeath: () => setModal('death'),
-            });
+        console.log('[GameCanvas] [LoadingPipeline] Stage 3/5: Configuring Biome & Climate Engine...');
+        setLoadingStage("Configuring Biome & Climate Engine...");
+        setLoadingProgress(60);
+        await new Promise(r => setTimeout(r, 60));
+        if (isCancelled) return;
 
-            runtimeRef.current = runtime;
-            (window as any).__voxelRuntime = runtime;
+        console.log('[GameCanvas] [LoadingPipeline] Stage 4/5: Generating Spawns & Pre-warming Chunks...');
+        setLoadingStage("Generating Spawns & Pre-warming Chunks...");
+        setLoadingProgress(75);
+        await new Promise(r => setTimeout(r, 80));
+        if (isCancelled) return;
 
-            if (isMultiplayer) {
-              setLoadingStage("Connecting to Authoritative Realm Server...");
-              setLoadingProgress(85);
-
-              // Construct secure ws protocol pointing directly to the authoritative Express gateway
-              const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-              const serverUrl = `${protocol}//${window.location.host}/ws`;
-              console.log('[GameCanvas] Connecting to authoritative server:', serverUrl);
-
-              if (sessionToken) {
-                NetworkSession.getInstance().sessionToken = sessionToken;
-              }
-
-              const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
-
-              const sessionStarted = await NetworkSession.getInstance().startSession(
-                runtime.scene,
-                true,
-                nameToUse,
-                true,
-                serverUrl
+        if (containerRef.current) {
+          console.log('[GameCanvas] [LoadingPipeline] Instantiating GameRuntime...');
+          
+          // Timeout guard wrapper for GameRuntime initialization
+          const runtimePromise = new Promise<GameRuntime>((resolve, reject) => {
+            try {
+              const runtime = new GameRuntime(
+                containerRef.current!,
+                worldId,
+                worldName,
+                seed,
+                gameMode,
+                SettingsManager.get(),
+                preset,
+                existingSave
               );
+              resolve(runtime);
+            } catch (err) {
+              reject(err);
+            }
+          });
 
-              if (!sessionStarted) {
-                setConnectionError("Failed to connect to the authoritative realm server. Please try again later.");
-                runtime.stop();
-                return;
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("World generation and chunk pre-warming timed out after 15 seconds.")), 15000)
+          );
+
+          const runtime = await Promise.race([runtimePromise, timeoutPromise]);
+
+          if (isCancelled) {
+            runtime.stop();
+            return;
+          }
+
+          console.log('[GameCanvas] [LoadingPipeline] Stage 5/5: Registering Sync Callbacks & Systems...');
+          setLoadingStage("Starting Game Systems & Rendering...");
+          setLoadingProgress(90);
+
+          // Register bidirectional sync callbacks
+          runtime.registerCallbacks({
+            onBossUpdated: (boss) => setActiveBossState(boss),
+            onTargetHitChanged: (hit) => setTargetHitState(hit),
+            onInventoryUpdated: (inv) => setInventoryState(inv),
+            onEquipmentUpdated: (eq) => setEquipmentState(eq),
+            onActiveHotbarIndexChanged: (idx) => setActiveHotbarIndex(idx),
+            onPointerLockChange: (locked) => setIsPointerLocked(locked),
+            onOpenModal: (modalType, data) => {
+              if (modalType === 'dialogue') {
+                setActiveDialogueEntity(data);
+              } else if (modalType === 'chest') {
+                setActiveChestPos(data);
+              } else if (modalType === 'furnace') {
+                setActiveFurnacePos(data);
+              } else if (modalType === 'anvil') {
+                setActiveAnvilPos(data);
+              } else if (modalType === 'engineering') {
+                setActiveEngineeringPos(data);
               }
+              setModal(modalType);
+            },
+            onPlayerDeath: () => setModal('death'),
+          });
+
+          runtimeRef.current = runtime;
+          (window as any).__voxelRuntime = runtime;
+
+          if (isMultiplayer) {
+            setLoadingStage("Connecting to Authoritative Realm Server...");
+            setLoadingProgress(92);
+
+            if (isCancelled) {
+              runtime.stop();
+              return;
             }
 
-            runtime.start();
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const serverUrl = `${protocol}//${window.location.host}/ws`;
+            console.log('[GameCanvas] Connecting to authoritative server:', serverUrl);
 
-            setIsWorldLoaded(true);
-            setLoadingProgress(100);
+            if (sessionToken) {
+              NetworkSession.getInstance().sessionToken = sessionToken;
+            }
+
+            const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
+
+            const sessionStarted = await NetworkSession.getInstance().startSession(
+              runtime.scene,
+              true,
+              nameToUse,
+              true,
+              serverUrl
+            );
+
+            if (isCancelled) {
+              runtime.stop();
+              return;
+            }
+
+            if (!sessionStarted) {
+              setConnectionError("Failed to connect to the authoritative realm server. Please try again later.");
+              runtime.stop();
+              return;
+            }
           }
-        } catch (err: any) {
-          console.error("Fatal error during GameRuntime initialization:", err);
-          setConnectionError("Runtime Initialization Error: " + (err.message || String(err)));
+
+          runtime.start();
+
+          console.log('[GameCanvas] [LoadingPipeline] World successfully loaded & spawned into world!');
+          setLoadingStage("Entering World...");
+          setLoadingProgress(100);
+          await new Promise(r => setTimeout(r, 100));
+          setIsWorldLoaded(true);
+        } else {
+          console.warn("[GameCanvas] containerRef.current is missing on init attempt!");
+          setConnectionError("Canvas container reference is missing.");
         }
-      }, 500);
+      } catch (err: any) {
+        if (isCancelled) return;
+        console.error("Fatal error during GameRuntime initialization pipeline:", err);
+        setConnectionError("World Generation / Loading Error: " + (err.message || String(err)));
+      }
     };
 
     loadData();
 
     return () => {
+      isCancelled = true;
       delete (window as any).__voxelRuntime;
       if (runtimeRef.current) {
         runtimeRef.current.stop();
@@ -281,7 +338,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     <div id="game-canvas-wrapper" className="relative w-full h-full min-h-screen overflow-hidden select-none bg-black">
       {/* Authoritative Connection Failure Overlay */}
       {connectionError && (
-        <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md p-6">
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md p-6">
           <div className="max-w-md w-full bg-slate-900 border border-red-500/30 rounded-2xl p-8 shadow-2xl text-center">
             <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
               <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">

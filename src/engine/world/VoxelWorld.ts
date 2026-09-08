@@ -10,6 +10,7 @@ import { ChunkScheduler } from './ChunkScheduler';
 import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { SEA_LEVEL, WORLD_PRESETS, WorldPreset, makeDimensionChunkKey } from './WorldConfig';
 import { MiningVisualEngine } from './MiningVisualEngine';
+import { Logger } from '../ui/Logger';
 
 export { SEA_LEVEL };
 
@@ -754,10 +755,14 @@ export class VoxelWorld {
   // Deterministic Safe Spawn Finder
   // Ensures player spawns on solid, safe ground, exposed to sky, not in water/lava, with clear standing space
   public findSafeSpawn(seed: number = this.seed): [number, number, number] {
-    // 1. Ensure chunks around (0,0) exist
-    this.preloadSpawnChunks(0, 0, 2);
+    Logger.info('VoxelWorld', `[findSafeSpawn] Searching safe spawn point for seed ${seed}...`);
+    try {
+      this.preloadSpawnChunks(0, 0, 2);
+    } catch (err) {
+      Logger.warn('VoxelWorld', '[findSafeSpawn] preloadSpawnChunks warning, proceeding with fallback', { error: err });
+    }
 
-    // 2. Deterministic spiral search candidates
+    // Deterministic spiral search candidates
     const spiralOffsets: [number, number][] = [
       [0, 0], [4, 0], [-4, 0], [0, 4], [0, -4],
       [8, 8], [-8, 8], [8, -8], [-8, -8],
@@ -781,11 +786,13 @@ export class VoxelWorld {
       );
     };
 
+    let attempts = 0;
     for (const [ox, oz] of spiralOffsets) {
+      attempts++;
       const wx = ox;
       const wz = oz;
 
-      // Scan downwards from top of world
+      // Scan downwards from top of world with strict bounds
       for (let y = CHUNK_SIZE_Y - 4; y >= SEA_LEVEL + 1; y--) {
         const groundBlock = this.getBlock(wx, y, wz);
 
@@ -809,6 +816,7 @@ export class VoxelWorld {
             }
 
             if (hasSky) {
+              Logger.info('VoxelWorld', `[findSafeSpawn] Found safe spawn at [${wx + 0.5}, ${y + 1.0}, ${wz + 0.5}] after ${attempts} offsets.`);
               return [wx + 0.5, y + 1.0, wz + 0.5];
             }
           }
@@ -816,9 +824,10 @@ export class VoxelWorld {
       }
     }
 
-    // Safe fallback
-    const fallbackY = this.getSpawnHeight(0, 0);
-    return [0.5, Math.max(SEA_LEVEL + 2, fallbackY + 1.0), 0.5];
+    // Safe fallback with guaranteed height
+    Logger.warn('VoxelWorld', '[findSafeSpawn] No ideal safe spawn found in spiral offsets after all attempts, using guaranteed fallback spawn.');
+    const fallbackY = Math.max(SEA_LEVEL + 2, this.getSpawnHeight(0, 0));
+    return [0.5, fallbackY + 1.0, 0.5];
   }
 
   // Update streamed chunks around player position using ChunkScheduler

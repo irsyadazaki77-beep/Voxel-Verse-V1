@@ -14,10 +14,10 @@ export class NusantaraBuildingKit {
    */
   public static generateRumahGadang(isGrand: boolean = false): VoxelBlockPlacement[] {
     const blocks: VoxelBlockPlacement[] = [];
-    const halfLen = isGrand ? 8 : 5;
-    const width = 3; // z from -3 to 3
+    const halfLen = isGrand ? 10 : 5;
+    const width = isGrand ? 4 : 3; // z from -width to width
 
-    // 1. Foundation stilts on stone umpak
+    // 1. Foundation stilts on stone umpak (pillars)
     for (let x = -halfLen; x <= halfLen; x += 2) {
       for (let z = -width; z <= width; z += 2) {
         blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.STONE_ALANG_PILLAR });
@@ -31,8 +31,14 @@ export class NusantaraBuildingKit {
       for (let z = -width; z <= width; z++) {
         blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.TEAK_WOOD_PLANKS });
         // Batik carpet in central anjuang
-        if (Math.abs(x) <= 2 && Math.abs(z) <= 1) {
-          blocks.push({ dx: x, dy: 4, dz: z, block: BlockType.BATIK_CARPET_BLOCK });
+        if (isGrand) {
+          if (Math.abs(x) <= 4 && Math.abs(z) <= 2) {
+            blocks.push({ dx: x, dy: 4, dz: z, block: BlockType.BATIK_CARPET_BLOCK });
+          }
+        } else {
+          if (Math.abs(x) <= 2 && Math.abs(z) <= 1) {
+            blocks.push({ dx: x, dy: 4, dz: z, block: BlockType.BATIK_CARPET_BLOCK });
+          }
         }
       }
     }
@@ -72,35 +78,75 @@ export class NusantaraBuildingKit {
       }
     }
 
-    // 5. Interior Furnishing & Lanterns
-    blocks.push({ dx: -halfLen + 1, dy: 4, dz: -width + 1, block: BlockType.RICE_STORAGE_CHEST });
-    blocks.push({ dx: halfLen - 1, dy: 4, dz: -width + 1, block: BlockType.CHEST });
-    blocks.push({ dx: 0, dy: 6, dz: 0, block: BlockType.AETHER_LANTERN });
-    blocks.push({ dx: -Math.floor(halfLen / 2), dy: 6, dz: 0, block: BlockType.LANTERN });
-    blocks.push({ dx: Math.floor(halfLen / 2), dy: 6, dz: 0, block: BlockType.LANTERN });
+    // 5. Interior Furnishing (Council benches/chairs, chest, and lights)
+    if (isGrand) {
+      // Grand Hall Interior: Council/Trading tables and chairs
+      // Central high-backed leader chair
+      blocks.push({ dx: -halfLen + 2, dy: 4, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: -halfLen + 1, dy: 4, dz: 0, block: BlockType.RICE_STORAGE_CHEST });
+      
+      // Council benches on both sides
+      for (let x = -halfLen + 3; x <= halfLen - 3; x += 2) {
+        blocks.push({ dx: x, dy: 4, dz: -width + 1, block: BlockType.WOOD_PLANKS });
+        blocks.push({ dx: x, dy: 4, dz: width - 1, block: BlockType.WOOD_PLANKS });
+      }
+      // Trading/Communal desks in the center
+      blocks.push({ dx: 2, dy: 4, dz: -1, block: BlockType.CRAFTING_BENCH });
+      blocks.push({ dx: -2, dy: 4, dz: 1, block: BlockType.ANVIL_SMITHING });
+      blocks.push({ dx: halfLen - 1, dy: 4, dz: -width + 1, block: BlockType.CHEST });
+
+      // Grand Lighting
+      blocks.push({ dx: 0, dy: 6, dz: 0, block: BlockType.AETHER_LANTERN });
+      blocks.push({ dx: -5, dy: 6, dz: 0, block: BlockType.AETHER_LANTERN });
+      blocks.push({ dx: 5, dy: 6, dz: 0, block: BlockType.AETHER_LANTERN });
+    } else {
+      // Standard interior
+      blocks.push({ dx: -halfLen + 1, dy: 4, dz: -width + 1, block: BlockType.RICE_STORAGE_CHEST });
+      blocks.push({ dx: halfLen - 1, dy: 4, dz: -width + 1, block: BlockType.CHEST });
+      blocks.push({ dx: 0, dy: 6, dz: 0, block: BlockType.AETHER_LANTERN });
+      blocks.push({ dx: -Math.floor(halfLen / 2), dy: 6, dz: 0, block: BlockType.LANTERN });
+      blocks.push({ dx: Math.floor(halfLen / 2), dy: 6, dz: 0, block: BlockType.LANTERN });
+    }
 
     // 6. Iconic Gonjong Curved Horn Roof
-    // Sweeping up sharply at both ends like water buffalo horns
+    // Sweeping up sharply at ends like water buffalo horns.
+    // If it is Grand, we will generate a multi-peaked roof with 4 majestic horns instead of just 2!
     for (let x = -halfLen - 2; x <= halfLen + 2; x++) {
       const distFromCenter = Math.abs(x);
-      // Gonjong curve formula: quadratic sweep at ends
-      const gonjongRise = distFromCenter >= halfLen - 1 ? Math.floor(Math.pow(distFromCenter - (halfLen - 2), 1.8)) : 0;
+      let gonjongRise = 0;
+
+      if (isGrand) {
+        // Multi-peak gonjong formula: horns at the ends AND minor horns near the center
+        if (distFromCenter >= halfLen - 1) {
+          gonjongRise = Math.floor(Math.pow(distFromCenter - (halfLen - 2), 1.9));
+        } else if (distFromCenter >= 2 && distFromCenter <= 5) {
+          // Inner smaller peaks
+          gonjongRise = Math.floor(Math.pow(distFromCenter - 1, 1.2));
+        }
+      } else {
+        // Single pair of horns at the ends
+        gonjongRise = distFromCenter >= halfLen - 1 ? Math.floor(Math.pow(distFromCenter - (halfLen - 2), 1.8)) : 0;
+      }
 
       for (let z = -width - 1; z <= width + 1; z++) {
         const roofDistZ = Math.abs(z);
         const y = 7 + gonjongRise + (width + 1 - roofDistZ);
 
-        if (roofDistZ === width + 1 || roofDistZ === width) {
-          blocks.push({ dx: x, dy: y, dz: z, block: BlockType.IJUK_THATCH_ROOF });
-        } else {
-          blocks.push({ dx: x, dy: y, dz: z, block: BlockType.IJUK_THATCH_ROOF });
-        }
+        blocks.push({ dx: x, dy: y, dz: z, block: BlockType.IJUK_THATCH_ROOF });
       }
     }
 
     // Pinnacles / Horn tips (tanduk gonjong)
-    blocks.push({ dx: -halfLen - 2, dy: 11 + (isGrand ? 2 : 0), dz: 0, block: BlockType.CARVED_WOOD_BEAM });
-    blocks.push({ dx: halfLen + 2, dy: 11 + (isGrand ? 2 : 0), dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+    if (isGrand) {
+      // Symmetrical 4-gonjong peaks
+      blocks.push({ dx: -halfLen - 2, dy: 13, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: halfLen + 2, dy: 13, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: -4, dy: 10, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: 4, dy: 10, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+    } else {
+      blocks.push({ dx: -halfLen - 2, dy: 11, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: halfLen + 2, dy: 11, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+    }
 
     return blocks;
   }
@@ -409,6 +455,132 @@ export class NusantaraBuildingKit {
   }
 
   /**
+   * Joglo / Pendopo Marketplace - Public trading, assembly, and crafting hub
+   * Features a large open plaza with 4 central Soko Guru carved logs, central workbench/smithy,
+   * flanked by merchant booths with awnings and transaction chests.
+   */
+  public static generateJogloMarketplace(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const size = 9; // Large 19x19 plaza
+
+    // 1. Andesite Stone & Gravel Plaza paving
+    for (let x = -size; x <= size; x++) {
+      for (let z = -size; z <= size; z++) {
+        // Center has elegant stone, outer perimeter has trade gravel pathways
+        const d = Math.max(Math.abs(x), Math.abs(z));
+        if (d <= 4) {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
+        } else {
+          blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.GRAVEL });
+        }
+      }
+    }
+
+    // 2. Central Joglo Pavilion (Soko Guru)
+    // 4 massive central teak wood pillars with heavy timber support beams
+    const sokoPositions = [
+      [-2, -2], [2, -2],
+      [-2, 2], [2, 2]
+    ];
+    for (const [sx, sz] of sokoPositions) {
+      blocks.push({ dx: sx, dy: 2, dz: sz, block: BlockType.STONE_ALANG_PILLAR });
+      for (let y = 3; y <= 7; y++) {
+        blocks.push({ dx: sx, dy: y, dz: sz, block: BlockType.TEAK_WOOD_LOG });
+      }
+      blocks.push({ dx: sx, dy: 7, dz: sz, block: BlockType.CARVED_WOOD_BEAM });
+    }
+
+    // Connect Soko Guru with high beams
+    for (let y = 7; y <= 8; y++) {
+      for (let x = -2; x <= 2; x++) {
+        blocks.push({ dx: x, dy: y, dz: -2, block: BlockType.CARVED_WOOD_BEAM });
+        blocks.push({ dx: x, dy: y, dz: 2, block: BlockType.CARVED_WOOD_BEAM });
+      }
+      for (let z = -2; z <= 2; z++) {
+        blocks.push({ dx: -2, dy: y, dz: z, block: BlockType.CARVED_WOOD_BEAM });
+        blocks.push({ dx: 2, dy: y, dz: z, block: BlockType.CARVED_WOOD_BEAM });
+      }
+    }
+
+    // 3. Central Interactive Hub (Crafting bench, smithy anvil, batik carpet, high-tier chests)
+    for (let x = -1; x <= 1; x++) {
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.BATIK_CARPET_BLOCK });
+      }
+    }
+    blocks.push({ dx: 0, dy: 2, dz: 0, block: BlockType.CRAFTING_BENCH });
+    blocks.push({ dx: -1, dy: 2, dz: 0, block: BlockType.ANVIL_SMITHING });
+    blocks.push({ dx: 1, dy: 2, dz: 0, block: BlockType.CHEST });
+    blocks.push({ dx: 0, dy: 8, dz: 0, block: BlockType.AETHER_LANTERN });
+
+    // 4. Four Surrounding Merchant Stalls with colorful awnings
+    const stallCenters = [
+      [-6, -6], [6, -6],
+      [-6, 6], [6, 6]
+    ];
+    for (const [cx, cz] of stallCenters) {
+      // Counter table
+      blocks.push({ dx: cx, dy: 2, dz: cz, block: BlockType.TEAK_WOOD_PLANKS });
+      blocks.push({ dx: cx + 1, dy: 2, dz: cz, block: BlockType.WOOD_SLAB });
+      blocks.push({ dx: cx - 1, dy: 2, dz: cz, block: BlockType.WOOD_SLAB });
+      
+      // Trader chest behind table
+      blocks.push({ dx: cx, dy: 2, dz: cz + (cz < 0 ? -1 : 1), block: BlockType.RICE_STORAGE_CHEST });
+
+      // Sturdy bamboo posts supporting awnings
+      blocks.push({ dx: cx - 1, dy: 2, dz: cz - 1, block: BlockType.BAMBOO_FENCE });
+      blocks.push({ dx: cx + 1, dy: 2, dz: cz - 1, block: BlockType.BAMBOO_FENCE });
+      blocks.push({ dx: cx - 1, dy: 3, dz: cz - 1, block: BlockType.BAMBOO_FENCE });
+      blocks.push({ dx: cx + 1, dy: 3, dz: cz - 1, block: BlockType.BAMBOO_FENCE });
+
+      // Awning roofs over stalls
+      for (let ax = cx - 1; ax <= cx + 1; ax++) {
+        for (let az = cz - 1; az <= cz + 1; az++) {
+          blocks.push({ dx: ax, dy: 4, dz: az, block: BlockType.TERRACOTTA_ROOF_TILE });
+        }
+      }
+      blocks.push({ dx: cx, dy: 3, dz: cz, block: BlockType.LANTERN });
+    }
+
+    // 5. Grand Pyramidal Joglo Roof over Center (Brunjung)
+    // Overhang eave
+    for (let x = -5; x <= 5; x++) {
+      for (let z = -5; z <= 5; z++) {
+        if (Math.abs(x) >= 4 || Math.abs(z) >= 4) {
+          blocks.push({ dx: x, dy: 6, dz: z, block: BlockType.TERRACOTTA_ROOF_TILE });
+        }
+      }
+    }
+    // Mid tier roof
+    for (let x = -3; x <= 3; x++) {
+      for (let z = -3; z <= 3; z++) {
+        if (Math.abs(x) >= 2 || Math.abs(z) >= 2) {
+          blocks.push({ dx: x, dy: 7, dz: z, block: BlockType.TERRACOTTA_ROOF_TILE });
+        }
+      }
+    }
+    // High central steep roof above Soko Guru
+    for (let step = 0; step < 3; step++) {
+      const rx = 2 - step;
+      const rz = 2 - step;
+      const y = 8 + step;
+      for (let x = -rx; x <= rx; x++) {
+        for (let z = -rz; z <= rz; z++) {
+          blocks.push({ dx: x, dy: y, dz: z, block: BlockType.TERRACOTTA_ROOF_TILE });
+        }
+      }
+    }
+
+    // Top ornamental crest
+    blocks.push({ dx: 0, dy: 11, dz: 0, block: BlockType.CARVED_ANDESITE_STONE });
+    blocks.push({ dx: 0, dy: 12, dz: 0, block: BlockType.AETHER_LANTERN });
+
+    return blocks;
+  }
+
+  /**
    * Pasar Tradisional - Village bazaar stalls with awnings and trade chests
    */
   public static generatePasarTradisional(): VoxelBlockPlacement[] {
@@ -682,56 +854,97 @@ export class NusantaraBuildingKit {
       }
     }
 
-    // 3. Notched Log Ladder (Hejan) at front center
+    // 3. Notched Log Ladders (Hejan) at front center and ends
+    // Main central ladder
     for (let y = 0; y <= 3; y++) {
       blocks.push({ dx: 0, dy: y, dz: width + 2 + (3 - y), block: BlockType.ULIN_IRONWOOD_LOG });
       blocks.push({ dx: 0, dy: y + 1, dz: width + 2 + (3 - y), block: BlockType.WOOD_STAIRS });
     }
+    // Left end ladder
+    for (let y = 0; y <= 3; y++) {
+      blocks.push({ dx: -halfLen, dy: y, dz: width + 2 + (3 - y), block: BlockType.ULIN_IRONWOOD_LOG });
+      blocks.push({ dx: -halfLen, dy: y + 1, dz: width + 2 + (3 - y), block: BlockType.WOOD_STAIRS });
+    }
+    // Right end ladder
+    for (let y = 0; y <= 3; y++) {
+      blocks.push({ dx: halfLen, dy: y, dz: width + 2 + (3 - y), block: BlockType.ULIN_IRONWOOD_LOG });
+      blocks.push({ dx: halfLen, dy: y + 1, dz: width + 2 + (3 - y), block: BlockType.WOOD_STAIRS });
+    }
 
-    // 4. Walls with Ulin Planks and Carved Beams (y = 5 to 7)
+    // 4. Exterior Walls with Ulin Planks and Carved Beams (y = 5 to 7)
     for (let y = 5; y <= 7; y++) {
       for (let x = -halfLen; x <= halfLen; x++) {
-        // Back wall (living cubicles)
+        // Back wall (living rooms backing)
         blocks.push({ dx: x, dy: y, dz: -width, block: BlockType.ULIN_IRONWOOD_PLANKS });
-        // Front gallery railing / wall
+        
+        // Front gallery railing / screen wall (separating catwalk from individual rooms)
+        if (x !== 0 && Math.abs(x) !== halfLen - 3 && Math.abs(x) !== 4) {
+          blocks.push({ dx: x, dy: y, dz: 1, block: y === 5 ? BlockType.WOVEN_BAMBOO_GEDEK : BlockType.ULIN_IRONWOOD_PLANKS });
+        } else {
+          // Openings (doors) to enter the bilik rooms
+          if (y === 7) {
+            blocks.push({ dx: x, dy: y, dz: 1, block: BlockType.CARVED_WOOD_BEAM });
+          }
+        }
+
+        // Catwalk front balustrade/fence
         if (y === 5) {
-          blocks.push({ dx: x, dy: y, dz: width, block: BlockType.WOODEN_SHUTTER });
-        } else if (y === 7) {
-          blocks.push({ dx: x, dy: y, dz: width, block: BlockType.CARVED_WOOD_BEAM });
+          blocks.push({ dx: x, dy: y, dz: width + 1, block: BlockType.BAMBOO_FENCE });
         }
       }
-      for (let z = -width; z <= width; z++) {
+      for (let z = -width; z <= width + 1; z++) {
         blocks.push({ dx: -halfLen, dy: y, dz: z, block: BlockType.ULIN_IRONWOOD_PLANKS });
         blocks.push({ dx: halfLen, dy: y, dz: z, block: BlockType.ULIN_IRONWOOD_PLANKS });
       }
     }
 
-    // 5. Interior Hearth & Storage Chests
-    for (let x = -halfLen + 4; x <= halfLen - 4; x += 6) {
-      blocks.push({ dx: x, dy: 4, dz: -width + 1, block: BlockType.COBBLESTONE });
-      blocks.push({ dx: x, dy: 5, dz: -width + 1, block: BlockType.TORCH });
-      blocks.push({ dx: x + 1, dy: 5, dz: -width + 1, block: BlockType.RICE_STORAGE_CHEST });
-      blocks.push({ dx: x, dy: 7, dz: 0, block: BlockType.AETHER_LANTERN });
+    // 5. Interior Compartment Biliks (Living Suites with Beds, Chests, Fireplaces)
+    // Symmetrical compartments for family groups to walk, sleep, and store items.
+    const bilikCenters = [-halfLen + 3, -4, 4, halfLen - 3];
+    for (const cx of bilikCenters) {
+      // Internal partitioning walls between biliks
+      for (let y = 5; y <= 7; y++) {
+        for (let z = -width + 1; z <= 0; z++) {
+          blocks.push({ dx: cx + 2, dy: y, dz: z, block: BlockType.WOVEN_BAMBOO_GEDEK });
+        }
+      }
+
+      // Sleeping Beds/Mats (Bed foot & Bed head)
+      blocks.push({ dx: cx - 1, dy: 5, dz: -width + 1, block: BlockType.BED_FOOT });
+      blocks.push({ dx: cx - 1, dy: 5, dz: -width + 2, block: BlockType.BED_HEAD });
+
+      // Personal Storage Chest
+      blocks.push({ dx: cx + 1, dy: 5, dz: -width + 1, block: BlockType.RICE_STORAGE_CHEST });
+
+      // Personal Hearth (fireplace for cooking)
+      blocks.push({ dx: cx, dy: 5, dz: -width + 1, block: BlockType.COBBLESTONE });
+      blocks.push({ dx: cx, dy: 6, dz: -width + 1, block: BlockType.TORCH });
+
+      // Wall carvings & decor
+      blocks.push({ dx: cx, dy: 7, dz: -width, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: cx, dy: 7, dz: 0, block: BlockType.AETHER_LANTERN });
     }
 
     // 6. Vast Gabled Thatched Roof (Sirap / Alang-alang)
-    for (let layer = 0; layer <= 3; layer++) {
+    for (let layer = 0; layer <= 4; layer++) {
       const rz = width + 2 - layer;
       const y = 8 + layer;
       for (let x = -halfLen - 2; x <= halfLen + 2; x++) {
         for (let z = -rz; z <= rz; z++) {
-          if (Math.abs(z) === rz || layer === 3) {
+          if (Math.abs(z) === rz || layer === 4) {
             blocks.push({ dx: x, dy: y, dz: z, block: BlockType.ALANG_ALANG_THATCH });
           }
         }
       }
     }
 
-    // Ancestral Totem Pole (Sapundu) at entry
-    blocks.push({ dx: 3, dy: 0, dz: width + 4, block: BlockType.ULIN_IRONWOOD_LOG });
-    blocks.push({ dx: 3, dy: 1, dz: width + 4, block: BlockType.CARVED_WOOD_BEAM });
-    blocks.push({ dx: 3, dy: 2, dz: width + 4, block: BlockType.CARVED_WOOD_BEAM });
-    blocks.push({ dx: 3, dy: 3, dz: width + 4, block: BlockType.AETHER_LANTERN });
+    // Symmetrical Ancestral Totem Poles (Sapundu) at entrance walkways
+    for (const sx of [-5, 5]) {
+      blocks.push({ dx: sx, dy: 0, dz: width + 4, block: BlockType.ULIN_IRONWOOD_LOG });
+      blocks.push({ dx: sx, dy: 1, dz: width + 4, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: sx, dy: 2, dz: width + 4, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: sx, dy: 3, dz: width + 4, block: BlockType.AETHER_LANTERN });
+    }
 
     return blocks;
   }
@@ -818,6 +1031,100 @@ export class NusantaraBuildingKit {
     // High finial horns
     blocks.push({ dx: 0, dy: 12, dz: -5, block: BlockType.CARVED_WOOD_BEAM });
     blocks.push({ dx: 0, dy: 12, dz: 5, block: BlockType.CARVED_WOOD_BEAM });
+
+    return blocks;
+  }
+
+  /**
+   * Tongkonan Leyline Hall - Advanced highland ritual/technological pavilion
+   * Integrates soaring saddleback boat roof with a central glowing Aether Core and snaking Leyline floor conduits
+   */
+  public static generateTongkonanLeylineHall(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const halfLen = 4; // x from -4 to 4
+    const width = 3;   // z from -3 to 3
+
+    // 1. Karst foundation stilts and stone pedestals
+    for (let x = -halfLen; x <= halfLen; x += 2) {
+      for (let z = -width; z <= width; z += 2) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.STONE_PILLAR });
+        blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.TEAK_WOOD_LOG });
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.TEAK_WOOD_LOG });
+      }
+    }
+
+    // 2. Main Deck Platform
+    for (let x = -halfLen - 1; x <= halfLen + 1; x++) {
+      for (let z = -width; z <= width; z++) {
+        blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.TEAK_WOOD_PLANKS });
+      }
+    }
+
+    // 3. Central Embedded Aether Crystal Core & Leyline Conduits
+    // Central core sitting in a stone plinth
+    blocks.push({ dx: 0, dy: 3, dz: 0, block: BlockType.AETHER_ALTAR_CORE });
+    blocks.push({ dx: 0, dy: 4, dz: 0, block: BlockType.AETHER_CORE_ADVANCED });
+    
+    // Glowing conduit floor paths snaking outwards from the core
+    for (let x = -halfLen; x <= halfLen; x++) {
+      if (x !== 0) {
+        blocks.push({ dx: x, dy: 3, dz: 0, block: BlockType.AETHER_CONDUIT_FLOOR });
+      }
+    }
+    for (let z = -width; z <= width; z++) {
+      if (z !== 0) {
+        blocks.push({ dx: 0, dy: 3, dz: z, block: BlockType.AETHER_CONDUIT_FLOOR });
+      }
+    }
+
+    // 4. Carved Wood Beams & Walls (y = 4 to 6)
+    for (let y = 4; y <= 6; y++) {
+      for (let x = -halfLen; x <= halfLen; x++) {
+        // Front and back walls with energy slots
+        if (Math.abs(x) === 2 && y === 5) {
+          blocks.push({ dx: x, dy: y, dz: -width, block: BlockType.AETHER_LANTERN });
+          blocks.push({ dx: x, dy: y, dz: width, block: BlockType.AETHER_LANTERN });
+        } else {
+          blocks.push({ dx: x, dy: y, dz: -width, block: BlockType.CARVED_WOOD_BEAM });
+          blocks.push({ dx: x, dy: y, dz: width, block: BlockType.CARVED_WOOD_BEAM });
+        }
+      }
+      for (let z = -width + 1; z < width; z++) {
+        blocks.push({ dx: -halfLen, dy: y, dz: z, block: BlockType.CARVED_WOOD_BEAM });
+        blocks.push({ dx: halfLen, dy: y, dz: z, block: BlockType.CARVED_WOOD_BEAM });
+      }
+    }
+
+    // 5. Front Tulak Somba column decorated with buffalo horn carvings & crystal conduit
+    for (let y = 1; y <= 3; y++) {
+      blocks.push({ dx: 0, dy: y, dz: width + 1, block: BlockType.STONE_PILLAR });
+      blocks.push({ dx: 0, dy: y, dz: width + 2, block: BlockType.CARVED_WOOD_BEAM });
+    }
+    blocks.push({ dx: 0, dy: 4, dz: width + 1, block: BlockType.LEY_CONDUIT });
+    blocks.push({ dx: 0, dy: 5, dz: width + 1, block: BlockType.AETHER_LANTERN });
+
+    // 6. Boat-shaped curved saddleback roof with cyan energy trims
+    for (let z = -7; z <= 7; z++) {
+      const dist = Math.abs(z);
+      // Toraja roof sweeps up heavily at ends
+      const sweepUp = dist >= 3 ? Math.floor(Math.pow(dist - 2, 1.95)) : 0;
+      for (let x = -halfLen; x <= halfLen; x++) {
+        const y = 7 + sweepUp + (halfLen - Math.abs(x));
+        
+        // Edge trim is accented with energy conduit panels
+        if (Math.abs(x) === halfLen) {
+          blocks.push({ dx: x, dy: y, dz: z, block: BlockType.AETHER_CONDUIT_FLOOR });
+        } else {
+          blocks.push({ dx: x, dy: y, dz: z, block: BlockType.IJUK_THATCH_ROOF });
+        }
+      }
+    }
+
+    // High finial horns with lightning rods
+    blocks.push({ dx: 0, dy: 16, dz: -7, block: BlockType.CARVED_WOOD_BEAM });
+    blocks.push({ dx: 0, dy: 17, dz: -7, block: BlockType.AETHER_LANTERN });
+    blocks.push({ dx: 0, dy: 16, dz: 7, block: BlockType.CARVED_WOOD_BEAM });
+    blocks.push({ dx: 0, dy: 17, dz: 7, block: BlockType.AETHER_LANTERN });
 
     return blocks;
   }
@@ -1011,76 +1318,159 @@ export class NusantaraBuildingKit {
   // ==========================================
 
   /**
-   * Ancient Nusantara Temple Complex (Candi Agung) - Concentric stepped andesite terraces, stupas,
-   * underground Aether conduits, and central sanctuary with Ancient Altar Core
+   * Nusantara Aether Temple (Candi Agung Aether) - Legendary fantasy landmark blending Balinese & Javanese temple structures
+   * Features: Stepped concentric andesite/volcanic stone terraces, towering split gates (Candi Bentar),
+   * corner Perwara shrines, multi-tiered Meru pagoda thatch roofs, and a floating central Aether Core linked with floor ley channels.
    */
   public static generateAncientTempleComplex(): VoxelBlockPlacement[] {
     const blocks: VoxelBlockPlacement[] = [];
     const size = 12;
 
-    // 1. Concentric stepped outer terrace
+    // 1. Concentric stepped stone terraces of Andesite & Volcanic Brick
     for (let x = -size; x <= size; x++) {
       for (let z = -size; z <= size; z++) {
         const d = Math.max(Math.abs(x), Math.abs(z));
         if (d >= size - 1) {
+          // Outer decorative retaining wall
           blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
           blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.VOLCANIC_BRICK });
+          if (d === size && Math.abs(x) % 4 === 0) {
+            // High pillars/flags on outer walls
+            blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.VOLCANIC_BRICK });
+            blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.AETHER_LANTERN });
+          }
         } else if (d >= 8) {
+          // Lower terrace deck
           blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
         } else if (d >= 4) {
+          // Mid terrace deck
           blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
+        } else {
+          // Central sanctuary deck
+          blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
         }
       }
     }
 
-    // 2. Inlaid Aether Conduit Runes radiating to 4 cardinal directions
-    for (let i = -size + 1; i <= size - 1; i++) {
-      blocks.push({ dx: i, dy: 1, dz: 0, block: BlockType.AETHER_CONDUIT_FLOOR });
-      blocks.push({ dx: 0, dy: 1, dz: i, block: BlockType.AETHER_CONDUIT_FLOOR });
-    }
-
-    // 3. Four Corner Perwara Shrines
-    const corners = [[-8, -8], [8, -8], [-8, 8], [8, 8]];
-    for (const [cx, cz] of corners) {
-      for (let y = 1; y <= 3; y++) {
-        blocks.push({ dx: cx, dy: y, dz: cz, block: BlockType.CARVED_ANDESITE_STONE });
-      }
-      blocks.push({ dx: cx, dy: 4, dz: cz, block: BlockType.SPLIT_GATE_STONE });
-      blocks.push({ dx: cx, dy: 2, dz: cz - 1, block: BlockType.AETHER_LANTERN });
-    }
-
-    // 4. Central Sanctuary Podium & Stepped Spire (Candi Induk)
-    for (let x = -3; x <= 3; x++) {
-      for (let z = -3; z <= 3; z++) {
-        blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
-        for (let y = 4; y <= 6; y++) {
-          if (Math.abs(x) === 3 || Math.abs(z) === 3) {
-            blocks.push({ dx: x, dy: y, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
+    // 2. Glowing Leyline Channels carved into the courtyard floor
+    for (let i = -size + 2; i <= size - 2; i++) {
+      // Avoid overwriting boundaries
+      if (Math.abs(i) < size - 1) {
+        blocks.push({ dx: i, dy: 1, dz: 0, block: BlockType.AETHER_CONDUIT_FLOOR });
+        blocks.push({ dx: 0, dy: 1, dz: i, block: BlockType.AETHER_CONDUIT_FLOOR });
+        // Secondary concentric ley loop on mid-terrace
+        if (Math.abs(i) === 5) {
+          for (let z = -5; z <= 5; z++) {
+            if (Math.abs(z) === 5) {
+              blocks.push({ dx: i, dy: 2, dz: z, block: BlockType.AETHER_CONDUIT_FLOOR });
+            }
           }
         }
       }
     }
 
-    // 5. Central Ancient Altar Core & Ley Energy Focus
-    blocks.push({ dx: 0, dy: 4, dz: 0, block: BlockType.AETHER_ALTAR_CORE });
-    blocks.push({ dx: 0, dy: 3, dz: 0, block: BlockType.AETHER_CONDUIT_FLOOR });
-    blocks.push({ dx: 1, dy: 4, dz: 0, block: BlockType.CHEST });
-    blocks.push({ dx: -1, dy: 4, dz: 0, block: BlockType.CHEST });
+    // 3. Majestic Split Gate (Candi Bentar) at the front entryway (z = size)
+    // Symmetrical flanking gates curving up and outwards
+    const gateZ = size - 1;
+    for (let xOffset of [-3, 3]) {
+      // Gate pillars
+      for (let y = 1; y <= 7; y++) {
+        // Build tapering columns
+        const colW = y >= 5 ? 1 : 2;
+        for (let dx = 0; dx < colW; dx++) {
+          const sign = xOffset < 0 ? -1 : 1;
+          blocks.push({ dx: xOffset + dx * sign, dy: y, dz: gateZ, block: BlockType.VOLCANIC_BRICK });
+          blocks.push({ dx: xOffset + dx * sign, dy: y, dz: gateZ - 1, block: BlockType.CARVED_ANDESITE_STONE });
+        }
+      }
+      // Gate crystal focus
+      blocks.push({ dx: xOffset, dy: 8, dz: gateZ, block: BlockType.AETHER_ALTAR_CORE });
+      blocks.push({ dx: xOffset, dy: 9, dz: gateZ, block: BlockType.AETHER_LANTERN });
+    }
+    // Main entrance steps
+    for (let y = 0; y <= 2; y++) {
+      blocks.push({ dx: -1, dy: y, dz: gateZ + 1 + (2 - y), block: BlockType.STONE_SLAB });
+      blocks.push({ dx: 0, dy: y, dz: gateZ + 1 + (2 - y), block: BlockType.STONE_SLAB });
+      blocks.push({ dx: 1, dy: y, dz: gateZ + 1 + (2 - y), block: BlockType.STONE_SLAB });
+    }
 
-    // Spire Roof
-    for (let layer = 0; layer < 4; layer++) {
-      const r = 3 - layer;
-      const y = 7 + layer;
-      for (let x = -r; x <= r; x++) {
-        for (let z = -r; z <= r; z++) {
-          blocks.push({ dx: x, dy: y, dz: z, block: BlockType.CARVED_ANDESITE_STONE });
+    // 4. Four Corner Perwara Shrines with mini energy rods
+    const corners = [[-8, -8], [8, -8], [-8, 8], [8, 8]];
+    for (const [cx, cz] of corners) {
+      if (Math.max(Math.abs(cx), Math.abs(cz)) < size) {
+        // Base of the shrine
+        for (let y = 1; y <= 3; y++) {
+          blocks.push({ dx: cx, dy: y, dz: cz, block: BlockType.CARVED_ANDESITE_STONE });
+          blocks.push({ dx: cx + 1, dy: y, dz: cz, block: BlockType.VOLCANIC_BRICK });
+          blocks.push({ dx: cx, dy: y, dz: cz + 1, block: BlockType.VOLCANIC_BRICK });
+        }
+        // Offering altar
+        blocks.push({ dx: cx, dy: 4, dz: cz, block: BlockType.AETHER_LANTERN });
+        blocks.push({ dx: cx + (cx < 0 ? 1 : -1), dy: 3, dz: cz, block: BlockType.CHEST });
+      }
+    }
+
+    // 5. Central Sacred Sanctuary Podium & Multi-Tiered Meru Pagoda Roofs
+    for (let x = -3; x <= 3; x++) {
+      for (let z = -3; z <= 3; z++) {
+        // Pillars of the sanctuary
+        if (Math.abs(x) === 3 || Math.abs(z) === 3) {
+          for (let y = 4; y <= 6; y++) {
+            blocks.push({ dx: x, dy: y, dz: z, block: BlockType.VOLCANIC_BRICK });
+          }
         }
       }
     }
-    blocks.push({ dx: 0, dy: 11, dz: 0, block: BlockType.SPLIT_GATE_STONE });
-    blocks.push({ dx: 0, dy: 12, dz: 0, block: BlockType.AETHER_LANTERN });
+
+    // Central Floating Aether Altar Core
+    blocks.push({ dx: 0, dy: 3, dz: 0, block: BlockType.AETHER_CONDUIT_FLOOR });
+    blocks.push({ dx: 0, dy: 4, dz: 0, block: BlockType.AETHER_ALTAR_CORE });
+    blocks.push({ dx: 0, dy: 5, dz: 0, block: BlockType.AETHER_CORE_ADVANCED });
+    // Offering chests flanking the core
+    blocks.push({ dx: 1, dy: 4, dz: 0, block: BlockType.CHEST });
+    blocks.push({ dx: -1, dy: 4, dz: 0, block: BlockType.CHEST });
+
+    // Multi-tiered Meru Pagoda Roof (3 sweeping thatched layers)
+    // Tier 1: Wide base layer
+    for (let x = -4; x <= 4; x++) {
+      for (let z = -4; z <= 4; z++) {
+        if (Math.abs(x) >= 3 || Math.abs(z) >= 3) {
+          blocks.push({ dx: x, dy: 7, dz: z, block: BlockType.IJUK_THATCH_ROOF });
+        }
+      }
+    }
+    // Tier 2: Medium middle layer
+    for (let x = -3; x <= 3; x++) {
+      for (let z = -3; z <= 3; z++) {
+        if (Math.abs(x) >= 2 || Math.abs(z) >= 2) {
+          blocks.push({ dx: x, dy: 9, dz: z, block: BlockType.IJUK_THATCH_ROOF });
+        }
+      }
+    }
+    // Tier 3: Steep peak layer
+    for (let step = 0; step < 3; step++) {
+      const rx = 2 - step;
+      const rz = 2 - step;
+      const y = 11 + step * 2;
+      for (let x = -rx; x <= rx; x++) {
+        for (let z = -rz; z <= rz; z++) {
+          blocks.push({ dx: x, dy: y, dz: z, block: BlockType.IJUK_THATCH_ROOF });
+        }
+      }
+    }
+
+    // Ultimate peak pinnacle (Crown of the Temple)
+    blocks.push({ dx: 0, dy: 16, dz: 0, block: BlockType.SPLIT_GATE_STONE });
+    blocks.push({ dx: 0, dy: 17, dz: 0, block: BlockType.AETHER_LANTERN });
 
     return blocks;
+  }
+
+  /**
+   * Wrapper for the Aether Temple to match direct calls
+   */
+  public static generateNusantaraAetherTemple(): VoxelBlockPlacement[] {
+    return this.generateAncientTempleComplex();
   }
 
   /**

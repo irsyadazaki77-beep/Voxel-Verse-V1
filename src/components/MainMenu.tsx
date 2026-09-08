@@ -21,11 +21,12 @@ interface MainMenuProps {
     sessionToken?: string,
     playerName?: string
   ) => void;
+  onEnterHeritageMode: () => void;
 }
 
 type MenuViewState = 'main' | 'worlds' | 'create' | 'multiplayer' | 'credits';
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritageMode }) => {
   const [viewState, setViewState] = useState<MenuViewState>('main');
   const [worlds, setWorlds] = useState<WorldSummary[]>([]);
   const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
@@ -87,10 +88,18 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   }, [viewState]);
 
   const getOrInitSessionToken = async (targetRealmId?: string): Promise<string | null> => {
-    let token = localStorage.getItem('voxelverse_session_token');
+    let token: string | null = null;
+    let existingPlayerId: string | null = null;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        token = localStorage.getItem('voxelverse_session_token');
+        existingPlayerId = localStorage.getItem('voxelverse_client_player_id');
+      }
+    } catch (e) {
+      console.warn('LocalStorage reads failed inside sandbox', e);
+    }
     if (token) return token;
 
-    const existingPlayerId = localStorage.getItem('voxelverse_client_player_id');
     const defaultRealm = targetRealmId || (mpRealms.length > 0 ? mpRealms[0].realmId : 'realm_sunswept');
 
     try {
@@ -106,8 +115,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       if (res.ok) {
         const data = await res.json();
         if (data.sessionToken) {
-          localStorage.setItem('voxelverse_session_token', data.sessionToken);
-          localStorage.setItem('voxelverse_client_player_id', data.playerId);
+          try {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem('voxelverse_session_token', data.sessionToken);
+              localStorage.setItem('voxelverse_client_player_id', data.playerId);
+            }
+          } catch (e) {
+            console.warn('LocalStorage writes failed inside sandbox', e);
+          }
           return data.sessionToken;
         }
       }
@@ -171,7 +186,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
   };
 
   const handleJoinMpRealm = async (realmId: string) => {
-    const existingPlayerId = localStorage.getItem('voxelverse_client_player_id');
+    let existingPlayerId: string | null = null;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        existingPlayerId = localStorage.getItem('voxelverse_client_player_id');
+      }
+    } catch (e) {
+      console.warn('LocalStorage reads failed inside sandbox', e);
+    }
     try {
       const res = await fetch('/api/session/join', {
         method: 'POST',
@@ -185,10 +207,22 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
       if (res.ok) {
         const session = await res.json();
         if (session.sessionToken) {
-          localStorage.setItem('voxelverse_session_token', session.sessionToken);
+          try {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem('voxelverse_session_token', session.sessionToken);
+            }
+          } catch (e) {
+            console.warn('LocalStorage writes failed inside sandbox', e);
+          }
         }
         if (session.playerId) {
-          localStorage.setItem('voxelverse_client_player_id', session.playerId);
+          try {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem('voxelverse_client_player_id', session.playerId);
+            }
+          } catch (e) {
+            console.warn('LocalStorage writes failed inside sandbox', e);
+          }
         }
         onStartGame(
           session.realmId,
@@ -421,13 +455,22 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame }) => {
                     <span>Singleplayer Realms</span>
                   </button>
 
-                  {/* Multiplayer */}
+                   {/* Multiplayer */}
                   <button
                     onClick={() => setViewState('multiplayer')}
                     className="group w-full py-3.5 bg-emerald-950/30 hover:bg-emerald-900/50 text-emerald-300 rounded-2xl font-bold text-sm border border-emerald-500/20 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] hover:-translate-y-0.5 shadow-lg shadow-black/20"
                   >
                     <Globe className="w-4 h-4 text-emerald-400 transition-transform group-hover:rotate-12" />
                     <span>Multiplayer</span>
+                  </button>
+
+                  {/* Nusantara Heritage Mode */}
+                  <button
+                    onClick={onEnterHeritageMode}
+                    className="group w-full py-3.5 bg-sky-950/40 hover:bg-sky-900/60 text-sky-300 rounded-2xl font-bold text-sm border border-sky-400/30 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] hover:-translate-y-0.5 shadow-lg shadow-sky-500/10 hover:shadow-sky-400/20 animate-pulse"
+                  >
+                    <Compass className="w-4 h-4 text-sky-400 animate-spin-slow" />
+                    <span className="tracking-wide">Nusantara Heritage Mode</span>
                   </button>
 
                   {/* Settings, Credits & Updates */}

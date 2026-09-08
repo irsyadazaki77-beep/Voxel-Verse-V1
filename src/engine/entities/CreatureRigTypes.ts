@@ -4,9 +4,14 @@ import * as THREE from 'three';
 export type CreatureLocomotionType =
   | 'quadruped'
   | 'biped'
+  | 'humanoid'
   | 'flying'
+  | 'avian'
   | 'aquatic'
+  | 'arachnid'
+  | 'golem'
   | 'aberration'
+  | 'boss'
   | 'boss_golem'
   | 'boss_sovereign';
 

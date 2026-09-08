@@ -16,6 +16,7 @@ import { ActuatorEngine } from './ActuatorEngine';
 import { ItemFunnelEngine } from './ItemFunnelEngine';
 import { AutoHarvesterEngine } from './AutoHarvesterEngine';
 import { ResonanceFabricatorEngine } from './ResonanceFabricatorEngine';
+import { SETTLEMENT_REGISTRY, SettlementManager } from '../settlement/SettlementManager';
 
 export class AetherNetworkManager {
   private static instance: AetherNetworkManager | null = null;
@@ -408,6 +409,19 @@ export class AetherNetworkManager {
     net.totalEnergyDemand = dem;
     net.isOverloaded = dem > cap && dem > 0;
     net.isPowered = !net.isOverloaded;
+
+    // Sync Leyline power to any nearby settlements if network is powered & producing energy
+    if (net.isPowered && cap > 0) {
+      net.nodes.forEach((node) => {
+        Object.values(SETTLEMENT_REGISTRY).forEach((settlement) => {
+          const dx = settlement.originPos[0] - node.pos[0];
+          const dz = settlement.originPos[2] - node.pos[2];
+          if (dx * dx + dz * dz <= 150 * 150) {
+            SettlementManager.setLeylinePowered(settlement.id, true);
+          }
+        });
+      });
+    }
   }
 
   // Mark node dirty for signal propagation recalculation

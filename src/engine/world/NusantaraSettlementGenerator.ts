@@ -87,10 +87,10 @@ export class NusantaraSettlementGenerator {
         break;
       }
 
-      // 2. TANAH JAWA: Alun-Alun Central Grid with Pendopo, Pasar & Joglo
+      // 2. TANAH JAWA: Alun-Alun Central Grid with Joglo Marketplace & Houses
       case 'tanah_jawa': {
-        // Center: Grand Pendopo & Alun-Alun
-        addBuilding(centerX, baseY, centerZ, NusantaraBuildingKit.generatePendopo());
+        // Center: Joglo / Pendopo Marketplace Hub
+        addBuilding(centerX, baseY, centerZ, NusantaraBuildingKit.generateJogloMarketplace());
 
         // North: Master Joglo
         addBuilding(centerX, baseY, centerZ - 18, NusantaraBuildingKit.generateJoglo());
@@ -98,9 +98,6 @@ export class NusantaraSettlementGenerator {
         // East & West: Limasan houses
         addBuilding(centerX - 18, baseY, centerZ - 8, NusantaraBuildingKit.generateLimasan());
         addBuilding(centerX + 18, baseY, centerZ - 8, NusantaraBuildingKit.generateLimasan());
-
-        // South: Traditional Market (Pasar)
-        addBuilding(centerX - 10, baseY, centerZ + 14, NusantaraBuildingKit.generatePasarTradisional());
 
         // Entrance: Gapura Majapahit gates
         addBuilding(centerX, baseY, centerZ + 24, NusantaraBuildingKit.generateGapuraMajapahit());
@@ -158,8 +155,8 @@ export class NusantaraSettlementGenerator {
 
       // 5. TORAJA HIGHLANDS: North-South Sacred Axis, Tongkonan facing Alang Granaries
       case 'toraja_highlands': {
-        // Northern row: 2 Great Tongkonan
-        addBuilding(centerX - 8, baseY, centerZ - 10, NusantaraBuildingKit.generateTongkonan());
+        // Northern row: 1 Great Tongkonan Leyline Hall and 1 Standard Tongkonan
+        addBuilding(centerX - 8, baseY, centerZ - 10, NusantaraBuildingKit.generateTongkonanLeylineHall());
         addBuilding(centerX + 8, baseY, centerZ - 10, NusantaraBuildingKit.generateTongkonan());
 
         // Southern row: 3 Alang granaries facing Tongkonan

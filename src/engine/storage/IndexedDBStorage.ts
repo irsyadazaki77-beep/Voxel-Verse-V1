@@ -13,31 +13,36 @@ export class IndexedDBStorage {
     if (this.dbPromise) return this.dbPromise;
 
     this.dbPromise = new Promise((resolve, reject) => {
-      if (typeof window === 'undefined' || !window.indexedDB) {
-        reject(new Error('IndexedDB is not supported in this environment'));
-        return;
+      try {
+        if (typeof window === 'undefined' || !window.indexedDB) {
+          reject(new Error('IndexedDB is not supported in this environment'));
+          return;
+        }
+
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onupgradeneeded = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains(STORE_WORLDS)) {
+            db.createObjectStore(STORE_WORLDS, { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains(STORE_RECOVERY)) {
+            db.createObjectStore(STORE_RECOVERY, { keyPath: 'id' });
+          }
+        };
+
+        request.onsuccess = () => {
+          resolve(request.result);
+        };
+
+        request.onerror = () => {
+          Logger.error('IndexedDBStorage', 'Failed to open IndexedDB database', { error: request.error?.message });
+          reject(request.error);
+        };
+      } catch (err) {
+        Logger.warn('IndexedDBStorage', 'IndexedDB property access blocked by sandbox or browser security', { error: err });
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
-
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(STORE_WORLDS)) {
-          db.createObjectStore(STORE_WORLDS, { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains(STORE_RECOVERY)) {
-          db.createObjectStore(STORE_RECOVERY, { keyPath: 'id' });
-        }
-      };
-
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-
-      request.onerror = () => {
-        Logger.error('IndexedDBStorage', 'Failed to open IndexedDB database', { error: request.error?.message });
-        reject(request.error);
-      };
     });
 
     return this.dbPromise;

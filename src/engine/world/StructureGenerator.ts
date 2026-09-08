@@ -1364,6 +1364,13 @@ export class StructureGenerator {
 
     let result: VoxelBlockPlacement[];
     switch (type) {
+      // 5 Signature Structures
+      case 'rumah_gadang_grand_hall': result = NusantaraBuildingKit.generateRumahGadang(true); break;
+      case 'tongkonan_leyline_hall': result = NusantaraBuildingKit.generateTongkonanLeylineHall(); break;
+      case 'betang_living_longhouse': result = NusantaraBuildingKit.generateRumahBetang(24); break;
+      case 'joglo_marketplace': result = NusantaraBuildingKit.generateJogloMarketplace(); break;
+      case 'nusantara_aether_temple': result = NusantaraBuildingKit.generateNusantaraAetherTemple(); break;
+
       // Minang
       case 'rumah_gadang': result = NusantaraBuildingKit.generateRumahGadang(false); break;
       case 'rangkiang': result = NusantaraBuildingKit.generateRangkiang('si_bayau_bayau'); break;

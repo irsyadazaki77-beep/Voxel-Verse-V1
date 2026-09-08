@@ -9,9 +9,10 @@ import { MainMenu } from './components/MainMenu';
 import { GameCanvas } from './components/GameCanvas';
 import { WorldPreset } from './engine/world/WorldConfig';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { NusantaraHeritageViewer } from './components/NusantaraHeritageViewer';
 
 export default function App() {
-  const [gameState, setGameState] = useState<'menu' | 'playing'>('menu');
+  const [gameState, setGameState] = useState<'menu' | 'playing' | 'heritage'>('menu');
   const [activeWorld, setActiveWorld] = useState<{
     id: string;
     seed: number;
@@ -54,8 +55,13 @@ export default function App() {
   return (
     <ErrorBoundary>
       <main id="app-root" className="w-full h-full min-h-screen bg-[#0a0a0f] text-white overflow-hidden select-none font-sans">
-        {gameState === 'menu' || !activeWorld ? (
-          <MainMenu onStartGame={handleStartGame} />
+        {gameState === 'heritage' ? (
+          <NusantaraHeritageViewer onBackToMenu={() => setGameState('menu')} />
+        ) : gameState === 'menu' || !activeWorld ? (
+          <MainMenu 
+            onStartGame={handleStartGame} 
+            onEnterHeritageMode={() => setGameState('heritage')}
+          />
         ) : (
           <GameCanvas
             worldId={activeWorld.id}

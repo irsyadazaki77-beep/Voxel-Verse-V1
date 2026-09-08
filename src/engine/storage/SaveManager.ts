@@ -299,7 +299,11 @@ export class SaveManager {
   public static hasWorld(worldId: string): boolean {
     const worlds = this.getWorlds();
     if (worlds.some((w) => w.id === worldId)) return true;
-    if (localStorage.getItem(`voxelverse_world_${worldId}`)) return true;
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem(`voxelverse_world_${worldId}`)) return true;
+    } catch (e) {
+      Logger.warn('SaveManager', 'Failed to check if world exists in localStorage', { error: (e as Error).message });
+    }
     return false;
   }
 
@@ -343,17 +347,19 @@ export class SaveManager {
 
       // 3. Save to localStorage with rotating backup support (Primary, Backup 1, Backup 2)
       try {
-        const existingPrimary = localStorage.getItem(key);
-        if (existingPrimary) {
-          const existingBackup1 = localStorage.getItem(backup1Key);
-          if (existingBackup1) {
-            localStorage.setItem(backup2Key, existingBackup1);
+        if (typeof localStorage !== 'undefined') {
+          const existingPrimary = localStorage.getItem(key);
+          if (existingPrimary) {
+            const existingBackup1 = localStorage.getItem(backup1Key);
+            if (existingBackup1) {
+              localStorage.setItem(backup2Key, existingBackup1);
+            }
+            localStorage.setItem(backup1Key, existingPrimary);
           }
-          localStorage.setItem(backup1Key, existingPrimary);
+          localStorage.setItem(tempKey, payload);
+          localStorage.setItem(key, payload);
+          localStorage.removeItem(tempKey);
         }
-        localStorage.setItem(tempKey, payload);
-        localStorage.setItem(key, payload);
-        localStorage.removeItem(tempKey);
       } catch (quotaError) {
         Logger.warn('SaveManager', 'LocalStorage quota exceeded or unavailable; IndexedDB utilized for save state.', { error: (quotaError as Error).message });
       }
@@ -370,7 +376,13 @@ export class SaveManager {
         lastPlayed: data.lastPlayed,
         createdAt: data.createdAt,
       });
-      localStorage.setItem(WORLDS_INDEX_KEY, JSON.stringify(worlds));
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(WORLDS_INDEX_KEY, JSON.stringify(worlds));
+        }
+      } catch (err) {
+        Logger.warn('SaveManager', 'Failed to save worlds list to localStorage', { error: (err as Error).message });
+      }
 
       Logger.info('SaveManager', `Successfully saved world '${data.name}' (${data.id}) atomically.`);
       return true;
@@ -423,34 +435,40 @@ export class SaveManager {
 
   // Load World with Multi-Layer Local Fallback & Strict Checksum Verification
   public static loadWorld(worldId: string): WorldSaveData | null {
-    // Layer 3: localStorage primary
-    const primaryRaw = localStorage.getItem(`voxelverse_world_${worldId}`);
-    if (primaryRaw) {
-      const verified = this.verifyAndExtractData(primaryRaw);
-      if (verified) {
-        Logger.info('SaveManager', `[Layer 3 - LocalStorage Primary] Loaded world '${worldId}'`);
-        return verified;
-      }
-    }
+    try {
+      if (typeof localStorage === 'undefined') return null;
 
-    // Layer 4: localStorage backup 1
-    const backup1Raw = localStorage.getItem(`voxelverse_world_${worldId}_backup_1`);
-    if (backup1Raw) {
-      const verified = this.verifyAndExtractData(backup1Raw);
-      if (verified) {
-        Logger.warn('SaveManager', `[Layer 4 - LocalStorage Backup 1] Primary corrupted/missing, recovered world '${worldId}' from Backup 1`);
-        return verified;
+      // Layer 3: localStorage primary
+      const primaryRaw = localStorage.getItem(`voxelverse_world_${worldId}`);
+      if (primaryRaw) {
+        const verified = this.verifyAndExtractData(primaryRaw);
+        if (verified) {
+          Logger.info('SaveManager', `[Layer 3 - LocalStorage Primary] Loaded world '${worldId}'`);
+          return verified;
+        }
       }
-    }
 
-    // Layer 5: localStorage backup 2
-    const backup2Raw = localStorage.getItem(`voxelverse_world_${worldId}_backup_2`);
-    if (backup2Raw) {
-      const verified = this.verifyAndExtractData(backup2Raw);
-      if (verified) {
-        Logger.warn('SaveManager', `[Layer 5 - LocalStorage Backup 2] Recovered world '${worldId}' from Backup 2`);
-        return verified;
+      // Layer 4: localStorage backup 1
+      const backup1Raw = localStorage.getItem(`voxelverse_world_${worldId}_backup_1`);
+      if (backup1Raw) {
+        const verified = this.verifyAndExtractData(backup1Raw);
+        if (verified) {
+          Logger.warn('SaveManager', `[Layer 4 - LocalStorage Backup 1] Primary corrupted/missing, recovered world '${worldId}' from Backup 1`);
+          return verified;
+        }
       }
+
+      // Layer 5: localStorage backup 2
+      const backup2Raw = localStorage.getItem(`voxelverse_world_${worldId}_backup_2`);
+      if (backup2Raw) {
+        const verified = this.verifyAndExtractData(backup2Raw);
+        if (verified) {
+          Logger.warn('SaveManager', `[Layer 5 - LocalStorage Backup 2] Recovered world '${worldId}' from Backup 2`);
+          return verified;
+        }
+      }
+    } catch (e) {
+      Logger.warn('SaveManager', 'Failed to read world from localStorage', { error: (e as Error).message });
     }
 
     // Layer 6: Crash recovery

@@ -110,18 +110,24 @@ export class CreatureAnimationEngine {
         this.updateQuadruped(dt, rig, entityState, entityTime, isMoving, isRunning, isNear);
         break;
       case 'biped':
+      case 'humanoid':
         this.updateBiped(dt, rig, entityState, entityTime, isMoving, isRunning, isNear);
         break;
-      case 'flying':
+      case 'avian':
         this.updateFlying(dt, rig, entityState, entityTime, isMoving, isRunning, isNear);
         break;
       case 'aquatic':
         this.updateAquatic(dt, rig, entityState, entityTime, isMoving, isRunning, isNear);
         break;
+      case 'arachnid':
+        this.updateArachnid(dt, rig, entityState, entityTime, isMoving, isRunning, isNear);
+        break;
       case 'aberration':
         this.updateAberration(dt, rig, entityState, entityTime, isMoving, isRunning, isNear);
         break;
+      case 'golem':
       case 'boss_golem':
+      case 'boss':
         this.updateBossGolem(dt, rig, entityState, entityTime, isMoving, isRunning, isNear);
         break;
       case 'boss_sovereign':
@@ -421,6 +427,38 @@ export class CreatureAnimationEngine {
         shard.position.y = (rig.initialTorsoPos?.y || 0) + Math.sin(time * 4.0 + idx * 1.5) * 0.15;
         shard.rotation.y = -angle;
       });
+    }
+  }
+
+  // ==========================================
+  // ARACHNID LOCOMOTION (Spiders, Scorpions)
+  // ==========================================
+  private static updateArachnid(
+    dt: number,
+    rig: CreatureRig,
+    state: EntityState,
+    time: number,
+    isMoving: boolean,
+    isRunning: boolean,
+    isNear: boolean
+  ): void {
+    const initTorsoY = rig.initialTorsoPos?.y || 0;
+    const legSpeed = isRunning ? 22.0 : isMoving ? 14.0 : 0.0;
+    const legCycle = time * legSpeed;
+
+    rig.torso.position.y = initTorsoY + (isMoving ? Math.abs(Math.sin(legCycle * 2)) * 0.08 : Math.sin(time * 2.0) * 0.02);
+    rig.torso.rotation.x = isMoving ? 0.1 : 0.0;
+
+    if (legSpeed > 0) {
+      if (rig.legFL) { rig.legFL.rotation.z = 0.4 + Math.sin(legCycle) * 0.3; rig.legFL.rotation.y = Math.cos(legCycle) * 0.3; }
+      if (rig.legFR) { rig.legFR.rotation.z = -0.4 - Math.sin(legCycle + Math.PI) * 0.3; rig.legFR.rotation.y = Math.cos(legCycle + Math.PI) * 0.3; }
+      if (rig.legBL) { rig.legBL.rotation.z = 0.4 + Math.sin(legCycle + Math.PI) * 0.3; rig.legBL.rotation.y = Math.cos(legCycle + Math.PI) * 0.3; }
+      if (rig.legBR) { rig.legBR.rotation.z = -0.4 - Math.sin(legCycle) * 0.3; rig.legBR.rotation.y = Math.cos(legCycle) * 0.3; }
+    } else {
+      if (rig.legFL) { rig.legFL.rotation.z = THREE.MathUtils.lerp(rig.legFL.rotation.z, 0.4, dt * 6); rig.legFL.rotation.y = THREE.MathUtils.lerp(rig.legFL.rotation.y, 0, dt * 6); }
+      if (rig.legFR) { rig.legFR.rotation.z = THREE.MathUtils.lerp(rig.legFR.rotation.z, -0.4, dt * 6); rig.legFR.rotation.y = THREE.MathUtils.lerp(rig.legFR.rotation.y, 0, dt * 6); }
+      if (rig.legBL) { rig.legBL.rotation.z = THREE.MathUtils.lerp(rig.legBL.rotation.z, 0.4, dt * 6); rig.legBL.rotation.y = THREE.MathUtils.lerp(rig.legBL.rotation.y, 0, dt * 6); }
+      if (rig.legBR) { rig.legBR.rotation.z = THREE.MathUtils.lerp(rig.legBR.rotation.z, -0.4, dt * 6); rig.legBR.rotation.y = THREE.MathUtils.lerp(rig.legBR.rotation.y, 0, dt * 6); }
     }
   }
 

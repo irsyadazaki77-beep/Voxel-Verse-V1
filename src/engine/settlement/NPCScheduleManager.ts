@@ -1,6 +1,8 @@
 // Nusantara Living Settlements 1.0 — Lightweight NPC Scheduling Engine
 // 9 Authentic Roles with Time-of-Day Routines, Landmark Targets, and Dynamic Cultural Behaviors
 
+import { SettlementManager } from './SettlementManager';
+
 export type NPCRoleType =
   | 'farmer'
   | 'fisher'
@@ -571,5 +573,33 @@ export class NPCScheduleManager {
    */
   public static getRoleDef(role: NPCRoleType): NPCScheduleDef {
     return NPC_ROLE_SCHEDULES[role] || NPC_ROLE_SCHEDULES.farmer;
+  }
+
+  /**
+   * Resolve spatial target landmark position, utilizing player-built structures when available.
+   */
+  public static getTargetLandmarkPosition(
+    role: NPCRoleType,
+    timeOfDay: number,
+    settlementOrigin: [number, number, number],
+    settlementId?: string
+  ): [number, number, number] {
+    const active = this.getActiveSchedule(role, timeOfDay);
+    if (settlementId) {
+      const structs = SettlementManager.getRecognizedStructures(settlementId);
+      if (structs.length > 0) {
+        if (active.targetLandmark === 'house') {
+          const house = structs.find(s => s.category === 'house' || s.hasBed || s.hasDoor);
+          if (house) return house.originPos;
+        } else if (active.targetLandmark === 'workshop' || active.targetLandmark === 'engineering') {
+          const workshop = structs.find(s => s.category === 'workshop' || s.category === 'leyline_hub' || s.hasWorkstation);
+          if (workshop) return workshop.originPos;
+        } else if (active.targetLandmark === 'farm') {
+          const farm = structs.find(s => s.category === 'farm');
+          if (farm) return farm.originPos;
+        }
+      }
+    }
+    return settlementOrigin;
   }
 }

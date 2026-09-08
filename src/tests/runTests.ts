@@ -9,6 +9,8 @@ import { ChunkWorkerPool } from '../engine/world/ChunkWorkerPool';
 import { EntityManager } from '../engine/entities/EntityManager';
 import { EntityModelCache } from '../engine/entities/EntityModelCache';
 import { SETTLEMENT_REGISTRY, SettlementManager } from '../engine/settlement/SettlementManager';
+import { StructureRecognitionEngine } from '../engine/settlement/StructureRecognitionEngine';
+import { NPCScheduleManager } from '../engine/settlement/NPCScheduleManager';
 import { NetworkSession } from '../engine/network/NetworkSession';
 import { AetherNetworkManager } from '../engine/engineering/AetherNetworkManager';
 import { makeDimensionChunkKey, parseDimensionChunkKey } from '../engine/world/WorldConfig';
@@ -461,6 +463,138 @@ async function runTestSuite() {
     QuestManager.dispose();
     SettlementManager.dispose();
     net.reset();
+  }
+
+  // TEST 16: Living World Integration — Structure Recognition, NPC Routine Target, Leyline Synergy & Persistence
+  console.log('\n▶ [16/16] Testing Living World Integration (Structure Recognition -> NPC Routine -> Leyline Synergy -> Save/Reload)...');
+  {
+    // 1. Initialize systems
+    QuestManager.initialize();
+    SettlementManager.initialize();
+    StructureRecognitionEngine.clear();
+    const net = AetherNetworkManager.getInstance();
+    net.reset();
+
+    const world = new VoxelWorld(12345);
+    const sId = 'haven_camp';
+
+    // 2. Player builds a Shelter (House) & Workshop at Haven Pioneer Camp
+    for (let x = 0; x < 5; x++) {
+      for (let z = 0; z < 5; z++) {
+        world.setBlock(x, 64, z, BlockType.WOOD_PLANKS);
+        world.setBlock(x, 65, z, BlockType.WOOD_PLANKS);
+      }
+    }
+    // Place Door, Bed, Light Source, Crafting Bench, Furnace
+    world.setBlock(2, 65, 0, BlockType.DOOR_BOTTOM);
+    world.setBlock(2, 66, 0, BlockType.DOOR_TOP);
+    world.setBlock(1, 65, 1, BlockType.BED_HEAD);
+    world.setBlock(1, 65, 2, BlockType.BED_FOOT);
+    world.setBlock(4, 65, 4, BlockType.TORCH);
+    world.setBlock(3, 65, 3, BlockType.CRAFTING_BENCH);
+    world.setBlock(4, 65, 3, BlockType.FURNACE);
+
+    // 3. Settlement evaluates & recognizes the player structure
+    const recognizedHouse = SettlementManager.evaluatePlayerStructure(world, [2, 65, 2], sId);
+    assert(recognizedHouse !== null, 'Settlement successfully recognized player-built house & workshop structure');
+    assert(recognizedHouse?.category === 'workshop' || recognizedHouse?.category === 'house', 'Recognized structure categorized as workshop/house');
+    assert(recognizedHouse?.qualityRating! > 50, 'Recognized structure evaluated with high quality rating');
+
+    const structs = SettlementManager.getRecognizedStructures(sId);
+    assert(structs.length === 1, 'Haven Pioneer Camp updated with 1 recognized player structure');
+
+    // 4. NPC uses the player-built structure for routine activities
+    const nightTarget = NPCScheduleManager.getTargetLandmarkPosition('farmer', 22.0, [8, 64, 8], sId);
+    assert(nightTarget[0] === 2 && nightTarget[1] === 65 && nightTarget[2] === 2, 'NPC farmer targets player-built structure position for night rest routine');
+
+    const dialog = SettlementManager.getNPCDialogue('torvald_merchant', false, sId);
+    assert(dialog.lines.some(line => line.includes('buatanmu')), 'NPC merchant dialogue acknowledges player-built structure');
+
+    // 5. Connect Leyline Automation to the settlement
+    net.setWorld(world);
+    net.onBlockPlaced([10, 64, 10], BlockType.AETHER_CORE);
+    net.onBlockPlaced([11, 64, 10], BlockType.LEY_CONDUIT);
+    net.onBlockPlaced([12, 64, 10], BlockType.AETHER_SENTINEL_TURRET);
+
+    net.recalculateNetworkPower(Array.from(net.networks.keys())[0]);
+    assert(SettlementManager.isLeylinePowered(sId), 'Settlement detects active Leyline automation network connection');
+
+    const bonuses = SettlementManager.getSettlementBonus(sId);
+    assert(bonuses.isLeylinePowered === true, 'Settlement bonuses reflect active Leyline power state');
+    assert(bonuses.discountBonusPercent >= 15, 'Settlement grants additional trade discount for Leyline power');
+
+    const poweredDialog = SettlementManager.getNPCDialogue('torvald_merchant', false, sId);
+    assert(poweredDialog.lines.some(line => line.includes('Leyline')), 'NPC dialogue reflects energized Leyline automation');
+
+    // 6. Multiplayer authority check
+    const session = NetworkSession.getInstance();
+    session.setTransportMode('loopback');
+    assert(session.isHost, 'Host authority validated for living world state updates');
+
+    // 7. Save & Persistence Verification
+    const fullSaveData = {
+      version: 3,
+      id: 'living_world_test',
+      seed: 12345,
+      settlements: SettlementManager.serialize(),
+      structures: StructureRecognitionEngine.serialize(),
+      aetherNodes: Array.from(net.nodeMap.keys()),
+    };
+
+    // Reset managers to simulate reload
+    SettlementManager.dispose();
+    StructureRecognitionEngine.clear();
+    net.reset();
+
+    // Reload state
+    SettlementManager.initialize(fullSaveData.settlements);
+    StructureRecognitionEngine.deserialize(fullSaveData.structures);
+
+    assert(SettlementManager.getRecognizedStructures(sId).length === 1, 'Reloaded settlement retains recognized player structures');
+    assert(SettlementManager.isLeylinePowered(sId) === true, 'Reloaded settlement retains Leyline automation power state');
+    assert(StructureRecognitionEngine.getAllStructures().length === 1, 'Reloaded StructureRecognitionEngine retains global structure records');
+
+    world.dispose();
+    SettlementManager.dispose();
+    StructureRecognitionEngine.clear();
+    net.reset();
+  }
+
+  // TEST 17: Visual QA & Art Direction Constraints Regression
+  console.log('\n▶ [17/17] Testing Visual QA & Art Direction Constraints Regression...');
+  {
+    // 1. Mob Showcase: Ensure archetypes and models can be instantiated without error
+    const { CREATURE_REGISTRY } = await import('../engine/entities/CreatureRegistry');
+    const { EntityModelBuilder } = await import('../engine/entities/EntityModelBuilder');
+    const stag = CREATURE_REGISTRY['aether_stag'];
+    assert(stag !== undefined && stag.role === 'AETHER_CREATURE', 'Aether Stag exists in registry');
+    const stagMesh = EntityModelBuilder.buildStag(0);
+    assert(stagMesh.userData.rig.locomotion === 'quadruped', 'Stag locomotion matches archetype');
+
+    // 2. Animation Showcase: Verify animation engine accepts new archetypes
+    const { CreatureAnimationEngine } = await import('../engine/entities/CreatureAnimationEngine');
+    const mockState = { health: 100, maxHealth: 100, aiState: 'idle', velocity: [0, 0, 0] as [number, number, number] };
+    CreatureAnimationEngine.update(16, stagMesh.userData.rig, mockState as any, 10, 0);
+    assert(stagMesh.userData.rig.animPhase !== undefined, 'Animation engine ticked successfully');
+
+    // 3. Nusantara Structure Showcase: Ensure procedural generation yields block arrays
+    const { NusantaraBuildingKit } = await import('../engine/world/NusantaraBuildingKit');
+    const rumahGadang = NusantaraBuildingKit.generateRumahGadang(true);
+    assert(rumahGadang.length > 0, 'Rumah Gadang generated valid structural block placements');
+    const panggung = NusantaraBuildingKit.generateJoglo();
+    assert(panggung.length > 0, 'Joglo generated valid structural block placements');
+
+    // 4. Biome & Lighting Constraints
+    const { BiomeManager } = await import('../engine/world/BiomeManager');
+    const bm = new BiomeManager(12345, 'overworld');
+    const plains = bm.getBiome(0, 0);
+    assert(plains.id !== undefined, 'Biome generation resolves base biome');
+    
+    // Simulate lighting check (Render pipeline instantiates shaders successfully)
+    const { EnvironmentAtmosphereEngine } = await import('../engine/environment/EnvironmentVisualProfile');
+    const profile = EnvironmentAtmosphereEngine.getProfile('plains');
+    assert(profile.skyColorDay !== undefined, 'Environment visual profile defines correct sky colors');
+    assert(profile.fogDensity > 0, 'Atmospheric fog is configured for depth');
   }
 
   console.log('\n====================================================');

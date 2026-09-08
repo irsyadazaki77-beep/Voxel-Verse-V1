@@ -43,6 +43,7 @@ export class ChunkWorkerPool {
   private cpuFallbackGenerator: WorldGeneratorCore | null = null;
   private taskTimeouts: Map<string, any> = new Map();
   private workerFailures: number[] = [];
+  private useSyncFallback: boolean = false;
 
   constructor() {
     const threadCount = typeof navigator !== 'undefined' ? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1)) : 1;
@@ -87,13 +88,15 @@ export class ChunkWorkerPool {
       };
     } catch (e) {
       this.workerFailures[index] = (this.workerFailures[index] || 0) + 1;
-      Logger.warn('ChunkWorkerPool', `Failed to create Worker ${index}`, { error: e });
+      this.useSyncFallback = true;
+      Logger.warn('ChunkWorkerPool', `Failed to create Worker ${index}, fallback to sync mode enabled`, { error: e });
       this.workers[index] = null;
       this.workerBusy[index] = false;
     }
   }
 
   private handleWorkerError(workerIdx: number) {
+    this.useSyncFallback = true; // Any worker error/failure/timeout triggers instant sync fallback
     const worker = this.workers[workerIdx] as any;
     if (worker) {
       const task: WorkerTask | undefined = worker._currentTask;
@@ -137,33 +140,48 @@ export class ChunkWorkerPool {
       }
     } else if (task.type === 'mesh') {
       try {
-        const centerBlocks = new Uint8Array(task.centerBuffer);
-        const neighbors: Record<string, Uint8Array> = {};
-        for (const key in task.neighborBuffers) {
-          neighbors[key] = new Uint8Array(task.neighborBuffers[key]);
-        }
+        let getBlock: (lx: number, ly: number, lz: number) => number;
 
-        const getBlock = (lx: number, ly: number, lz: number): number => {
-          if (ly < 0 || ly >= 128) return 0;
-          let targetCx = task.cx;
-          let targetCz = task.cz;
-          let targetLx = lx;
-          let targetLz = lz;
-
-          if (lx < 0) { targetCx -= 1; targetLx += 16; }
-          else if (lx >= 16) { targetCx += 1; targetLx -= 16; }
-          
-          if (lz < 0) { targetCz -= 1; targetLz += 16; }
-          else if (lz >= 16) { targetCz += 1; targetLz -= 16; }
-
-          if (targetCx === task.cx && targetCz === task.cz) {
-            return centerBlocks[targetLx + targetLz * 16 + ly * 256];
-          } else {
-            const nKey = `${targetCx}_${targetCz}`;
-            const nBuffer = neighbors[nKey];
-            return nBuffer ? nBuffer[targetLx + targetLz * 16 + ly * 256] : 0;
+        if (task.haloBuffer) {
+          const paddedVoxels = new Uint8Array(task.haloBuffer);
+          getBlock = (lx: number, ly: number, lz: number): number => {
+            if (ly < 0 || ly >= 128) return 0;
+            const px = lx + 1;
+            const pz = lz + 1;
+            if (px < 0 || px >= 18 || pz < 0 || pz >= 18) return 0;
+            return paddedVoxels[px + pz * 18 + ly * 324];
+          };
+        } else {
+          const centerBlocks = new Uint8Array(task.centerBuffer || new ArrayBuffer(0));
+          const neighbors: Record<string, Uint8Array> = {};
+          if (task.neighborBuffers) {
+            for (const key in task.neighborBuffers) {
+              neighbors[key] = new Uint8Array(task.neighborBuffers[key]);
+            }
           }
-        };
+
+          getBlock = (lx: number, ly: number, lz: number): number => {
+            if (ly < 0 || ly >= 128) return 0;
+            let targetCx = task.cx;
+            let targetCz = task.cz;
+            let targetLx = lx;
+            let targetLz = lz;
+
+            if (lx < 0) { targetCx -= 1; targetLx += 16; }
+            else if (lx >= 16) { targetCx += 1; targetLx -= 16; }
+            
+            if (lz < 0) { targetCz -= 1; targetLz += 16; }
+            else if (lz >= 16) { targetCz += 1; targetLz -= 16; }
+
+            if (targetCx === task.cx && targetCz === task.cz) {
+              return centerBlocks[targetLx + targetLz * 16 + ly * 256];
+            } else {
+              const nKey = `${targetCx}_${targetCz}`;
+              const nBuffer = neighbors[nKey];
+              return nBuffer ? nBuffer[targetLx + targetLz * 16 + ly * 256] : 0;
+            }
+          };
+        }
 
         const meshData = VoxelMesher.buildChunkMeshData(getBlock, 16, 128, 16);
         if (task.sessionToken === this.currentSessionToken) {
@@ -185,6 +203,11 @@ export class ChunkWorkerPool {
   }
 
   public enqueueTask(task: WorkerTask): void {
+    if (this.useSyncFallback) {
+      this.executeSync(task);
+      return;
+    }
+
     const key = `${task.type}_${task.cx}_${task.cz}_${task.sessionToken}`;
     if (this.taskKeySet.has(key)) return;
 
@@ -237,6 +260,15 @@ export class ChunkWorkerPool {
   private processQueue(): void {
     if (this.taskQueue.length === 0) return;
 
+    if (this.useSyncFallback) {
+      while (this.taskQueue.length > 0) {
+        const task = this.taskQueue.shift()!;
+        this.executeSync(task);
+      }
+      this.taskKeySet.clear();
+      return;
+    }
+
     if (this.isQueueDirty) {
       this.sortQueue();
     }
@@ -260,9 +292,9 @@ export class ChunkWorkerPool {
         (worker as any)._currentTask = task;
         
         const timeout = setTimeout(() => {
-          Logger.warn('ChunkWorkerPool', `Task ${task.taskId} timed out in worker ${i}`);
+          Logger.warn('ChunkWorkerPool', `Task ${task.taskId} timed out in worker ${i}, switching to sync fallback`);
           this.handleWorkerError(i);
-        }, 15000);
+        }, 1500);
         this.taskTimeouts.set(task.taskId, timeout);
 
         if (task.type === 'generate') {
