@@ -115,40 +115,63 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   useEffect(() => {
     let isCancelled = false;
 
+    const yieldFrame = (ms = 30) => new Promise<void>((r) => setTimeout(r, ms));
+
     const loadData = async () => {
       try {
         console.log('[GameCanvas] [LoadingPipeline] Stage 1/5: Initializing Engine...');
         setLoadingStage("Initializing Voxel Engine...");
-        setLoadingProgress(15);
-        await new Promise(r => setTimeout(r, 60));
+        setLoadingProgress(20);
+        await yieldFrame(30);
         if (isCancelled) return;
 
         console.log('[GameCanvas] [LoadingPipeline] Stage 2/5: Loading Save Data for world:', worldId);
         setLoadingStage("Loading Save Data & World Registry...");
-        setLoadingProgress(40);
-        const existingSave = await SaveManager.loadWorldAsync(worldId);
+        setLoadingProgress(45);
+        await yieldFrame(30);
+        if (isCancelled) return;
+
+        let existingSave: any = null;
+        try {
+          existingSave = await SaveManager.loadWorldAsync(worldId);
+        } catch (saveErr) {
+          console.warn('[GameCanvas] Non-fatal error loading save data, proceeding with fresh world:', saveErr);
+        }
         if (isCancelled) return;
 
         console.log('[GameCanvas] [LoadingPipeline] Stage 3/5: Configuring Biome & Climate Engine...');
         setLoadingStage("Configuring Biome & Climate Engine...");
-        setLoadingProgress(60);
-        await new Promise(r => setTimeout(r, 60));
+        setLoadingProgress(65);
+        await yieldFrame(30);
         if (isCancelled) return;
 
         console.log('[GameCanvas] [LoadingPipeline] Stage 4/5: Generating Spawns & Pre-warming Chunks...');
         setLoadingStage("Generating Spawns & Pre-warming Chunks...");
-        setLoadingProgress(75);
-        await new Promise(r => setTimeout(r, 80));
+        setLoadingProgress(80);
+        await yieldFrame(30);
         if (isCancelled) return;
 
-        if (containerRef.current) {
+        // Poll for containerRef if not immediately attached
+        let container = containerRef.current;
+        if (!container) {
+          for (let attempt = 0; attempt < 5; attempt++) {
+            await new Promise(r => setTimeout(r, 30));
+            if (isCancelled) return;
+            if (containerRef.current) {
+              container = containerRef.current;
+              break;
+            }
+          }
+        }
+
+        if (container) {
           console.log('[GameCanvas] [LoadingPipeline] Instantiating GameRuntime...');
           
-          // Timeout guard wrapper for GameRuntime initialization
+          // Timeout guard wrapper for GameRuntime initialization (max 10s)
           const runtimePromise = new Promise<GameRuntime>((resolve, reject) => {
             try {
               const runtime = new GameRuntime(
-                containerRef.current!,
+                container!,
                 worldId,
                 worldName,
                 seed,
@@ -164,7 +187,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           });
 
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("World generation and chunk pre-warming timed out after 15 seconds.")), 15000)
+            setTimeout(() => reject(new Error("World generation and chunk pre-warming timed out after 10 seconds.")), 10000)
           );
 
           const runtime = await Promise.race([runtimePromise, timeoutPromise]);
@@ -176,7 +199,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
           console.log('[GameCanvas] [LoadingPipeline] Stage 5/5: Registering Sync Callbacks & Systems...');
           setLoadingStage("Starting Game Systems & Rendering...");
-          setLoadingProgress(90);
+          setLoadingProgress(92);
 
           // Register bidirectional sync callbacks
           runtime.registerCallbacks({
@@ -208,7 +231,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
           if (isMultiplayer) {
             setLoadingStage("Connecting to Authoritative Realm Server...");
-            setLoadingProgress(92);
+            setLoadingProgress(95);
 
             if (isCancelled) {
               runtime.stop();
@@ -225,33 +248,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
             const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
 
-            const sessionStarted = await NetworkSession.getInstance().startSession(
-              runtime.scene,
-              true,
-              nameToUse,
-              true,
-              serverUrl
-            );
+            try {
+              const sessionStarted = await NetworkSession.getInstance().startSession(
+                runtime.scene,
+                true,
+                nameToUse,
+                true,
+                serverUrl
+              );
 
-            if (isCancelled) {
-              runtime.stop();
-              return;
-            }
+              if (isCancelled) {
+                runtime.stop();
+                return;
+              }
 
-            if (!sessionStarted) {
-              setConnectionError("Failed to connect to the authoritative realm server. Please try again later.");
-              runtime.stop();
-              return;
+              if (!sessionStarted) {
+                console.warn("[GameCanvas] Realm server offline/unreachable, continuing in singleplayer offline fallback mode.");
+              }
+            } catch (netErr) {
+              console.warn("[GameCanvas] Network connection fallback:", netErr);
             }
           }
 
           runtime.start();
+          runtime.resize(window.innerWidth, window.innerHeight);
 
           console.log('[GameCanvas] [LoadingPipeline] World successfully loaded & spawned into world!');
           setLoadingStage("Entering World...");
           setLoadingProgress(100);
-          await new Promise(r => setTimeout(r, 100));
-          setIsWorldLoaded(true);
+          
+          // Complete transition
+          setTimeout(() => {
+            if (!isCancelled) {
+              setIsWorldLoaded(true);
+            }
+          }, 50);
         } else {
           console.warn("[GameCanvas] containerRef.current is missing on init attempt!");
           setConnectionError("Canvas container reference is missing.");
@@ -339,31 +370,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       {/* Authoritative Connection Failure Overlay */}
       {connectionError && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md p-6">
-          <div className="max-w-md w-full bg-slate-900 border border-red-500/30 rounded-2xl p-8 shadow-2xl text-center">
-            <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+          <div className="max-w-md w-full bg-slate-900 border border-red-500/30 rounded-2xl p-8 shadow-2xl text-center space-y-6">
+            <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
               <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <h2 className="text-2xl font-black text-red-400 uppercase tracking-widest mb-2">Connection Failed</h2>
-            <p className="text-slate-400 text-sm leading-relaxed mb-8">{connectionError}</p>
-            <button
-              onClick={onExitToMenu}
-              className="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition shadow-lg shadow-red-500/10 active:scale-[0.98]"
-            >
-              Back to Main Menu
-            </button>
+            <div>
+              <h2 className="text-2xl font-black text-red-400 uppercase tracking-widest mb-2">World Load Notice</h2>
+              <p className="text-slate-300 text-xs leading-relaxed font-mono bg-black/40 p-3 rounded-xl border border-white/5">{connectionError}</p>
+            </div>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  setConnectionError(null);
+                  setIsWorldLoaded(true);
+                }}
+                className="w-full py-3 bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl transition shadow-lg text-xs uppercase tracking-wider cursor-pointer"
+              >
+                Force Enter World
+              </button>
+              <button
+                onClick={onExitToMenu}
+                className="w-full py-3 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white font-semibold rounded-xl transition text-xs border border-white/10 cursor-pointer"
+              >
+                Back to Main Menu
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Loading overlay screen */}
-      {!isWorldLoaded && (
+      {!isWorldLoaded && !connectionError && (
         <LoadingScreen
           worldName={worldName}
           seed={seed}
           stageName={loadingStage}
           progressPercent={loadingProgress}
+          onExit={onExitToMenu}
+          onForceEnter={() => setIsWorldLoaded(true)}
         />
       )}
 

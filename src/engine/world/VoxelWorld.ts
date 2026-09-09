@@ -721,13 +721,16 @@ export class VoxelWorld {
     return dataPoints;
   }
 
-  // Preload essential chunks in radius around origin or specified center
-  public preloadSpawnChunks(centerX: number = 0, centerZ: number = 0, radius: number = 2): void {
+  // Preload essential chunks around spawn (budgeted for mobile responsiveness)
+  public preloadSpawnChunks(centerX: number = 0, centerZ: number = 0, radius: number = 1): void {
     const centerCX = Math.floor(centerX / CHUNK_SIZE_X);
     const centerCZ = Math.floor(centerZ / CHUNK_SIZE_Z);
 
-    for (let dx = -radius; dx <= radius; dx++) {
-      for (let dz = -radius; dz <= radius; dz++) {
+    // Limit sync prewarm radius to max 1 (9 chunks max) to prevent main thread lockup on mobile devices
+    const effectiveRadius = Math.min(1, Math.max(0, radius));
+
+    for (let dx = -effectiveRadius; dx <= effectiveRadius; dx++) {
+      for (let dz = -effectiveRadius; dz <= effectiveRadius; dz++) {
         const cx = centerCX + dx;
         const cz = centerCZ + dz;
         const key = this.getChunkKey(cx, cz);
@@ -739,95 +742,31 @@ export class VoxelWorld {
       }
     }
 
-    // Rebuild initial meshes
-    for (const chunk of this.chunks.values()) {
-      if (chunk.isDirty) {
-        chunk.rebuildMesh(
-          (wx, wy, wz) => this.getBlock(wx, wy, wz),
-          this.solidMaterial,
-          this.transMaterial,
-          this.waterMaterial
-        );
-      }
+    // Synchronously mesh only the immediate spawn chunk; let surrounding chunks mesh via worker pool
+    const centerKey = this.getChunkKey(centerCX, centerCZ);
+    const centerChunk = this.chunks.get(centerKey);
+    if (centerChunk && centerChunk.isDirty) {
+      centerChunk.rebuildMesh(
+        (wx, wy, wz) => this.getBlock(wx, wy, wz),
+        this.solidMaterial,
+        this.transMaterial,
+        this.waterMaterial
+      );
     }
   }
 
-  // Deterministic Safe Spawn Finder
-  // Ensures player spawns on solid, safe ground, exposed to sky, not in water/lava, with clear standing space
+  // Fast Deterministic Safe Spawn Finder
+  // Instantly calculates terrain surface height via procedural noise math without blocking main thread
   public findSafeSpawn(seed: number = this.seed): [number, number, number] {
-    Logger.info('VoxelWorld', `[findSafeSpawn] Searching safe spawn point for seed ${seed}...`);
+    Logger.info('VoxelWorld', `[findSafeSpawn] Calculating fast safe spawn point for seed ${seed}...`);
     try {
-      this.preloadSpawnChunks(0, 0, 2);
-    } catch (err) {
-      Logger.warn('VoxelWorld', '[findSafeSpawn] preloadSpawnChunks warning, proceeding with fallback', { error: err });
+      const h = Math.round(this.generatorCore.getTerrainHeight(0, 0));
+      const safeY = Math.max(SEA_LEVEL + 2, h + 1);
+      Logger.info('VoxelWorld', `[findSafeSpawn] Found safe spawn at [0.5, ${safeY}, 0.5]`);
+      return [0.5, safeY, 0.5];
+    } catch {
+      return [0.5, SEA_LEVEL + 5, 0.5];
     }
-
-    // Deterministic spiral search candidates
-    const spiralOffsets: [number, number][] = [
-      [0, 0], [4, 0], [-4, 0], [0, 4], [0, -4],
-      [8, 8], [-8, 8], [8, -8], [-8, -8],
-      [12, 0], [-12, 0], [0, 12], [0, -12],
-      [16, 8], [-16, 8], [8, 16], [-8, 16],
-      [20, 20], [-20, 20], [20, -20], [-20, -20],
-      [24, 0], [-24, 0], [0, 24], [0, -24],
-      [32, 16], [-32, 16], [16, 32], [-16, 32],
-    ];
-
-    const isSolidGround = (block: BlockType): boolean => {
-      return (
-        block === BlockType.GRASS ||
-        block === BlockType.DIRT ||
-        block === BlockType.STONE ||
-        block === BlockType.COBBLESTONE ||
-        block === BlockType.SAND ||
-        block === BlockType.SNOW ||
-        block === BlockType.MOSS_STONE ||
-        block === BlockType.BASALT
-      );
-    };
-
-    let attempts = 0;
-    for (const [ox, oz] of spiralOffsets) {
-      attempts++;
-      const wx = ox;
-      const wz = oz;
-
-      // Scan downwards from top of world with strict bounds
-      for (let y = CHUNK_SIZE_Y - 4; y >= SEA_LEVEL + 1; y--) {
-        const groundBlock = this.getBlock(wx, y, wz);
-
-        if (isSolidGround(groundBlock)) {
-          // Check player standing space (Y+1 is feet, Y+2 is head)
-          const feetBlock = this.getBlock(wx, y + 1, wz);
-          const headBlock = this.getBlock(wx, y + 2, wz);
-          const aboveBlock = this.getBlock(wx, y + 3, wz);
-
-          const isPassable = (b: BlockType) => b === BlockType.AIR || b === BlockType.TALL_GRASS || b === BlockType.BLUE_FLOWER || b === BlockType.RED_FLOWER || b === BlockType.SUN_ORCHID;
-
-          if (isPassable(feetBlock) && isPassable(headBlock) && isPassable(aboveBlock)) {
-            // Check sky exposure (not in a subterranean cave)
-            let hasSky = true;
-            for (let sy = y + 4; sy < CHUNK_SIZE_Y; sy++) {
-              const b = this.getBlock(wx, sy, wz);
-              if (b !== BlockType.AIR && b !== BlockType.OAK_LEAVES && b !== BlockType.PINE_LEAVES && b !== BlockType.CYAN_CRYSTAL_LEAVES) {
-                hasSky = false;
-                break;
-              }
-            }
-
-            if (hasSky) {
-              Logger.info('VoxelWorld', `[findSafeSpawn] Found safe spawn at [${wx + 0.5}, ${y + 1.0}, ${wz + 0.5}] after ${attempts} offsets.`);
-              return [wx + 0.5, y + 1.0, wz + 0.5];
-            }
-          }
-        }
-      }
-    }
-
-    // Safe fallback with guaranteed height
-    Logger.warn('VoxelWorld', '[findSafeSpawn] No ideal safe spawn found in spiral offsets after all attempts, using guaranteed fallback spawn.');
-    const fallbackY = Math.max(SEA_LEVEL + 2, this.getSpawnHeight(0, 0));
-    return [0.5, fallbackY + 1.0, 0.5];
   }
 
   // Update streamed chunks around player position using ChunkScheduler

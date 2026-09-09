@@ -262,22 +262,22 @@ const HUDProfilerOverlay = ({ onClose }: { onClose: () => void }) => {
           <div className="grid grid-cols-2 gap-x-4">
             <div className="flex justify-between py-0.5">
               <span className="text-zinc-400">Sun Intensity:</span>
-              <span className="font-bold text-amber-400">{(metrics as any).sunIntensity?.toFixed(2)}</span>
+              <span className="font-bold text-amber-400">{((metrics as any).sunIntensity ?? 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-0.5">
               <span className="text-zinc-400">Exposure:</span>
-              <span className="font-bold text-sky-300">{(metrics as any).exposure?.toFixed(2)}</span>
+              <span className="font-bold text-sky-300">{((metrics as any).exposure ?? 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-0.5">
               <span className="text-zinc-400">Ambient / Hemi:</span>
               <span className="font-bold text-zinc-200">
-                {(metrics as any).ambientIntensity?.toFixed(2)} / {(metrics as any).hemiIntensity?.toFixed(2)}
+                {((metrics as any).ambientIntensity ?? 0).toFixed(2)} / {((metrics as any).hemiIntensity ?? 0).toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between py-0.5">
               <span className="text-zinc-400">Combined Energy:</span>
-              <span className={`font-bold ${((metrics as any).sunIntensity + (metrics as any).ambientIntensity) > 4.5 ? 'text-rose-400' : 'text-zinc-300'}`}>
-                {((metrics as any).sunIntensity + (metrics as any).ambientIntensity + (metrics as any).hemiIntensity || 0).toFixed(2)}
+              <span className={`font-bold ${(((metrics as any).sunIntensity ?? 0) + ((metrics as any).ambientIntensity ?? 0)) > 4.5 ? 'text-rose-400' : 'text-zinc-300'}`}>
+                {(((metrics as any).sunIntensity ?? 0) + ((metrics as any).ambientIntensity ?? 0) + ((metrics as any).hemiIntensity ?? 0)).toFixed(2)}
               </span>
             </div>
           </div>

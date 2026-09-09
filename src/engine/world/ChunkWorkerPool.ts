@@ -297,61 +297,68 @@ export class ChunkWorkerPool {
         }, 1500);
         this.taskTimeouts.set(task.taskId, timeout);
 
-        if (task.type === 'generate') {
-          const input: GenerateTaskInput = {
-            type: 'generate',
-            taskId: task.taskId,
-            cx: task.cx,
-            cz: task.cz,
-            seed: task.seed,
-            preset: task.preset,
-            dimensionId: task.dimensionId,
-            modifiedBlocks: task.modifiedBlocks,
-          };
-          worker.postMessage(input);
-        } else if (task.type === 'mesh') {
-          if (task.haloBuffer) {
-            const input: MeshTaskInput = {
-              type: 'mesh',
+        try {
+          if (task.type === 'generate') {
+            const input: GenerateTaskInput = {
+              type: 'generate',
               taskId: task.taskId,
               cx: task.cx,
               cz: task.cz,
-              sourceRevision: task.sourceRevision ?? 0,
-              haloBuffer: task.haloBuffer
+              seed: task.seed,
+              preset: task.preset,
+              dimensionId: task.dimensionId,
+              modifiedBlocks: task.modifiedBlocks,
             };
-            // Transfer haloBuffer directly with zero copy!
-            worker.postMessage(input, [task.haloBuffer]);
-          } else {
-            const input: MeshTaskInput = {
-              type: 'mesh',
-              taskId: task.taskId,
-              cx: task.cx,
-              cz: task.cz,
-              sourceRevision: task.sourceRevision ?? 0,
-              centerBuffer: task.centerBuffer,
-              neighborBuffers: task.neighborBuffers
-            };
-            
-            const transfers: ArrayBuffer[] = [];
-            if (input.centerBuffer) transfers.push(input.centerBuffer.slice(0));
-            
-            const clonedNeighbors: Record<string, ArrayBuffer> = {};
-            if (input.neighborBuffers) {
-              for (const key in input.neighborBuffers) {
-                const sliced = input.neighborBuffers[key].slice(0);
-                transfers.push(sliced);
-                clonedNeighbors[key] = sliced;
+            worker.postMessage(input);
+          } else if (task.type === 'mesh') {
+            if (task.haloBuffer) {
+              const input: MeshTaskInput = {
+                type: 'mesh',
+                taskId: task.taskId,
+                cx: task.cx,
+                cz: task.cz,
+                sourceRevision: task.sourceRevision ?? 0,
+                haloBuffer: task.haloBuffer
+              };
+              // Transfer haloBuffer directly with zero copy!
+              worker.postMessage(input, [task.haloBuffer]);
+            } else {
+              const input: MeshTaskInput = {
+                type: 'mesh',
+                taskId: task.taskId,
+                cx: task.cx,
+                cz: task.cz,
+                sourceRevision: task.sourceRevision ?? 0,
+                centerBuffer: task.centerBuffer,
+                neighborBuffers: task.neighborBuffers
+              };
+              
+              const transfers: ArrayBuffer[] = [];
+              if (input.centerBuffer) transfers.push(input.centerBuffer.slice(0));
+              
+              const clonedNeighbors: Record<string, ArrayBuffer> = {};
+              if (input.neighborBuffers) {
+                for (const key in input.neighborBuffers) {
+                  const sliced = input.neighborBuffers[key].slice(0);
+                  transfers.push(sliced);
+                  clonedNeighbors[key] = sliced;
+                }
               }
-            }
-            
-            const clonedInput: MeshTaskInput = {
-              ...input,
-              centerBuffer: transfers[0],
-              neighborBuffers: clonedNeighbors
-            };
+              
+              const clonedInput: MeshTaskInput = {
+                ...input,
+                centerBuffer: transfers[0],
+                neighborBuffers: clonedNeighbors
+              };
 
-            worker.postMessage(clonedInput, transfers);
+              worker.postMessage(clonedInput, transfers);
+            }
           }
+        } catch (postErr) {
+          Logger.warn('ChunkWorkerPool', `Worker postMessage failed for task ${task.taskId}, switching to sync execution`, { error: postErr });
+          this.clearTaskTimeout(task.taskId);
+          this.handleWorkerError(i);
+          this.executeSync(task);
         }
       }
     }

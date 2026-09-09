@@ -13,8 +13,20 @@ export class IndexedDBStorage {
     if (this.dbPromise) return this.dbPromise;
 
     this.dbPromise = new Promise((resolve, reject) => {
+      let isSettled = false;
+      const timeoutId = setTimeout(() => {
+        if (!isSettled) {
+          isSettled = true;
+          this.dbPromise = null;
+          reject(new Error('IndexedDB connection timed out'));
+        }
+      }, 1500);
+
       try {
         if (typeof window === 'undefined' || !window.indexedDB) {
+          isSettled = true;
+          clearTimeout(timeoutId);
+          this.dbPromise = null;
           reject(new Error('IndexedDB is not supported in this environment'));
           return;
         }
@@ -32,16 +44,39 @@ export class IndexedDBStorage {
         };
 
         request.onsuccess = () => {
-          resolve(request.result);
+          if (!isSettled) {
+            isSettled = true;
+            clearTimeout(timeoutId);
+            resolve(request.result);
+          }
         };
 
         request.onerror = () => {
-          Logger.error('IndexedDBStorage', 'Failed to open IndexedDB database', { error: request.error?.message });
-          reject(request.error);
+          if (!isSettled) {
+            isSettled = true;
+            clearTimeout(timeoutId);
+            this.dbPromise = null;
+            Logger.error('IndexedDBStorage', 'Failed to open IndexedDB database', { error: request.error?.message });
+            reject(request.error);
+          }
+        };
+
+        request.onblocked = () => {
+          if (!isSettled) {
+            isSettled = true;
+            clearTimeout(timeoutId);
+            this.dbPromise = null;
+            reject(new Error('IndexedDB open blocked'));
+          }
         };
       } catch (err) {
-        Logger.warn('IndexedDBStorage', 'IndexedDB property access blocked by sandbox or browser security', { error: err });
-        reject(err instanceof Error ? err : new Error(String(err)));
+        if (!isSettled) {
+          isSettled = true;
+          clearTimeout(timeoutId);
+          this.dbPromise = null;
+          Logger.warn('IndexedDBStorage', 'IndexedDB property access blocked by sandbox or browser security', { error: err });
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
       }
     });
 
@@ -50,20 +85,28 @@ export class IndexedDBStorage {
 
   public static async getItem<T>(storeName: string, key: string): Promise<T | null> {
     try {
-      const db = await this.getDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(storeName, 'readonly');
-        const store = transaction.objectStore(storeName);
-        const request = store.get(key);
+      const getPromise = (async () => {
+        const db = await this.getDB();
+        return new Promise<T | null>((resolve, reject) => {
+          const transaction = db.transaction(storeName, 'readonly');
+          const store = transaction.objectStore(storeName);
+          const request = store.get(key);
 
-        request.onsuccess = () => {
-          resolve((request.result as T) || null);
-        };
+          request.onsuccess = () => {
+            resolve((request.result as T) || null);
+          };
 
-        request.onerror = () => {
-          reject(request.error);
-        };
-      });
+          request.onerror = () => {
+            reject(request.error);
+          };
+        });
+      })();
+
+      const timeoutPromise = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), 1200)
+      );
+
+      return await Promise.race([getPromise, timeoutPromise]);
     } catch (e) {
       Logger.warn('IndexedDBStorage', `Failed to get item '${key}' from store '${storeName}'`, { error: (e as Error).message });
       return null;
