@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GameMode, ItemStack, PlayerEquipment, GameSettings, EntityState, BossCombatState } from '../types';
 import { WorldPreset } from '../engine/world/WorldConfig';
 import { GameRuntime } from '../engine/core/GameRuntime';
+import { WorldStartupPipeline, StartupProgress } from '../engine/world/WorldStartupPipeline';
 import { SaveManager } from '../engine/storage/SaveManager';
 import { HUD } from './HUD';
 import { LoadingScreen } from './LoadingScreen';
@@ -119,43 +120,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const loadData = async () => {
       try {
-        console.log('[GameCanvas] [LoadingPipeline] Stage 1/5: Initializing Engine...');
-        setLoadingStage("Initializing Voxel Engine...");
-        setLoadingProgress(20);
-        await yieldFrame(30);
-        if (isCancelled) return;
-
-        console.log('[GameCanvas] [LoadingPipeline] Stage 2/5: Loading Save Data for world:', worldId);
-        setLoadingStage("Loading Save Data & World Registry...");
-        setLoadingProgress(45);
-        await yieldFrame(30);
-        if (isCancelled) return;
-
-        let existingSave: any = null;
-        try {
-          existingSave = await SaveManager.loadWorldAsync(worldId);
-        } catch (saveErr) {
-          console.warn('[GameCanvas] Non-fatal error loading save data, proceeding with fresh world:', saveErr);
-        }
-        if (isCancelled) return;
-
-        console.log('[GameCanvas] [LoadingPipeline] Stage 3/5: Configuring Biome & Climate Engine...');
-        setLoadingStage("Configuring Biome & Climate Engine...");
-        setLoadingProgress(65);
-        await yieldFrame(30);
-        if (isCancelled) return;
-
-        console.log('[GameCanvas] [LoadingPipeline] Stage 4/5: Generating Spawns & Pre-warming Chunks...');
-        setLoadingStage("Generating Spawns & Pre-warming Chunks...");
-        setLoadingProgress(80);
-        await yieldFrame(30);
-        if (isCancelled) return;
-
         // Poll for containerRef if not immediately attached
         let container = containerRef.current;
         if (!container) {
-          for (let attempt = 0; attempt < 5; attempt++) {
-            await new Promise(r => setTimeout(r, 30));
+          for (let attempt = 0; attempt < 10; attempt++) {
+            await new Promise(r => setTimeout(r, 20));
             if (isCancelled) return;
             if (containerRef.current) {
               container = containerRef.current;
@@ -164,129 +133,118 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
         }
 
-        if (container) {
-          console.log('[GameCanvas] [LoadingPipeline] Instantiating GameRuntime...');
-          
-          // Timeout guard wrapper for GameRuntime initialization (max 10s)
-          const runtimePromise = new Promise<GameRuntime>((resolve, reject) => {
-            try {
-              const runtime = new GameRuntime(
-                container!,
-                worldId,
-                worldName,
-                seed,
-                gameMode,
-                SettingsManager.get(),
-                preset,
-                existingSave
-              );
-              resolve(runtime);
-            } catch (err) {
-              reject(err);
+        if (!container) {
+          console.warn("[GameCanvas] containerRef.current is missing on init attempt!");
+          setConnectionError("Canvas container reference is missing.");
+          return;
+        }
+
+        console.log('[GameCanvas] [LoadingPipeline] Running staged WorldStartupPipeline for world:', worldId);
+        
+        const { runtime, diagnostics } = await WorldStartupPipeline.run({
+          container,
+          worldId,
+          worldName,
+          seed,
+          gameMode,
+          preset,
+          settings: SettingsManager.get(),
+          isCancelled: () => isCancelled,
+          onProgress: (progress: StartupProgress) => {
+            if (!isCancelled) {
+              setLoadingStage(progress.stageName);
+              setLoadingProgress(progress.progressPercent);
             }
-          });
+          },
+        });
 
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("World generation and chunk pre-warming timed out after 10 seconds.")), 10000)
-          );
+        if (isCancelled) {
+          runtime.stop();
+          return;
+        }
 
-          const runtime = await Promise.race([runtimePromise, timeoutPromise]);
+        // Register bidirectional sync callbacks
+        runtime.registerCallbacks({
+          onBossUpdated: (boss) => setActiveBossState(boss),
+          onTargetHitChanged: (hit) => setTargetHitState(hit),
+          onInventoryUpdated: (inv) => setInventoryState(inv),
+          onEquipmentUpdated: (eq) => setEquipmentState(eq),
+          onActiveHotbarIndexChanged: (idx) => setActiveHotbarIndex(idx),
+          onPointerLockChange: (locked) => setIsPointerLocked(locked),
+          onOpenModal: (modalType, data) => {
+            if (modalType === 'dialogue') {
+              setActiveDialogueEntity(data);
+            } else if (modalType === 'chest') {
+              setActiveChestPos(data);
+            } else if (modalType === 'furnace') {
+              setActiveFurnacePos(data);
+            } else if (modalType === 'anvil') {
+              setActiveAnvilPos(data);
+            } else if (modalType === 'engineering') {
+              setActiveEngineeringPos(data);
+            }
+            setModal(modalType);
+          },
+          onPlayerDeath: () => setModal('death'),
+        });
+
+        runtimeRef.current = runtime;
+        (window as any).__voxelRuntime = runtime;
+
+        if (isMultiplayer) {
+          setLoadingStage("Connecting to Authoritative Realm Server...");
+          setLoadingProgress(98);
 
           if (isCancelled) {
             runtime.stop();
             return;
           }
 
-          console.log('[GameCanvas] [LoadingPipeline] Stage 5/5: Registering Sync Callbacks & Systems...');
-          setLoadingStage("Starting Game Systems & Rendering...");
-          setLoadingProgress(92);
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const serverUrl = `${protocol}//${window.location.host}/ws`;
+          console.log('[GameCanvas] Connecting to authoritative server:', serverUrl);
 
-          // Register bidirectional sync callbacks
-          runtime.registerCallbacks({
-            onBossUpdated: (boss) => setActiveBossState(boss),
-            onTargetHitChanged: (hit) => setTargetHitState(hit),
-            onInventoryUpdated: (inv) => setInventoryState(inv),
-            onEquipmentUpdated: (eq) => setEquipmentState(eq),
-            onActiveHotbarIndexChanged: (idx) => setActiveHotbarIndex(idx),
-            onPointerLockChange: (locked) => setIsPointerLocked(locked),
-            onOpenModal: (modalType, data) => {
-              if (modalType === 'dialogue') {
-                setActiveDialogueEntity(data);
-              } else if (modalType === 'chest') {
-                setActiveChestPos(data);
-              } else if (modalType === 'furnace') {
-                setActiveFurnacePos(data);
-              } else if (modalType === 'anvil') {
-                setActiveAnvilPos(data);
-              } else if (modalType === 'engineering') {
-                setActiveEngineeringPos(data);
-              }
-              setModal(modalType);
-            },
-            onPlayerDeath: () => setModal('death'),
-          });
+          if (sessionToken) {
+            NetworkSession.getInstance().sessionToken = sessionToken;
+          }
 
-          runtimeRef.current = runtime;
-          (window as any).__voxelRuntime = runtime;
+          const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
 
-          if (isMultiplayer) {
-            setLoadingStage("Connecting to Authoritative Realm Server...");
-            setLoadingProgress(95);
+          try {
+            const sessionStarted = await NetworkSession.getInstance().startSession(
+              runtime.scene,
+              true,
+              nameToUse,
+              true,
+              serverUrl
+            );
 
             if (isCancelled) {
               runtime.stop();
               return;
             }
 
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const serverUrl = `${protocol}//${window.location.host}/ws`;
-            console.log('[GameCanvas] Connecting to authoritative server:', serverUrl);
-
-            if (sessionToken) {
-              NetworkSession.getInstance().sessionToken = sessionToken;
+            if (!sessionStarted) {
+              console.warn("[GameCanvas] Realm server offline/unreachable, continuing in singleplayer offline fallback mode.");
             }
-
-            const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
-
-            try {
-              const sessionStarted = await NetworkSession.getInstance().startSession(
-                runtime.scene,
-                true,
-                nameToUse,
-                true,
-                serverUrl
-              );
-
-              if (isCancelled) {
-                runtime.stop();
-                return;
-              }
-
-              if (!sessionStarted) {
-                console.warn("[GameCanvas] Realm server offline/unreachable, continuing in singleplayer offline fallback mode.");
-              }
-            } catch (netErr) {
-              console.warn("[GameCanvas] Network connection fallback:", netErr);
-            }
+          } catch (netErr) {
+            console.warn("[GameCanvas] Network connection fallback:", netErr);
           }
-
-          runtime.start();
-          runtime.resize(window.innerWidth, window.innerHeight);
-
-          console.log('[GameCanvas] [LoadingPipeline] World successfully loaded & spawned into world!');
-          setLoadingStage("Entering World...");
-          setLoadingProgress(100);
-          
-          // Complete transition
-          setTimeout(() => {
-            if (!isCancelled) {
-              setIsWorldLoaded(true);
-            }
-          }, 50);
-        } else {
-          console.warn("[GameCanvas] containerRef.current is missing on init attempt!");
-          setConnectionError("Canvas container reference is missing.");
         }
+
+        runtime.start();
+        runtime.resize(window.innerWidth, window.innerHeight);
+
+        console.log('[GameCanvas] [LoadingPipeline] World successfully loaded in', diagnostics.totalDurationMs.toFixed(1), 'ms');
+        setLoadingStage("Entering World...");
+        setLoadingProgress(100);
+        
+        // Complete transition
+        setTimeout(() => {
+          if (!isCancelled) {
+            setIsWorldLoaded(true);
+          }
+        }, 30);
       } catch (err: any) {
         if (isCancelled) return;
         console.error("Fatal error during GameRuntime initialization pipeline:", err);

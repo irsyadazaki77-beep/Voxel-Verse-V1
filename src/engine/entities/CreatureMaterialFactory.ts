@@ -134,32 +134,6 @@ export class CreatureMaterialFactory {
     switch (modelType) {
       // 1. Aurelion Crystal Stag
       case 'stag':
-      
-      case 'storm_ray': {
-        const mat = new THREE.MeshStandardMaterial({ color: 0x22d3ee });
-        mat.emissive.setHex(0x06b6d4);
-        mat.emissiveIntensity = 0.5;
-        return {
-          body: mat,
-          accent: mat,
-          eye: new THREE.MeshBasicMaterial({ color: 0xffffff })
-        };
-      }
-      case 'crystal_golem': {
-        const mat = new THREE.MeshStandardMaterial({ color: 0xc084fc });
-        mat.transparent = true;
-        mat.opacity = 0.8;
-        mat.emissive.setHex(0xa855f7);
-        mat.emissiveIntensity = 0.3;
-        mat.roughness = 0.1;
-        mat.metalness = 0.8;
-        return {
-          body: mat,
-          accent: mat,
-          eye: new THREE.MeshBasicMaterial({ color: 0xffffff })
-        };
-      }
-
       case 'aether_stag': {
         const bodyColor = this.shiftColor(0x9a653d, variant);
         const limbColor = this.shiftColor(0x734825, variant);

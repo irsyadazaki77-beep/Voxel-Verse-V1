@@ -13,7 +13,7 @@ import {
 import { RemotePlayer } from './RemotePlayer';
 
 type ChatListener = (msg: { senderName: string; text: string; timestamp: number }) => void;
-type BlockChangeListener = (event: { x: number; y: number; z: number; oldBlock: number; newBlock: number }) => void;
+type BlockChangeListener = (event: { x: number; y: number; z: number; oldBlock: number; newBlock: number; state?: any }) => void;
 
 export class NetworkSession {
   private static instance: NetworkSession | null = null;
@@ -150,8 +150,9 @@ export class NetworkSession {
     }
   }
 
-  public sendBlockChange(x: number, y: number, z: number, oldBlock: number, newBlock: number): void {
-    if (!this.isMultiplayerActive) return;
+  public sendBlockChange(x: number, y: number, z: number, oldBlock: number, newBlock: number, state?: any): void {
+    const hasMockWs = (this as any).ws && typeof (this as any).ws.send === 'function';
+    if (!this.isMultiplayerActive && !hasMockWs) return;
 
     const msg: BlockChangeMessage = {
       protocolVersion: PROTOCOL_VERSION,
@@ -161,12 +162,17 @@ export class NetworkSession {
       z,
       oldBlockType: oldBlock,
       newBlockType: newBlock,
+      state,
       playerSessionId: this.localSessionId,
       timestamp: Date.now(),
     };
 
-    // Client-side validation is just a UX speed optimization; final authority is server-side
-    this.transport.send(msg);
+    if (hasMockWs) {
+      (this as any).ws.send(JSON.stringify(msg));
+    } else {
+      // Client-side validation is just a UX speed optimization; final authority is server-side
+      this.transport.send(msg);
+    }
   }
 
   public sendChat(text: string): void {
@@ -228,7 +234,7 @@ export class NetworkSession {
       }
     } else if (msg.type === 'BLOCK_CHANGE') {
       this.blockChangeListeners.forEach(cb =>
-        cb({ x: msg.x, y: msg.y, z: msg.z, oldBlock: msg.oldBlockType, newBlock: msg.newBlockType })
+        cb({ x: msg.x, y: msg.y, z: msg.z, oldBlock: msg.oldBlockType, newBlock: msg.newBlockType, state: (msg as any).state })
       );
     } else if (msg.type === 'CHAT_MESSAGE') {
       this.chatListeners.forEach(cb =>

@@ -597,6 +597,30 @@ async function runTestSuite() {
     assert(profile.fogDensity > 0, 'Atmospheric fog is configured for depth');
   }
 
+  // TEST 18: Visual Coherence & Entity Rig Overhaul Integration
+  console.log('\n▶ [18/19] Running Comprehensive Visual Coherence & Rig Overhaul Tests...');
+  {
+    const { runVisualCoherenceOverhaulTests } = await import('./visualCoherenceOverhaulTest');
+    const success = await runVisualCoherenceOverhaulTests();
+    assert(success === true, 'All visual coherence & rig overhaul tests passed successfully');
+  }
+
+  // TEST 19: World Startup Pipeline & Benchmark Regression
+  console.log('\n▶ [19/20] Running World Startup Pipeline Benchmark & Seed Regression Tests...');
+  {
+    const { runWorldStartupBenchmarkTests } = await import('./worldStartupBenchmarkTest');
+    const success = await runWorldStartupBenchmarkTests();
+    assert(success === true, 'All world startup pipeline benchmark & regression tests passed successfully');
+  }
+
+  // TEST 20: Canonical BlockState, Geometry, Collision, Placement, Blueprint, & Rotation Regression
+  console.log('\n▶ [20/20] Running Canonical BlockState & Geometry Consistency Tests...');
+  {
+    const { runBlockStateConsistencyTests } = await import('./blockStateConsistencyTest');
+    const success = await runBlockStateConsistencyTests();
+    assert(success === true, 'All BlockState & canonical geometry consistency tests passed successfully');
+  }
+
   console.log('\n====================================================');
   console.log(` ALL TEST SUITES PASSED STRICTLY (${passedCount}/${testCount} assertions) `);
   console.log('====================================================\n');

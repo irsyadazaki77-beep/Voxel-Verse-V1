@@ -2373,29 +2373,6 @@ export class EntityModelBuilder {
     const key = (modelType || '').toLowerCase().trim();
     switch (key) {
       case 'stag':
-      
-      case 'storm_ray':
-        const rayGroup = new THREE.Group();
-        const rayBody = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.2, 2.0), new THREE.MeshStandardMaterial());
-        rayBody.position.y = 0.5;
-        const rayTail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.5), new THREE.MeshStandardMaterial());
-        rayTail.position.set(0, 0.5, 1.5);
-        rayGroup.add(rayBody, rayTail);
-        return rayGroup;
-
-      case 'crystal_golem':
-        const golemGroup = new THREE.Group();
-        const golemBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.0, 1.0), new THREE.MeshStandardMaterial());
-        golemBody.position.y = 1.0;
-        const golemHead = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial());
-        golemHead.position.y = 2.4;
-        const armL = new THREE.Mesh(new THREE.BoxGeometry(0.6, 2.2, 0.6), new THREE.MeshStandardMaterial());
-        armL.position.set(-1.1, 1.0, 0);
-        const armR = new THREE.Mesh(new THREE.BoxGeometry(0.6, 2.2, 0.6), new THREE.MeshStandardMaterial());
-        armR.position.set(1.1, 1.0, 0);
-        golemGroup.add(golemBody, golemHead, armL, armR);
-        return golemGroup;
-
       case 'aether_stag':
       case 'deer':
         return this.buildStag(variant);

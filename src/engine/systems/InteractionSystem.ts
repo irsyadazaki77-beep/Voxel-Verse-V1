@@ -9,6 +9,8 @@ import { InventoryManager } from '../items/InventoryManager';
 import { CraftingSystem } from '../items/CraftingSystem';
 import { BLOCK_DEFS } from '../world/BlockRegistry';
 import { ITEM_DEFS } from '../items/ItemRegistry';
+import { BlockShapeResolver } from '../world/BlockShapeResolver';
+import { BlockState } from '../world/BlockState';
 import { GameEventBus } from '../events/GameEventBus';
 import { NetworkSession } from '../network/NetworkSession';
 import { AetherNetworkManager } from '../engineering/AetherNetworkManager';
@@ -185,6 +187,39 @@ export class InteractionSystem implements GameSystem {
         return;
       }
 
+      // Priority 2.5: Interactive Architectural Blocks (Doors & Trapdoors)
+      if (BlockShapeResolver.isDoor(hitBlock)) {
+        const curState = world.getBlockState(hx, hy, hz);
+        const newOpen = !curState.open;
+        world.setBlockState(hx, hy, hz, { open: newOpen });
+        NetworkSession.getInstance().sendBlockChange(hx, hy, hz, hitBlock, hitBlock, { open: newOpen });
+
+        // Synchronize opposite half of door (bottom <-> top)
+        const otherY = hitBlock === BlockType.DOOR_BOTTOM ? hy + 1 : hy - 1;
+        const otherBlock = world.getBlock(hx, otherY, hz);
+        if (BlockShapeResolver.isDoor(otherBlock)) {
+          world.setBlockState(hx, otherY, hz, { open: newOpen });
+          NetworkSession.getInstance().sendBlockChange(hx, otherY, hz, otherBlock, otherBlock, { open: newOpen });
+        }
+
+        audio.playUIClick();
+        player.triggerSwing();
+        this.runtime.viewmodel?.triggerSwing('place');
+        return;
+      }
+
+      if (BlockShapeResolver.isTrapdoor(hitBlock)) {
+        const curState = world.getBlockState(hx, hy, hz);
+        const newOpen = !curState.open;
+        world.setBlockState(hx, hy, hz, { open: newOpen });
+        NetworkSession.getInstance().sendBlockChange(hx, hy, hz, hitBlock, hitBlock, { open: newOpen });
+
+        audio.playUIClick();
+        player.triggerSwing();
+        this.runtime.viewmodel?.triggerSwing('place');
+        return;
+      }
+
       if (
         hitBlock === BlockType.LEY_CONDUIT ||
         hitBlock === BlockType.AETHER_CORE ||
@@ -297,15 +332,17 @@ export class InteractionSystem implements GameSystem {
             itemDef.blockType,
             player.getAABB(),
             player.yaw,
-            world
+            world,
+            player.pitch
           );
 
           if (placeEval.allowed) {
-            world.setBlock(
+            world.setBlockWithState(
               placeEval.placePos[0],
               placeEval.placePos[1],
               placeEval.placePos[2],
-              placeEval.blockTypeToPlace
+              placeEval.blockTypeToPlace,
+              placeEval.state
             );
             AetherNetworkManager.getInstance().onBlockPlaced(placeEval.placePos, placeEval.blockTypeToPlace);
 
@@ -316,21 +353,24 @@ export class InteractionSystem implements GameSystem {
               placeEval.placePos[1],
               placeEval.placePos[2],
               BlockType.AIR,
-              placeEval.blockTypeToPlace
+              placeEval.blockTypeToPlace,
+              placeEval.state
             );
 
             GameEventBus.emit('BLOCK_PLACED', {
               blockType: placeEval.blockTypeToPlace,
               pos: placeEval.placePos,
+              state: placeEval.state,
             });
 
             if (placeEval.extraBlocks) {
               placeEval.extraBlocks.forEach(extra => {
-                world.setBlock(extra.pos[0], extra.pos[1], extra.pos[2], extra.blockType);
-                NetworkSession.getInstance().sendBlockChange(extra.pos[0], extra.pos[1], extra.pos[2], BlockType.AIR, extra.blockType);
+                world.setBlockWithState(extra.pos[0], extra.pos[1], extra.pos[2], extra.blockType, extra.state);
+                NetworkSession.getInstance().sendBlockChange(extra.pos[0], extra.pos[1], extra.pos[2], BlockType.AIR, extra.blockType, extra.state);
                 GameEventBus.emit('BLOCK_PLACED', {
                   blockType: extra.blockType,
                   pos: extra.pos,
+                  state: extra.state,
                 });
               });
             }

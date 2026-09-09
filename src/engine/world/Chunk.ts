@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { BlockType } from '../../types';
 import { VoxelMesher, TransferableMeshData } from './VoxelMesher';
+import { BlockState, BlockStateUtils } from './BlockState';
+import { BlockShapeResolver } from './BlockShapeResolver';
 
 export const CHUNK_SIZE_X = 16;
 export const CHUNK_SIZE_Y = 128; // Increased 128-block vertical world height
@@ -51,6 +53,7 @@ export class Chunk {
   public cz: number;
   public state: ChunkState = ChunkState.UNLOADED;
   public blocks: Uint8Array;
+  public blockStates: Map<number, BlockState> = new Map();
   public isDirty: boolean = true;
   public voxelRevision: number = 0;
   public meshRevision: number = 0;
@@ -172,6 +175,16 @@ export class Chunk {
     return this.blocks[Chunk.getIndex(lx, ly, lz)];
   }
 
+  public getBlockState(lx: number, ly: number, lz: number): BlockState {
+    if (lx < 0 || lx >= CHUNK_SIZE_X || ly < 0 || ly >= CHUNK_SIZE_Y || lz < 0 || lz >= CHUNK_SIZE_Z) {
+      return BlockShapeResolver.getDefaultState(BlockType.AIR);
+    }
+    const idx = Chunk.getIndex(lx, ly, lz);
+    const custom = this.blockStates.get(idx);
+    if (custom) return custom;
+    return BlockShapeResolver.getDefaultState(this.blocks[idx]);
+  }
+
   public setBlock(lx: number, ly: number, lz: number, type: BlockType): boolean {
     if (lx < 0 || lx >= CHUNK_SIZE_X || ly < 0 || ly >= CHUNK_SIZE_Y || lz < 0 || lz >= CHUNK_SIZE_Z) {
       return false;
@@ -179,12 +192,45 @@ export class Chunk {
     const idx = Chunk.getIndex(lx, ly, lz);
     if (this.blocks[idx] !== type) {
       this.blocks[idx] = type;
+      this.blockStates.delete(idx);
       this.voxelRevision++;
       this.isDirty = true;
       this.state = ChunkState.DIRTY;
       return true;
     }
     return false;
+  }
+
+  public setBlockWithState(lx: number, ly: number, lz: number, type: BlockType, state?: Partial<BlockState>): boolean {
+    if (lx < 0 || lx >= CHUNK_SIZE_X || ly < 0 || ly >= CHUNK_SIZE_Y || lz < 0 || lz >= CHUNK_SIZE_Z) {
+      return false;
+    }
+    const idx = Chunk.getIndex(lx, ly, lz);
+    this.blocks[idx] = type;
+    if (state) {
+      this.blockStates.set(idx, BlockStateUtils.createDefaultState(type, state));
+    } else {
+      this.blockStates.delete(idx);
+    }
+    this.voxelRevision++;
+    this.isDirty = true;
+    this.state = ChunkState.DIRTY;
+    return true;
+  }
+
+  public setBlockState(lx: number, ly: number, lz: number, state: Partial<BlockState>): boolean {
+    if (lx < 0 || lx >= CHUNK_SIZE_X || ly < 0 || ly >= CHUNK_SIZE_Y || lz < 0 || lz >= CHUNK_SIZE_Z) {
+      return false;
+    }
+    const idx = Chunk.getIndex(lx, ly, lz);
+    const currentBlock = this.blocks[idx];
+    const existing = this.blockStates.get(idx) || BlockShapeResolver.getDefaultState(currentBlock);
+    const updated = BlockStateUtils.createDefaultState(currentBlock, { ...existing, ...state });
+    this.blockStates.set(idx, updated);
+    this.voxelRevision++;
+    this.isDirty = true;
+    this.state = ChunkState.DIRTY;
+    return true;
   }
 
   public setDirty(): void {
@@ -196,7 +242,7 @@ export class Chunk {
 
   // Rebuild 3D meshes using VoxelMesher
   public rebuildMesh(
-    getNeighborBlock: (wx: number, wy: number, wz: number) => BlockType,
+    getNeighborBlock: (wx: number, wy: number, wz: number) => BlockType | BlockState,
     solidMaterial: THREE.Material,
     transMaterial: THREE.Material,
     waterMaterial: THREE.Material
@@ -224,7 +270,7 @@ export class Chunk {
     const meshData = VoxelMesher.buildChunkMeshData(
       (lx, ly, lz) => {
         if (lx >= 0 && lx < CHUNK_SIZE_X && ly >= 0 && ly < CHUNK_SIZE_Y && lz >= 0 && lz < CHUNK_SIZE_Z) {
-          return this.getBlock(lx, ly, lz);
+          return this.getBlockState(lx, ly, lz);
         }
         return getNeighborBlock(this.cx * CHUNK_SIZE_X + lx, ly, this.cz * CHUNK_SIZE_Z + lz);
       },
@@ -255,6 +301,7 @@ export class Chunk {
   }
 
   public dispose(): void {
+    this.blockStates.clear();
     if (this.solidMesh) {
       this.group.remove(this.solidMesh);
       this.solidMesh.geometry.dispose();

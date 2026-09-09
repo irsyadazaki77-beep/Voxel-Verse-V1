@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { BlockType, GameMode } from '../../types';
 import { BLOCK_DEFS } from '../world/BlockRegistry';
 import { VoxelWorld } from '../world/VoxelWorld';
+import { BlockShapeResolver, BlockAABB } from '../world/BlockShapeResolver';
 import { InputManager } from './InputManager';
 import { CameraMotionSystem } from './CameraMotionSystem';
 import { SettingsManager } from '../ui/SettingsManager';
@@ -675,19 +676,22 @@ export class PlayerController {
     const hw = this.width / 2;
     const height = this.currentHeight;
 
-    const isSolid = (x: number, y: number, z: number): boolean => {
+    const getBoxes = (x: number, y: number, z: number): BlockAABB[] => {
       const b = world.getBlock(x, y, z);
-      if (b === BlockType.AIR || b === BlockType.WATER) return false;
-      const def = BLOCK_DEFS[b];
-      return Boolean(def && def.solid);
+      if (b === BlockType.AIR || b === BlockType.WATER) return [];
+      const state = world.getBlockState(x, y, z);
+      return BlockShapeResolver.getCollisionBoxes(b, state);
     };
 
     // Sneaking Edge Safety: If crouching and on ground, prevent walking off ledges
     if (this.isCrouching && this.isGrounded) {
       const testNextX = this.position.x + this.velocity.x * dt;
       const testNextZ = this.position.z + this.velocity.z * dt;
-      const blockUnderNext = world.getBlock(Math.floor(testNextX), Math.floor(this.position.y - 0.5), Math.floor(testNextZ));
-      if (blockUnderNext === BlockType.AIR || blockUnderNext === BlockType.WATER) {
+      const checkX = Math.floor(testNextX);
+      const checkY = Math.floor(this.position.y - 0.5);
+      const checkZ = Math.floor(testNextZ);
+      const boxes = getBoxes(checkX, checkY, checkZ);
+      if (boxes.length === 0) {
         this.velocity.x = 0;
         this.velocity.z = 0;
       }
@@ -706,16 +710,41 @@ export class PlayerController {
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         for (let z = minZ; z <= maxZ; z++) {
-          if (isSolid(x, y, z)) {
-            // Auto step-up check for slabs / stairs
-            const isStepObstacle = (y === minY) && !isSolid(x, y + 1, z) && !isSolid(Math.floor(this.position.x), y + 1, z);
-            if (isStepObstacle && !this.isCrouching) {
-              this.position.y += this.config.stepHeight;
-              continue;
+          const boxes = getBoxes(x, y, z);
+          for (const box of boxes) {
+            const bMinX = x + box.minX;
+            const bMaxX = x + box.maxX;
+            const bMinY = y + box.minY;
+            const bMaxY = y + box.maxY;
+            const bMinZ = z + box.minZ;
+            const bMaxZ = z + box.maxZ;
+
+            const pMinX = this.position.x - hw;
+            const pMaxX = this.position.x + hw;
+            const pMinY = this.position.y;
+            const pMaxY = this.position.y + height;
+            const pMinZ = this.position.z - hw;
+            const pMaxZ = this.position.z + hw;
+
+            if (
+              pMaxX > bMinX + 0.001 &&
+              pMinX < bMaxX - 0.001 &&
+              pMaxY > bMinY + 0.001 &&
+              pMinY < bMaxY - 0.001 &&
+              pMaxZ > bMinZ + 0.001 &&
+              pMinZ < bMaxZ - 0.001
+            ) {
+              // Auto step-up check for slabs / stairs
+              const stepDiff = bMaxY - this.position.y;
+              const isStepObstacle = stepDiff > 0 && stepDiff <= this.config.stepHeight + 0.05;
+              if (isStepObstacle && !this.isCrouching) {
+                this.position.y = bMaxY;
+                continue;
+              }
+              if (dx > 0) this.position.x = bMinX - hw - 0.001;
+              else if (dx < 0) this.position.x = bMaxX + hw + 0.001;
+              this.velocity.x = 0;
             }
-            if (dx > 0) this.position.x = x - hw - 0.001;
-            else if (dx < 0) this.position.x = x + 1 + hw + 0.001;
-            this.velocity.x = 0;
           }
         }
       }
@@ -732,15 +761,40 @@ export class PlayerController {
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         for (let z = minZ; z <= maxZ; z++) {
-          if (isSolid(x, y, z)) {
-            const isStepObstacle = (y === minY) && !isSolid(x, y + 1, z) && !isSolid(x, y + 1, Math.floor(this.position.z));
-            if (isStepObstacle && !this.isCrouching) {
-              this.position.y += this.config.stepHeight;
-              continue;
+          const boxes = getBoxes(x, y, z);
+          for (const box of boxes) {
+            const bMinX = x + box.minX;
+            const bMaxX = x + box.maxX;
+            const bMinY = y + box.minY;
+            const bMaxY = y + box.maxY;
+            const bMinZ = z + box.minZ;
+            const bMaxZ = z + box.maxZ;
+
+            const pMinX = this.position.x - hw;
+            const pMaxX = this.position.x + hw;
+            const pMinY = this.position.y;
+            const pMaxY = this.position.y + height;
+            const pMinZ = this.position.z - hw;
+            const pMaxZ = this.position.z + hw;
+
+            if (
+              pMaxX > bMinX + 0.001 &&
+              pMinX < bMaxX - 0.001 &&
+              pMaxY > bMinY + 0.001 &&
+              pMinY < bMaxY - 0.001 &&
+              pMaxZ > bMinZ + 0.001 &&
+              pMinZ < bMaxZ - 0.001
+            ) {
+              const stepDiff = bMaxY - this.position.y;
+              const isStepObstacle = stepDiff > 0 && stepDiff <= this.config.stepHeight + 0.05;
+              if (isStepObstacle && !this.isCrouching) {
+                this.position.y = bMaxY;
+                continue;
+              }
+              if (dz > 0) this.position.z = bMinZ - hw - 0.001;
+              else if (dz < 0) this.position.z = bMaxZ + hw + 0.001;
+              this.velocity.z = 0;
             }
-            if (dz > 0) this.position.z = z - hw - 0.001;
-            else if (dz < 0) this.position.z = z + 1 + hw + 0.001;
-            this.velocity.z = 0;
           }
         }
       }
@@ -751,8 +805,8 @@ export class PlayerController {
     this.position.y += dy;
     minX = Math.floor(this.position.x - hw);
     maxX = Math.floor(this.position.x + hw);
-    minY = Math.floor(this.position.y);
-    maxY = Math.floor(this.position.y + height);
+    minY = Math.floor(this.position.y - 0.2);
+    maxY = Math.floor(this.position.y + height + 0.2);
     minZ = Math.floor(this.position.z - hw);
     maxZ = Math.floor(this.position.z + hw);
 
@@ -761,14 +815,36 @@ export class PlayerController {
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         for (let z = minZ; z <= maxZ; z++) {
-          if (isSolid(x, y, z)) {
-            if (dy < 0) {
-              this.position.y = y + 1;
-              this.velocity.y = 0;
-              this.isGrounded = true;
-            } else if (dy > 0) {
-              this.position.y = y - height - 0.001;
-              this.velocity.y = 0;
+          const boxes = getBoxes(x, y, z);
+          for (const box of boxes) {
+            const bMinX = x + box.minX;
+            const bMaxX = x + box.maxX;
+            const bMinY = y + box.minY;
+            const bMaxY = y + box.maxY;
+            const bMinZ = z + box.minZ;
+            const bMaxZ = z + box.maxZ;
+
+            const pMinX = this.position.x - hw;
+            const pMaxX = this.position.x + hw;
+            const pMinY = this.position.y;
+            const pMaxY = this.position.y + height;
+            const pMinZ = this.position.z - hw;
+            const pMaxZ = this.position.z + hw;
+
+            if (
+              pMaxX > bMinX + 0.001 &&
+              pMinX < bMaxX - 0.001 &&
+              pMaxZ > bMinZ + 0.001 &&
+              pMinZ < bMaxZ - 0.001
+            ) {
+              if (dy < 0 && pMinY < bMaxY && pMaxY > bMaxY) {
+                this.position.y = bMaxY;
+                this.velocity.y = 0;
+                this.isGrounded = true;
+              } else if (dy > 0 && pMaxY > bMinY && pMinY < bMinY) {
+                this.position.y = bMinY - height - 0.001;
+                this.velocity.y = 0;
+              }
             }
           }
         }
@@ -786,12 +862,18 @@ export class PlayerController {
       ];
       for (const [ox, oz] of testOffsets) {
         const bx = Math.floor(this.position.x + ox);
-        const by = Math.floor(this.position.y - 0.08);
+        const by = Math.floor(this.position.y - 0.1);
         const bz = Math.floor(this.position.z + oz);
-        if (isSolid(bx, by, bz) && this.velocity.y <= 0.01) {
-          this.isGrounded = true;
-          break;
+        const boxes = getBoxes(bx, by, bz);
+        for (const box of boxes) {
+          const bMaxY = by + box.maxY;
+          if (Math.abs(this.position.y - bMaxY) <= 0.12 && this.velocity.y <= 0.05) {
+            this.position.y = bMaxY;
+            this.isGrounded = true;
+            break;
+          }
         }
+        if (this.isGrounded) break;
       }
     }
   }

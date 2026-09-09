@@ -188,7 +188,7 @@ export interface SettlementStyleDef {
 }
 
 // Block Geometry Shapes supported by engine
-export type BlockShape = 'full' | 'slab' | 'stairs' | 'cross' | 'pillar' | 'torch' | 'fence' | 'door' | 'chest' | 'ladder' | 'fluid' | 'farmland' | 'crop' | 'conduit' | 'rail';
+export type BlockShape = 'full' | 'slab' | 'stairs' | 'cross' | 'pillar' | 'torch' | 'fence' | 'door' | 'trapdoor' | 'chest' | 'ladder' | 'fluid' | 'farmland' | 'crop' | 'conduit' | 'rail';
 
 export interface BlockDef {
   id: BlockType;
@@ -222,6 +222,8 @@ export interface RaycastHit {
   faceNormal: [number, number, number];
   distance: number;
   subHitPos?: [number, number, number];
+  subFaceUV?: [number, number];
+  hit?: any;
 }
 
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'ancient' | 'aetheric';
@@ -475,6 +477,7 @@ export interface WorldSaveData {
   };
   unlockedRecipes?: string[];
   modifiedBlocks: { [chunkKey: string]: { [localKey: string]: number } };
+  modifiedBlockStates?: { [chunkKey: string]: { [localKey: string]: any } };
   containers?: { [posKey: string]: (ItemStack | null)[] };
   furnaces?: { [posKey: string]: FurnaceState };
   farmingPlots?: { [posKey: string]: FarmingPlotState };

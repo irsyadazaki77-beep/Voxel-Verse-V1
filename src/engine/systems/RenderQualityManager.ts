@@ -137,8 +137,10 @@ export class RenderQualityManager {
     this.currentDpr = budget.dpr;
     this.targetResolution = { width: budget.width, height: budget.height };
 
-    this.runtime.renderer.setPixelRatio(budget.dpr);
-    this.runtime.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.runtime.renderer?.setPixelRatio?.(budget.dpr);
+    if (this.runtime.renderer) {
+      this.runtime.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    }
 
     if (this.runtime.renderPipeline) {
       this.runtime.renderPipeline.updateSettings(settings, winW, winH);

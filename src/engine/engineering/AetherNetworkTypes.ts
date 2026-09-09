@@ -1,5 +1,6 @@
 // Aether Engineering & Automation System 1.0 - Core Types & Network Interfaces
 import { BlockType, ItemStack } from '../../types';
+import { BlockState } from '../world/BlockState';
 
 export type EngineeringNodeType =
   | 'core'
@@ -98,6 +99,6 @@ export interface BlueprintStructure {
   id: string;
   name: string;
   dimensions: [number, number, number]; // width, height, depth
-  blocks: Array<{ relPos: [number, number, number]; blockType: BlockType }>;
+  blocks: Array<{ relPos: [number, number, number]; blockType: BlockType; state?: BlockState }>;
   requiredItems: Array<{ itemId: string; count: number }>;
 }

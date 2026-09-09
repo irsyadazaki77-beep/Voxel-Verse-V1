@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { VoxelWorld } from '../world/VoxelWorld';
+import { BlockShapeResolver } from '../world/BlockShapeResolver';
 import { GameEventBus } from '../events/GameEventBus';
 
 interface PathNode {
@@ -199,12 +200,22 @@ export class Pathfinder {
         // Block we are trying to stand on
         const standBlock = world.getBlock(nx, ny - 1, nz);
         if (standBlock === 0) continue; // Air underneath, can't stand
+        const standState = world.getBlockState(nx, ny - 1, nz);
+        if (!BlockShapeResolver.isSolidForCollision(standBlock, standState)) continue;
+
+        // Fences have 1.5 block collision height, cannot step up directly over them
+        if (nyOff === 1 && BlockShapeResolver.isFence(standBlock)) continue;
         
         // Blocks our body occupies
         const bodyBlock1 = world.getBlock(nx, ny, nz);
         const bodyBlock2 = world.getBlock(nx, ny + 1, nz);
+        const bodyState1 = world.getBlockState(nx, ny, nz);
+        const bodyState2 = world.getBlockState(nx, ny + 1, nz);
 
-        if (bodyBlock1 === 0 && bodyBlock2 === 0) {
+        const isOcc1 = bodyBlock1 !== 0 && BlockShapeResolver.isSolidForCollision(bodyBlock1, bodyState1);
+        const isOcc2 = bodyBlock2 !== 0 && BlockShapeResolver.isSolidForCollision(bodyBlock2, bodyState2);
+
+        if (!isOcc1 && !isOcc2) {
           // Valid placement
           neighbors.push({ x: nx, y: ny, z: nz });
           break; // Stop checking lower Ys for this x/z if we found a valid surface

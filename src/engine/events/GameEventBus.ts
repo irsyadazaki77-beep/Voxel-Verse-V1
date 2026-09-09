@@ -42,7 +42,7 @@ export type GameEventType =
 
 export interface GameEventPayloads {
   BLOCK_MINED: { blockType: number; pos: [number, number, number]; toolUsed?: string };
-  BLOCK_PLACED: { blockType: number; pos: [number, number, number] };
+  BLOCK_PLACED: { blockType: number; pos: [number, number, number]; state?: any };
   ENTITY_KILLED: { entityId: string; modelType: string; isBoss: boolean; pos: [number, number, number] };
   BIOME_DISCOVERED: { biomeId: string; biomeName: string; pos: [number, number, number] };
   STRUCTURE_DISCOVERED: { structureId: string; name: string; pos: [number, number, number] };

@@ -63,6 +63,7 @@ export interface BlockChangeMessage extends BaseNetworkMessage {
   z: number;
   oldBlockType: number;
   newBlockType: number;
+  state?: any;
   playerSessionId: string;
   revision?: number;
 }

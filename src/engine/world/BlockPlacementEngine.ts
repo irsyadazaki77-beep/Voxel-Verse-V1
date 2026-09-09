@@ -3,12 +3,15 @@ import * as THREE from 'three';
 import { BlockType, GameMode, ItemStack, RaycastHit } from '../../types';
 import { BLOCK_DEFS } from './BlockRegistry';
 import { VoxelWorld } from './VoxelWorld';
+import { BlockState } from './BlockState';
+import { BlockShapeResolver } from './BlockShapeResolver';
 
 export interface PlacementResult {
   allowed: boolean;
   blockTypeToPlace: BlockType;
   placePos: [number, number, number];
-  extraBlocks?: { pos: [number, number, number]; blockType: BlockType }[];
+  state?: BlockState;
+  extraBlocks?: { pos: [number, number, number]; blockType: BlockType; state?: BlockState }[];
 }
 
 export class BlockPlacementEngine {
@@ -21,65 +24,39 @@ export class BlockPlacementEngine {
     selectedBlock: BlockType,
     playerAABB: THREE.Box3,
     playerYaw: number,
-    world: VoxelWorld
+    world: VoxelWorld,
+    playerPitch: number = 0
   ): PlacementResult {
-    const [px, py, pz] = hit.placePos;
     const bDef = BLOCK_DEFS[selectedBlock];
-
     if (!bDef) {
       return { allowed: false, blockTypeToPlace: BlockType.AIR, placePos: hit.placePos };
     }
 
-    // 1. AABB Collision Check against player (only for solid blocks)
-    if (bDef.solid) {
-      const blockBox = new THREE.Box3(
-        new THREE.Vector3(px + 0.01, py + 0.01, pz + 0.01),
-        new THREE.Vector3(px + 0.99, py + 0.99, pz + 0.99)
-      );
-      if (playerAABB.intersectsBox(blockBox)) {
-        return { allowed: false, blockTypeToPlace: selectedBlock, placePos: hit.placePos };
-      }
-    }
+    // Resolve canonical BlockState, placement coordinates, and any multi-blocks via BlockShapeResolver
+    const neighborGetter = (dx: number, dy: number, dz: number) => {
+      const wx = hit.placePos[0] + dx;
+      const wy = hit.placePos[1] + dy;
+      const wz = hit.placePos[2] + dz;
+      return world.getBlockState(wx, wy, wz);
+    };
 
-    // 2. Door Multi-Block Handling (2-block height)
-    if (selectedBlock === BlockType.DOOR_BOTTOM || selectedBlock === BlockType.DOOR_TOP) {
-      const topBlock = world.getBlock(px, py + 1, pz);
-      if (topBlock !== BlockType.AIR) {
-        return { allowed: false, blockTypeToPlace: selectedBlock, placePos: hit.placePos };
-      }
-      // Check top block against player AABB too
-      const topBox = new THREE.Box3(
-        new THREE.Vector3(px + 0.01, py + 1.01, pz + 0.01),
-        new THREE.Vector3(px + 0.99, py + 1.99, pz + 0.99)
-      );
-      if (playerAABB.intersectsBox(topBox)) {
-        return { allowed: false, blockTypeToPlace: selectedBlock, placePos: hit.placePos };
-      }
+    const resolved = BlockShapeResolver.resolvePlacementState(
+      selectedBlock,
+      hit,
+      playerYaw,
+      playerPitch,
+      neighborGetter
+    );
 
-      return {
-        allowed: true,
-        blockTypeToPlace: BlockType.DOOR_BOTTOM,
-        placePos: [px, py, pz],
-        extraBlocks: [{ pos: [px, py + 1, pz], blockType: BlockType.DOOR_TOP }],
-      };
-    }
+    const [px, py, pz] = resolved.placePos;
+    const state = resolved.state;
 
-    // 3. Torch Placement rules (cannot hang on air)
-    if (selectedBlock === BlockType.TORCH || selectedBlock === BlockType.LANTERN) {
-      const belowBlock = world.getBlock(px, py - 1, pz);
-      const isFloorSolid = belowBlock !== BlockType.AIR && Boolean(BLOCK_DEFS[belowBlock]?.solid);
-      const isWallSolid = hit.faceNormal[1] === 0; // Attached to a side wall
-
-      if (!isFloorSolid && !isWallSolid) {
-        return { allowed: false, blockTypeToPlace: selectedBlock, placePos: hit.placePos };
-      }
-    }
-
-    // 4. Slab combination: placing slab on matching slab turns it into full block
+    // 1. Slab combination: placing slab on matching slab turns it into full block
     if (hit.blockType === BlockType.WOOD_SLAB && selectedBlock === BlockType.WOOD_SLAB) {
       return {
         allowed: true,
         blockTypeToPlace: BlockType.WOOD_PLANKS,
+        state: BlockShapeResolver.getDefaultState(BlockType.WOOD_PLANKS),
         placePos: hit.blockPos,
       };
     }
@@ -87,14 +64,59 @@ export class BlockPlacementEngine {
       return {
         allowed: true,
         blockTypeToPlace: BlockType.STONE_BRICKS,
+        state: BlockShapeResolver.getDefaultState(BlockType.STONE_BRICKS),
         placePos: hit.blockPos,
       };
+    }
+
+    // 2. AABB Collision Check against player using precise canonical sub-collision boxes
+    const boxes = BlockShapeResolver.getCollisionBoxes(selectedBlock, state);
+    for (const b of boxes) {
+      const boxMin = new THREE.Vector3(px + b.minX + 0.005, py + b.minY + 0.005, pz + b.minZ + 0.005);
+      const boxMax = new THREE.Vector3(px + b.maxX - 0.005, py + b.maxY - 0.005, pz + b.maxZ - 0.005);
+      const box = new THREE.Box3(boxMin, boxMax);
+      if (playerAABB.intersectsBox(box)) {
+        return { allowed: false, blockTypeToPlace: selectedBlock, placePos: hit.placePos };
+      }
+    }
+
+    // 3. Multi-block extra boxes collision check (e.g. DOOR_TOP)
+    if (resolved.extraBlocks) {
+      for (const extra of resolved.extraBlocks) {
+        const topBlock = world.getBlock(extra.pos[0], extra.pos[1], extra.pos[2]);
+        if (topBlock !== BlockType.AIR) {
+          return { allowed: false, blockTypeToPlace: selectedBlock, placePos: hit.placePos };
+        }
+        const extraBoxes = BlockShapeResolver.getCollisionBoxes(extra.blockType, extra.state);
+        for (const b of extraBoxes) {
+          const eBox = new THREE.Box3(
+            new THREE.Vector3(extra.pos[0] + b.minX + 0.005, extra.pos[1] + b.minY + 0.005, extra.pos[2] + b.minZ + 0.005),
+            new THREE.Vector3(extra.pos[0] + b.maxX - 0.005, extra.pos[1] + b.maxY - 0.005, extra.pos[2] + b.maxZ - 0.005)
+          );
+          if (playerAABB.intersectsBox(eBox)) {
+            return { allowed: false, blockTypeToPlace: selectedBlock, placePos: hit.placePos };
+          }
+        }
+      }
+    }
+
+    // 4. Torch / Lantern Placement rules (cannot hang on air)
+    if (selectedBlock === BlockType.TORCH || selectedBlock === BlockType.LANTERN) {
+      const belowBlock = world.getBlock(px, py - 1, pz);
+      const isFloorSolid = belowBlock !== BlockType.AIR && Boolean(BLOCK_DEFS[belowBlock]?.solid);
+      const isWallSolid = hit.faceNormal[1] === 0;
+
+      if (!isFloorSolid && !isWallSolid) {
+        return { allowed: false, blockTypeToPlace: selectedBlock, placePos: hit.placePos };
+      }
     }
 
     return {
       allowed: true,
       blockTypeToPlace: selectedBlock,
+      state,
       placePos: [px, py, pz],
+      extraBlocks: resolved.extraBlocks,
     };
   }
 

@@ -46,15 +46,15 @@ export class CreatureAnimationEngine {
     let isFar = !isNear && !isMid;
 
     if (isFar) {
+      if (rig.contactShadow) rig.contactShadow.visible = false;
       if ((frameCount + Math.floor(rig.animPhase * 10)) % 4 !== 0) {
         return;
       }
-      if (rig.contactShadow) rig.contactShadow.visible = false;
     } else {
+      if (rig.contactShadow) rig.contactShadow.visible = true;
       if (isMid && (frameCount + Math.floor(rig.animPhase * 10)) % 2 !== 0) {
         return;
       }
-      if (rig.contactShadow) rig.contactShadow.visible = true;
     }
 
     this.animTime += dt * 0.001; // subtle global drifting base

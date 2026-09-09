@@ -6,15 +6,56 @@ import { DungeonGenerator } from '../dungeon/DungeonGenerator';
 import { SettlementManager } from '../settlement/SettlementManager';
 import { NusantaraBuildingKit } from './NusantaraBuildingKit';
 import { NusantaraSettlementGenerator } from './NusantaraSettlementGenerator';
+import { BlockState, Rotation90 } from './BlockState';
+import { BlockStateTransform } from './BlockStateTransform';
 
 export interface VoxelBlockPlacement {
   dx: number; // Offset relative to structure origin
   dy: number;
   dz: number;
   block: BlockType;
+  state?: BlockState;
 }
 
 export class StructureGenerator {
+  // Rotate an array of structure placements and their block states
+  public static rotatePlacements(
+    placements: VoxelBlockPlacement[],
+    rotation: Rotation90
+  ): VoxelBlockPlacement[] {
+    if (rotation === 0) return placements;
+    const rotated = BlockStateTransform.rotateStructure(
+      placements.map((p) => ({ pos: [p.dx, p.dy, p.dz], blockType: p.block, state: p.state })),
+      rotation,
+      [0, 0, 0]
+    );
+    return rotated.map((r) => ({
+      dx: r.pos[0],
+      dy: r.pos[1],
+      dz: r.pos[2],
+      block: r.blockType,
+      state: r.state,
+    }));
+  }
+
+  // Mirror an array of structure placements and their block states
+  public static mirrorPlacements(
+    placements: VoxelBlockPlacement[],
+    axis: 'x' | 'z'
+  ): VoxelBlockPlacement[] {
+    const mirrored = BlockStateTransform.mirrorStructure(
+      placements.map((p) => ({ pos: [p.dx, p.dy, p.dz], blockType: p.block, state: p.state })),
+      axis,
+      [0, 0, 0]
+    );
+    return mirrored.map((m) => ({
+      dx: m.pos[0],
+      dy: m.pos[1],
+      dz: m.pos[2],
+      block: m.blockType,
+      state: m.state,
+    }));
+  }
 
   // 1. TREE GENERATORS
   public static generateOakTree(seed: number): VoxelBlockPlacement[] {

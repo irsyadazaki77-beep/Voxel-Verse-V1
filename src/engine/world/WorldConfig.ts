@@ -3,7 +3,9 @@
 
 export const WORLD_MIN_Y = 0;
 export const WORLD_MAX_Y = 128; // Configurable height: 128 blocks vertical chunk
+export const CHUNK_SIZE_X = 16;
 export const CHUNK_SIZE_Y = 128;
+export const CHUNK_SIZE_Z = 16;
 export const SEA_LEVEL = 28; // Configurable global sea level
 
 export type WorldPreset = 'standard' | 'continental' | 'archipelago' | 'mountainous' | 'flattish';

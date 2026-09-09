@@ -11,6 +11,8 @@ import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { SEA_LEVEL, WORLD_PRESETS, WorldPreset, makeDimensionChunkKey } from './WorldConfig';
 import { MiningVisualEngine } from './MiningVisualEngine';
 import { Logger } from '../ui/Logger';
+import { BlockState } from './BlockState';
+import { BlockShapeResolver } from './BlockShapeResolver';
 
 export { SEA_LEVEL };
 
@@ -18,6 +20,7 @@ export interface RaycastHit {
   blockPos: [number, number, number];
   placePos: [number, number, number];
   blockType: BlockType;
+  blockState?: BlockState;
   faceNormal: [number, number, number];
   distance: number;
 }
@@ -28,6 +31,7 @@ export class VoxelWorld {
   public dimensionId: string;
   public chunks: Map<string, Chunk> = new Map();
   public modifiedBlocks: Map<string, Map<string, BlockType>> = new Map(); // chunkKey -> localKey -> BlockType
+  public modifiedBlockStates: Map<string, Map<string, BlockState>> = new Map(); // chunkKey -> localKey -> BlockState
   public worldGroup: THREE.Group;
   public biomeManager: BiomeManager;
   public regionManager: CulturalRegionManager;
@@ -618,7 +622,34 @@ export class VoxelWorld {
     return chunk.getBlock(lx, wy, lz);
   }
 
+  public getBlockState(wx: number, wy: number, wz: number): BlockState {
+    if (wy < 0 || wy >= CHUNK_SIZE_Y) return BlockShapeResolver.getDefaultState(BlockType.AIR);
+    const cx = Math.floor(wx / CHUNK_SIZE_X);
+    const cz = Math.floor(wz / CHUNK_SIZE_Z);
+    let chunk = this.getChunk(cx, cz);
+    if (!chunk) {
+      chunk = this.generateChunk(cx, cz);
+      this.chunks.set(this.getChunkKey(cx, cz), chunk);
+      this.worldGroup.add(chunk.group);
+    }
+
+    const lx = ((wx % CHUNK_SIZE_X) + CHUNK_SIZE_X) % CHUNK_SIZE_X;
+    const lz = ((wz % CHUNK_SIZE_Z) + CHUNK_SIZE_Z) % CHUNK_SIZE_Z;
+    return chunk.getBlockState(lx, wy, lz);
+  }
+
   public setBlock(wx: number, wy: number, wz: number, type: BlockType, recordModification: boolean = true): boolean {
+    return this.setBlockWithState(wx, wy, wz, type, undefined, recordModification);
+  }
+
+  public setBlockWithState(
+    wx: number,
+    wy: number,
+    wz: number,
+    type: BlockType,
+    state?: Partial<BlockState>,
+    recordModification: boolean = true
+  ): boolean {
     if (wy < 0 || wy >= CHUNK_SIZE_Y) return false;
     const cx = Math.floor(wx / CHUNK_SIZE_X);
     const cz = Math.floor(wz / CHUNK_SIZE_Z);
@@ -632,7 +663,7 @@ export class VoxelWorld {
     const lx = ((wx % CHUNK_SIZE_X) + CHUNK_SIZE_X) % CHUNK_SIZE_X;
     const lz = ((wz % CHUNK_SIZE_Z) + CHUNK_SIZE_Z) % CHUNK_SIZE_Z;
 
-    const changed = chunk.setBlock(lx, wy, lz, type);
+    const changed = chunk.setBlockWithState(lx, wy, lz, type, state);
     if (changed) {
       chunk.isDirty = true;
       this.scheduler.markDirty(cx, cz);
@@ -643,11 +674,55 @@ export class VoxelWorld {
         if (!this.modifiedBlocks.has(cKey)) {
           this.modifiedBlocks.set(cKey, new Map());
         }
+        if (!this.modifiedBlockStates.has(cKey)) {
+          this.modifiedBlockStates.set(cKey, new Map());
+        }
         const localKey = `${lx},${wy},${lz}`;
         this.modifiedBlocks.get(cKey)!.set(localKey, type);
+        const resolvedState = chunk.getBlockState(lx, wy, lz);
+        this.modifiedBlockStates.get(cKey)!.set(localKey, resolvedState);
       }
 
       // Mark neighbor chunks dirty if on edge
+      if (lx === 0) this.scheduler.markDirty(cx - 1, cz);
+      if (lx === CHUNK_SIZE_X - 1) this.scheduler.markDirty(cx + 1, cz);
+      if (lz === 0) this.scheduler.markDirty(cx, cz - 1);
+      if (lz === CHUNK_SIZE_Z - 1) this.scheduler.markDirty(cx, cz + 1);
+    }
+    return changed;
+  }
+
+  public setBlockState(
+    wx: number,
+    wy: number,
+    wz: number,
+    state: Partial<BlockState>,
+    recordModification: boolean = true
+  ): boolean {
+    if (wy < 0 || wy >= CHUNK_SIZE_Y) return false;
+    const cx = Math.floor(wx / CHUNK_SIZE_X);
+    const cz = Math.floor(wz / CHUNK_SIZE_Z);
+    let chunk = this.getChunk(cx, cz);
+    if (!chunk) return false;
+
+    const lx = ((wx % CHUNK_SIZE_X) + CHUNK_SIZE_X) % CHUNK_SIZE_X;
+    const lz = ((wz % CHUNK_SIZE_Z) + CHUNK_SIZE_Z) % CHUNK_SIZE_Z;
+
+    const changed = chunk.setBlockState(lx, wy, lz, state);
+    if (changed) {
+      chunk.isDirty = true;
+      this.scheduler.markDirty(cx, cz);
+
+      if (recordModification) {
+        const cKey = this.getChunkKey(cx, cz);
+        if (!this.modifiedBlockStates.has(cKey)) {
+          this.modifiedBlockStates.set(cKey, new Map());
+        }
+        const localKey = `${lx},${wy},${lz}`;
+        const resolvedState = chunk.getBlockState(lx, wy, lz);
+        this.modifiedBlockStates.get(cKey)!.set(localKey, resolvedState);
+      }
+
       if (lx === 0) this.scheduler.markDirty(cx - 1, cz);
       if (lx === CHUNK_SIZE_X - 1) this.scheduler.markDirty(cx + 1, cz);
       if (lz === 0) this.scheduler.markDirty(cx, cz - 1);
@@ -675,6 +750,17 @@ export class VoxelWorld {
 
     const blocksData = this.generatorCore.generateChunkData(cx, cz, modifiedBlocks);
     chunk.setBlocks(new Uint8Array(blocksData));
+
+    // Restore any modified block states
+    const statesMap = this.modifiedBlockStates.get(cKey) ?? this.modifiedBlockStates.get(dimKey);
+    if (statesMap) {
+      statesMap.forEach((st, localKey) => {
+        const [lx, wy, lz] = localKey.split(',').map(Number);
+        if (!isNaN(lx) && !isNaN(wy) && !isNaN(lz)) {
+          chunk.setBlockState(lx, wy, lz, st);
+        }
+      });
+    }
 
     return chunk;
   }
@@ -722,11 +808,11 @@ export class VoxelWorld {
   }
 
   // Preload essential chunks around spawn (budgeted for mobile responsiveness)
-  public preloadSpawnChunks(centerX: number = 0, centerZ: number = 0, radius: number = 1): void {
+  public preloadSpawnChunks(centerX: number = 0, centerZ: number = 0, radius: number = 0): void {
     const centerCX = Math.floor(centerX / CHUNK_SIZE_X);
     const centerCZ = Math.floor(centerZ / CHUNK_SIZE_Z);
 
-    // Limit sync prewarm radius to max 1 (9 chunks max) to prevent main thread lockup on mobile devices
+    // Limit sync prewarm radius to max 1 to prevent main thread lockup
     const effectiveRadius = Math.min(1, Math.max(0, radius));
 
     for (let dx = -effectiveRadius; dx <= effectiveRadius; dx++) {
@@ -755,14 +841,92 @@ export class VoxelWorld {
     }
   }
 
+  // Non-blocking async spawn chunks preloader with time budgeting
+  public async preloadSpawnChunksAsync(
+    centerX: number = 0,
+    centerZ: number = 0,
+    onProgress?: (current: number, total: number) => void,
+    timeBudgetMs: number = 8
+  ): Promise<void> {
+    const centerCX = Math.floor(centerX / CHUNK_SIZE_X);
+    const centerCZ = Math.floor(centerZ / CHUNK_SIZE_Z);
+
+    // 1. Center chunk immediate sync generation + meshing
+    const centerKey = this.getChunkKey(centerCX, centerCZ);
+    if (!this.chunks.has(centerKey)) {
+      const centerChunk = this.generateChunk(centerCX, centerCZ);
+      this.chunks.set(centerKey, centerChunk);
+      this.worldGroup.add(centerChunk.group);
+      centerChunk.rebuildMesh(
+        (wx, wy, wz) => this.getBlock(wx, wy, wz),
+        this.solidMaterial,
+        this.transMaterial,
+        this.waterMaterial
+      );
+    }
+    onProgress?.(1, 5);
+
+    // 2. Budgeted async generation of orthogonal neighbors
+    const neighbors: [number, number][] = [
+      [0, 1], [0, -1], [1, 0], [-1, 0]
+    ];
+
+    for (let i = 0; i < neighbors.length; i++) {
+      const [dx, dz] = neighbors[i];
+      const cx = centerCX + dx;
+      const cz = centerCZ + dz;
+      const key = this.getChunkKey(cx, cz);
+
+      if (!this.chunks.has(key)) {
+        const sliceStart = performance.now();
+        const chunk = this.generateChunk(cx, cz);
+        this.chunks.set(key, chunk);
+        this.worldGroup.add(chunk.group);
+
+        onProgress?.(i + 2, 5);
+
+        if (performance.now() - sliceStart > timeBudgetMs) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        }
+      }
+    }
+  }
+
   // Fast Deterministic Safe Spawn Finder
   // Instantly calculates terrain surface height via procedural noise math without blocking main thread
   public findSafeSpawn(seed: number = this.seed): [number, number, number] {
-    Logger.info('VoxelWorld', `[findSafeSpawn] Calculating fast safe spawn point for seed ${seed}...`);
+    Logger.info('VoxelWorld', `[findSafeSpawn] Calculating fast deterministic safe spawn point for seed ${seed}...`);
     try {
-      const h = Math.round(this.generatorCore.getTerrainHeight(0, 0));
-      const safeY = Math.max(SEA_LEVEL + 2, h + 1);
-      Logger.info('VoxelWorld', `[findSafeSpawn] Found safe spawn at [0.5, ${safeY}, 0.5]`);
+      // 1. Primary check at coordinate (0, 0)
+      const h0 = Math.round(this.generatorCore.getTerrainHeight(0, 0));
+      if (h0 > SEA_LEVEL + 1) {
+        const safeY = h0 + 2;
+        Logger.info('VoxelWorld', `[findSafeSpawn] Found dry land safe spawn at [0.5, ${safeY}, 0.5]`);
+        return [0.5, safeY, 0.5];
+      }
+
+      // 2. Outward deterministic spiral probe to find nearest dry ground above sea level
+      const spiralOffsets: [number, number][] = [
+        [16, 0], [0, 16], [-16, 0], [0, -16],
+        [16, 16], [-16, 16], [16, -16], [-16, -16],
+        [32, 0], [0, 32], [-32, 0], [0, -32],
+        [32, 32], [-32, 32], [32, -32], [-32, -32],
+        [48, 0], [0, 48], [-48, 0], [0, -48],
+        [64, 0], [0, 64], [-64, 0], [0, -64],
+      ];
+
+      for (const [ox, oz] of spiralOffsets) {
+        const h = Math.round(this.generatorCore.getTerrainHeight(ox, oz));
+        if (h > SEA_LEVEL + 1) {
+          const safeY = h + 2;
+          Logger.info('VoxelWorld', `[findSafeSpawn] Found spiral dry land safe spawn at [${ox + 0.5}, ${safeY}, ${oz + 0.5}]`);
+          return [ox + 0.5, safeY, oz + 0.5];
+        }
+      }
+
+      // 3. Ocean spawn fallback
+      const safeY = Math.max(SEA_LEVEL + 2, h0 + 2);
+      Logger.info('VoxelWorld', `[findSafeSpawn] Ocean spawn fallback at [0.5, ${safeY}, 0.5]`);
       return [0.5, safeY, 0.5];
     } catch {
       return [0.5, SEA_LEVEL + 5, 0.5];

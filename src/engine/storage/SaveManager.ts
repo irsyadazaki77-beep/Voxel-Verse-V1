@@ -6,7 +6,7 @@ import { FarmingManager } from '../world/FarmingManager';
 import { VoxelWorld } from '../world/VoxelWorld';
 import { InventoryManager } from '../items/InventoryManager';
 import { IndexedDBStorage, STORE_WORLDS, STORE_RECOVERY } from './IndexedDBStorage';
-import { makeDimensionChunkKey, parseDimensionChunkKey } from '../world/WorldConfig';
+import { makeDimensionChunkKey, parseDimensionChunkKey, CHUNK_SIZE_X, CHUNK_SIZE_Z } from '../world/WorldConfig';
 import { Logger } from '../ui/Logger';
 
 export const CURRENT_SAVE_VERSION = 3;
@@ -200,6 +200,7 @@ export class SaveManager {
     };
 
     const modifiedBlocks = typeof raw?.modifiedBlocks === 'object' && raw.modifiedBlocks ? raw.modifiedBlocks : {};
+    const modifiedBlockStates = typeof raw?.modifiedBlockStates === 'object' && raw.modifiedBlockStates ? raw.modifiedBlockStates : {};
     const containers = typeof raw?.containers === 'object' && raw.containers ? raw.containers : {};
     const furnaces = typeof raw?.furnaces === 'object' && raw.furnaces ? raw.furnaces : {};
     const farmingPlots = typeof raw?.farmingPlots === 'object' && raw.farmingPlots ? raw.farmingPlots : {};
@@ -264,6 +265,7 @@ export class SaveManager {
         equipment,
       },
       modifiedBlocks,
+      modifiedBlockStates,
       containers,
       furnaces,
       farmingPlots,
@@ -632,19 +634,62 @@ export class SaveManager {
     }
   }
 
-  public static applySaveToWorld(world: VoxelWorld, data: WorldSaveData): void {
+  public static applySaveToWorld(arg1: any, arg2: any, dimensionId?: string): void {
+    const data: WorldSaveData = (arg1 && typeof arg1 === 'object' && ('modifiedBlocks' in arg1 || 'id' in arg1) && !('getBlock' in arg1)) ? arg1 : arg2;
+    const world: VoxelWorld = (arg1 && typeof arg1.getBlock === 'function') ? arg1 : arg2;
+    if (!world || !data) return;
+
     world.modifiedBlocks.clear();
+    if (world.modifiedBlockStates) {
+      world.modifiedBlockStates.clear();
+    }
+
+    const currentDim = dimensionId || world.dimensionId || 'overworld';
+
     if (data.modifiedBlocks) {
       Object.entries(data.modifiedBlocks).forEach(([rawChunkKey, blocksObj]) => {
         const parsed = parseDimensionChunkKey(rawChunkKey);
         const canonicalKey = makeDimensionChunkKey(parsed.dimensionId, parsed.cx, parsed.cz);
-        if (parsed.dimensionId === world.dimensionId) {
+        if (parsed.dimensionId === currentDim) {
           const localMap = new Map<string, BlockType>();
           Object.entries(blocksObj).forEach(([localKey, blockType]) => {
             localMap.set(localKey, blockType as BlockType);
+            const [lx, wy, lz] = localKey.split(',').map(Number);
+            const wx = parsed.cx * CHUNK_SIZE_X + lx;
+            const wz = parsed.cz * CHUNK_SIZE_Z + lz;
+            const state = data.modifiedBlockStates?.[rawChunkKey]?.[localKey] 
+              || data.modifiedBlockStates?.[canonicalKey]?.[localKey]
+              || data.modifiedBlockStates?.[`${parsed.cx},${parsed.cz}`]?.[localKey];
+            world.setBlockWithState(wx, wy, wz, blockType as BlockType, state, true);
           });
           world.modifiedBlocks.set(canonicalKey, localMap);
           world.modifiedBlocks.set(`${parsed.cx},${parsed.cz}`, localMap);
+        }
+      });
+    }
+
+    if (data.modifiedBlockStates) {
+      Object.entries(data.modifiedBlockStates).forEach(([rawChunkKey, statesObj]) => {
+        const parsed = parseDimensionChunkKey(rawChunkKey);
+        const canonicalKey = makeDimensionChunkKey(parsed.dimensionId, parsed.cx, parsed.cz);
+        if (parsed.dimensionId === currentDim) {
+          if (!world.modifiedBlockStates.has(canonicalKey)) {
+            world.modifiedBlockStates.set(canonicalKey, new Map());
+          }
+          if (!world.modifiedBlockStates.has(`${parsed.cx},${parsed.cz}`)) {
+            world.modifiedBlockStates.set(`${parsed.cx},${parsed.cz}`, new Map());
+          }
+          Object.entries(statesObj).forEach(([localKey, state]) => {
+            world.modifiedBlockStates.get(canonicalKey)!.set(localKey, state);
+            world.modifiedBlockStates.get(`${parsed.cx},${parsed.cz}`)!.set(localKey, state);
+            const [lx, wy, lz] = localKey.split(',').map(Number);
+            const wx = parsed.cx * CHUNK_SIZE_X + lx;
+            const wz = parsed.cz * CHUNK_SIZE_Z + lz;
+            const existingBlock = world.getBlock(wx, wy, wz);
+            if (existingBlock !== BlockType.AIR) {
+              world.setBlockWithState(wx, wy, wz, existingBlock, state, true);
+            }
+          });
         }
       });
     }
@@ -668,5 +713,74 @@ export class SaveManager {
       }
     });
     return result;
+  }
+
+  public static serializeModifiedBlockStates(world: VoxelWorld): { [chunkKey: string]: { [localKey: string]: any } } {
+    const result: { [chunkKey: string]: { [localKey: string]: any } } = {};
+    if (world.modifiedBlockStates) {
+      world.modifiedBlockStates.forEach((localMap, chunkKey) => {
+        if (localMap.size > 0) {
+          const parsed = parseDimensionChunkKey(chunkKey);
+          const dim = chunkKey.includes(':') ? parsed.dimensionId : (world.dimensionId || 'overworld');
+          const canonicalKey = makeDimensionChunkKey(dim, parsed.cx, parsed.cz);
+          result[canonicalKey] = {};
+          localMap.forEach((state, localKey) => {
+            result[canonicalKey][localKey] = state;
+          });
+        }
+      });
+    }
+    return result;
+  }
+
+  public static serializeWorldToSave(
+    world: VoxelWorld,
+    id: string = 'world_default',
+    seed: number = 42819,
+    dimensionId: string = 'overworld',
+    playerPos: [number, number, number] = [0, 64, 0]
+  ): WorldSaveData {
+    const modifiedBlocks = this.serializeModifiedBlocks(world);
+    const modifiedBlockStates = this.serializeModifiedBlockStates(world);
+
+    return {
+      version: CURRENT_SAVE_VERSION,
+      id,
+      name: id,
+      seed,
+      preset: world.preset || 'standard',
+      gameMode: 'survival',
+      difficulty: 'normal',
+      createdAt: Date.now(),
+      lastPlayed: Date.now(),
+      gameTime: 0,
+      player: {
+        position: playerPos,
+        rotation: [0, 0],
+        health: 100,
+        stamina: 100,
+        hunger: 100,
+        saturation: 20,
+        temperature: 37,
+        xp: 0,
+        level: 1,
+        inventory: Array(36).fill(null),
+        hotbarIndex: 0,
+        equipment: {
+          head: null,
+          chest: null,
+          legs: null,
+          feet: null,
+          accessory: null,
+        },
+      },
+      modifiedBlocks,
+      modifiedBlockStates,
+      containers: BlockPlacementEngine.serializeContainers(),
+      furnaces: FurnaceManager.serialize(),
+      farmingPlots: FarmingManager.serialize(),
+      weather: { type: 'clear', intensity: 0 },
+      stats: { blocksMined: 0, blocksPlaced: 0, monstersDefeated: 0, distanceTraveled: 0 },
+    };
   }
 }

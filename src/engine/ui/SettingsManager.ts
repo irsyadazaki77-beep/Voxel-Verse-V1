@@ -227,11 +227,11 @@ export class SettingsManager {
     this.initialized = true;
     
     // Apply CSS variables on load
-    if (typeof document !== 'undefined') {
+    if (typeof document !== 'undefined' && document.documentElement) {
       const root = document.documentElement;
-      root.style.setProperty('--ui-scale', this.settings.accessibility.uiScale.toString());
-      root.style.setProperty('--hud-scale', this.settings.accessibility.hudScale.toString());
-      root.style.setProperty('--safe-area-padding', `${this.settings.accessibility.safeAreaPadding}px`);
+      root.style?.setProperty?.('--ui-scale', this.settings.accessibility.uiScale.toString());
+      root.style?.setProperty?.('--hud-scale', this.settings.accessibility.hudScale.toString());
+      root.style?.setProperty?.('--safe-area-padding', `${this.settings.accessibility.safeAreaPadding}px`);
     }
     
     return this.settings;

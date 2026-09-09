@@ -2,6 +2,8 @@
 import { BlockShape, BlockType } from '../../types';
 import { BLOCK_DEFS } from './BlockRegistry';
 import { TextureAtlas } from './TextureAtlas';
+import { BlockShapeResolver } from './BlockShapeResolver';
+import { BlockState, BlockStateUtils, Direction6 } from './BlockState';
 
 
 export interface TransferableMeshData {
@@ -205,7 +207,7 @@ export class VoxelMesher {
   }
 
   public static buildChunkMeshData(
-    getBlock: (lx: number, ly: number, lz: number) => BlockType,
+    getBlock: (lx: number, ly: number, lz: number) => BlockType | BlockState,
     chunkWidth: number,
     chunkHeight: number,
     chunkDepth: number
@@ -240,8 +242,21 @@ export class VoxelMesher {
     let transIndexOffset = 0;
     let waterIndexOffset = 0;
 
+    const getBlockRaw = (x: number, y: number, z: number): { type: BlockType; state: BlockState } => {
+      const raw = getBlock(x, y, z);
+      if (typeof raw === 'number') {
+        return { type: raw, state: BlockShapeResolver.getDefaultState(raw) };
+      } else if (raw && typeof raw === 'object') {
+        return { type: (raw as any).blockType ?? BlockType.AIR, state: raw as BlockState };
+      }
+      return { type: BlockType.AIR, state: BlockShapeResolver.getDefaultState(BlockType.AIR) };
+    };
+
     // Helper for adding non-greedy / specialized shapes
-    const isSolidBlock = (x: number, y: number, z: number) => VoxelMesher.isSolidOpaque(getBlock(x, y, z));
+    const isSolidBlock = (x: number, y: number, z: number) => {
+      const info = getBlockRaw(x, y, z);
+      return VoxelMesher.isSolidOpaque(info.type);
+    };
 
     // 1. GREEDY MESHING FOR FULL-CUBE BLOCKS
     for (let faceDir = 0; faceDir < 6; faceDir++) {
@@ -280,13 +295,18 @@ export class VoxelMesher {
               nx = isRight ? 1 : -1;
             }
 
-            const block = getBlock(x, y, z);
+            const { type: block, state } = getBlockRaw(x, y, z);
             if (block === BlockType.AIR || block === BlockType.WATER) continue;
 
             const def = BLOCK_DEFS[block];
-            if (!def || def.shape === 'cross' || def.shape === 'slab' || def.shape === 'stairs') continue;
+            if (!def) continue;
 
-            const neighborBlock = getBlock(x + nx, y + ny, z + nz);
+            // Only full standard cubes without custom non-Y axis or non-default facing in greedy mesher
+            if (!BlockShapeResolver.isFullCube(block, state)) continue;
+            if (state.axis && state.axis !== 'y') continue;
+            if (state.facing && state.facing !== 'north' && state.facing !== 'up') continue;
+
+            const neighborBlock = getBlockRaw(x + nx, y + ny, z + nz).type;
             if (VoxelMesher.isOccluding(neighborBlock, block)) continue;
 
             let ao0 = 3, ao1 = 3, ao2 = 3, ao3 = 3;
@@ -466,11 +486,11 @@ export class VoxelMesher {
       }
     }
 
-    // 2. SPECIALIZED MESHERS FOR NON-FULL CUBES
+    // 2. CANONICAL BLOCK SHAPE RESOLVER MESHING FOR SPECIALIZED/DIRECTIONAL SHAPES
     for (let x = 0; x < chunkWidth; x++) {
       for (let y = 0; y < chunkHeight; y++) {
         for (let z = 0; z < chunkDepth; z++) {
-          const block = getBlock(x, y, z);
+          const { type: block, state } = getBlockRaw(x, y, z);
           if (block === BlockType.AIR) continue;
 
           const def = BLOCK_DEFS[block];
@@ -478,40 +498,30 @@ export class VoxelMesher {
 
           // Water specialized mesher
           if (block === BlockType.WATER) {
-            const topBlock = getBlock(x, y + 1, z);
+            const topBlock = getBlockRaw(x, y + 1, z).type;
             if (topBlock !== BlockType.WATER) {
               const tile = TextureAtlas.getTileForBlock(block, 'top');
               const [uMin, vMin, uMax, vMax] = TextureAtlas.getUVs(tile);
 
-              // Calculate depth for visual polish (up to 12 blocks deep for deep ocean absorption)
+              // Calculate depth for visual polish
               let depthCount = 1;
               for (let dy = 1; dy <= 12; dy++) {
-                if (getBlock(x, y - dy, z) === BlockType.WATER) depthCount++;
+                if (getBlockRaw(x, y - dy, z).type === BlockType.WATER) depthCount++;
                 else break;
               }
               const depthFactor = Math.min(depthCount / 12.0, 1.0);
 
-              // Smooth Shoreline Proximity Field (0..1 distance field within 3 blocks)
-              // Provides continuous gradient for dynamic foam wash, shallow tint, and wet edges
               let shoreFactor = 0.0;
-              const isSolid = (bx: number, by: number, bz: number) => VoxelMesher.isSolidOpaque(getBlock(bx, by, bz));
+              const isSolid = (bx: number, by: number, bz: number) => VoxelMesher.isSolidOpaque(getBlockRaw(bx, by, bz).type);
 
-              // 1. Direct orthogonal neighbor (dist = 1.0)
               if (isSolid(x - 1, y, z) || isSolid(x + 1, y, z) || isSolid(x, y, z - 1) || isSolid(x, y, z + 1)) {
                 shoreFactor = 1.0;
               } else if (isSolid(x, y - 1, z)) {
-                // Ultra-shallow water over ground/shelf
                 shoreFactor = 0.88;
               } else if (isSolid(x - 1, y, z - 1) || isSolid(x + 1, y, z - 1) || isSolid(x - 1, y, z + 1) || isSolid(x + 1, y, z + 1)) {
-                // Diagonal neighbor (dist ~ 1.41)
                 shoreFactor = 0.72;
               } else if (isSolid(x - 2, y, z) || isSolid(x + 2, y, z) || isSolid(x, y, z - 2) || isSolid(x, y, z + 2)) {
-                // 2-block orthogonal (dist = 2.0)
                 shoreFactor = 0.45;
-              } else if (isSolid(x - 2, y, z - 1) || isSolid(x + 2, y, z - 1) || isSolid(x - 2, y, z + 1) || isSolid(x + 2, y, z + 1) ||
-                         isSolid(x - 1, y, z - 2) || isSolid(x + 1, y, z - 2) || isSolid(x - 1, y, z + 2) || isSolid(x + 1, y, z + 2)) {
-                // 2-block diagonal (dist ~ 2.23)
-                shoreFactor = 0.22;
               }
 
               data.waterPositions.push(
@@ -522,7 +532,6 @@ export class VoxelMesher {
               );
               data.waterNormals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
               
-              // Encode depth in R, shore in G
               for (let i = 0; i < 4; i++) data.waterColors.push(depthFactor, shoreFactor, 1.0);
               
               const matClass = 9; // WATER
@@ -538,6 +547,11 @@ export class VoxelMesher {
               data.waterIndices.push(waterIndexOffset, waterIndexOffset + 1, waterIndexOffset + 2, waterIndexOffset, waterIndexOffset + 2, waterIndexOffset + 3);
               waterIndexOffset += 4;
             }
+            continue;
+          }
+
+          // If block was already processed as standard full cube in section 1
+          if (BlockShapeResolver.isFullCube(block, state) && (!state.axis || state.axis === 'y') && (!state.facing || state.facing === 'north' || state.facing === 'up')) {
             continue;
           }
 
@@ -576,133 +590,68 @@ export class VoxelMesher {
             continue;
           }
 
-          // Slab Shape (half block height)
-          if (def.shape === 'slab') {
-            const tileTop = TextureAtlas.getTileForBlock(block, 'top');
-            const [tuMin, tvMin, tuMax, tvMax] = TextureAtlas.getUVs(tileTop);
-            const tileSide = TextureAtlas.getTileForBlock(block, 'side');
-            const [suMin, svMin, suMax, svMax] = TextureAtlas.getUVs(tileSide);
-            const tileBottom = TextureAtlas.getTileForBlock(block, 'bottom');
-            const [buMin, bvMin, buMax, bvMax] = TextureAtlas.getUVs(tileBottom);
+          // Canonical BlockShapeResolver Rendering Quads for all shapes
+          const isNeighborSolid = (face: Direction6) => {
+            let nx = 0, ny = 0, nz = 0;
+            switch (face) {
+              case 'up': ny = 1; break;
+              case 'down': ny = -1; break;
+              case 'north': nz = -1; break;
+              case 'south': nz = 1; break;
+              case 'east': nx = 1; break;
+              case 'west': nx = -1; break;
+            }
+            const neighbor = getBlockRaw(x + nx, y + ny, z + nz).type;
+            return VoxelMesher.isOccluding(neighbor, block);
+          };
 
-            const addFace = (pos: number[], norm: number[], localUv: number[], tileRect: number[]) => {
-              data.solidPositions.push(...pos);
-              data.solidNormals.push(...norm, ...norm, ...norm, ...norm);
-              for (let i = 0; i < 4; i++) data.solidColors.push(1.0, 1.0, 1.0);
-              
-              const matClass = VoxelMesher.getBlockMaterialClass(block);
-              for (let i = 0; i < 4; i++) data.solidMaterials.push(matClass);
+          const quads = BlockShapeResolver.getRenderQuads(block, state, isNeighborSolid);
+          const isTrans = Boolean(def.transparent);
 
-              data.solidUvs.push(...localUv);
-              data.solidTileRects.push(...tileRect, ...tileRect, ...tileRect, ...tileRect);
-              data.solidIndices.push(solidIndexOffset, solidIndexOffset + 1, solidIndexOffset + 2, solidIndexOffset, solidIndexOffset + 2, solidIndexOffset + 3);
-              solidIndexOffset += 4;
-            };
+          let positions = isTrans ? data.transPositions : data.solidPositions;
+          let normals = isTrans ? data.transNormals : data.solidNormals;
+          let colors = isTrans ? data.transColors : data.solidColors;
+          let uvs = isTrans ? data.transUvs : data.solidUvs;
+          let tileRects = isTrans ? data.transTileRects : data.solidTileRects;
+          let indices = isTrans ? data.transIndices : data.solidIndices;
+          const matClass = VoxelMesher.getBlockMaterialClass(block);
+          let materials = isTrans ? data.transMaterials : data.solidMaterials;
 
-            const topBlock = getBlock(x, y + 1, z);
-            if (!VoxelMesher.isOccluding(topBlock, block)) {
-              addFace(
-                [x, y + 0.5, z + 1, x + 1, y + 0.5, z + 1, x + 1, y + 0.5, z, x, y + 0.5, z],
-                [0, 1, 0],
-                [0, 0, 1, 0, 1, 1, 0, 1],
-                [tuMin, tvMin, tuMax, tvMax]
-              );
+          for (const q of quads) {
+            const curOffset = isTrans ? transIndexOffset : solidIndexOffset;
+
+            // Resolve tile face
+            const tileFace = q.colorType ?? (q.faceType === 'top' ? 'top' : q.faceType === 'bottom' ? 'bottom' : 'side');
+            const tile = TextureAtlas.getTileForBlock(block, tileFace);
+            const [tuMin, tvMin, tuMax, tvMax] = TextureAtlas.getUVs(tile);
+
+            for (let v = 0; v < 4; v++) {
+              const p = q.positions[v];
+              positions.push(x + p[0], y + p[1], z + p[2]);
+              normals.push(q.normal[0], q.normal[1], q.normal[2]);
+
+              const dirShade = q.normal[1] > 0.5 ? 1.0 : q.normal[1] < -0.5 ? 0.68 : (Math.abs(q.normal[2]) > 0.5) ? 0.85 : 0.90;
+              colors.push(dirShade, dirShade, dirShade);
+              materials.push(matClass);
             }
 
-            const bottomBlock = getBlock(x, y - 1, z);
-            if (!VoxelMesher.isOccluding(bottomBlock, block)) {
-              addFace(
-                [x, y, z, x + 1, y, z, x + 1, y, z + 1, x, y, z + 1],
-                [0, -1, 0],
-                [0, 0, 1, 0, 1, 1, 0, 1],
-                [buMin, bvMin, buMax, bvMax]
-              );
-            }
+            uvs.push(
+              q.uvs[0][0], q.uvs[0][1],
+              q.uvs[1][0], q.uvs[1][1],
+              q.uvs[2][0], q.uvs[2][1],
+              q.uvs[3][0], q.uvs[3][1]
+            );
 
-            const frontBlock = getBlock(x, y, z + 1);
-            if (!VoxelMesher.isOccluding(frontBlock, block)) {
-              addFace(
-                [x, y, z + 1, x + 1, y, z + 1, x + 1, y + 0.5, z + 1, x, y + 0.5, z + 1],
-                [0, 0, 1],
-                [0, 0, 1, 0, 1, 0.5, 0, 0.5],
-                [suMin, svMin, suMax, svMax]
-              );
-            }
+            tileRects.push(
+              tuMin, tvMin, tuMax, tvMax,
+              tuMin, tvMin, tuMax, tvMax,
+              tuMin, tvMin, tuMax, tvMax,
+              tuMin, tvMin, tuMax, tvMax
+            );
 
-            const backBlock = getBlock(x, y, z - 1);
-            if (!VoxelMesher.isOccluding(backBlock, block)) {
-              addFace(
-                [x + 1, y, z, x, y, z, x, y + 0.5, z, x + 1, y + 0.5, z],
-                [0, 0, -1],
-                [0, 0, 1, 0, 1, 0.5, 0, 0.5],
-                [suMin, svMin, suMax, svMax]
-              );
-            }
-
-            const rightBlock = getBlock(x + 1, y, z);
-            if (!VoxelMesher.isOccluding(rightBlock, block)) {
-              addFace(
-                [x + 1, y, z + 1, x + 1, y, z, x + 1, y + 0.5, z, x + 1, y + 0.5, z + 1],
-                [1, 0, 0],
-                [0, 0, 1, 0, 1, 0.5, 0, 0.5],
-                [suMin, svMin, suMax, svMax]
-              );
-            }
-
-            const leftBlock = getBlock(x - 1, y, z);
-            if (!VoxelMesher.isOccluding(leftBlock, block)) {
-              addFace(
-                [x, y, z, x, y, z + 1, x, y + 0.5, z + 1, x, y + 0.5, z],
-                [-1, 0, 0],
-                [0, 0, 1, 0, 1, 0.5, 0, 0.5],
-                [suMin, svMin, suMax, svMax]
-              );
-            }
-            continue;
-          }
-
-          // Stairs Shape (Step geometry)
-          if (def.shape === 'stairs') {
-            const tileTop = TextureAtlas.getTileForBlock(block, 'top');
-            const [tuMin, tvMin, tuMax, tvMax] = TextureAtlas.getUVs(tileTop);
-            const tileSide = TextureAtlas.getTileForBlock(block, 'side');
-            const [suMin, svMin, suMax, svMax] = TextureAtlas.getUVs(tileSide);
-            const tileBottom = TextureAtlas.getTileForBlock(block, 'bottom');
-            const [buMin, bvMin, buMax, bvMax] = TextureAtlas.getUVs(tileBottom);
-
-            const addFace = (pos: number[], norm: number[], localUv: number[], tileRect: number[]) => {
-              data.solidPositions.push(...pos);
-              data.solidNormals.push(...norm, ...norm, ...norm, ...norm);
-              for (let i = 0; i < 4; i++) data.solidColors.push(1.0, 1.0, 1.0);
-              
-              const matClass = VoxelMesher.getBlockMaterialClass(block);
-              for (let i = 0; i < 4; i++) data.solidMaterials.push(matClass);
-
-              data.solidUvs.push(...localUv);
-              data.solidTileRects.push(...tileRect, ...tileRect, ...tileRect, ...tileRect);
-              data.solidIndices.push(solidIndexOffset, solidIndexOffset + 1, solidIndexOffset + 2, solidIndexOffset, solidIndexOffset + 2, solidIndexOffset + 3);
-              solidIndexOffset += 4;
-            };
-
-            // Bottom base
-            addFace([x, y, z, x + 1, y, z, x + 1, y, z + 1, x, y, z + 1], [0, -1, 0], [0, 0, 1, 0, 1, 1, 0, 1], [buMin, bvMin, buMax, bvMax]);
-            // Lower step top (front half)
-            addFace([x, y + 0.5, z + 0.5, x + 1, y + 0.5, z + 0.5, x + 1, y + 0.5, z + 1, x, y + 0.5, z + 1], [0, 1, 0], [0, 0.5, 1, 0.5, 1, 1, 0, 1], [tuMin, tvMin, tuMax, tvMax]);
-            // Upper step top (back half)
-            addFace([x, y + 1, z, x + 1, y + 1, z, x + 1, y + 1, z + 0.5, x, y + 1, z + 0.5], [0, 1, 0], [0, 0, 1, 0, 1, 0.5, 0, 0.5], [tuMin, tvMin, tuMax, tvMax]);
-            // Riser front
-            addFace([x, y + 0.5, z + 0.5, x + 1, y + 0.5, z + 0.5, x + 1, y + 1, z + 0.5, x, y + 1, z + 0.5], [0, 0, 1], [0, 0.5, 1, 0.5, 1, 1, 0, 1], [suMin, svMin, suMax, svMax]);
-            // Back
-            addFace([x + 1, y, z, x, y, z, x, y + 1, z, x + 1, y + 1, z], [0, 0, -1], [0, 0, 1, 0, 1, 1, 0, 1], [suMin, svMin, suMax, svMax]);
-            // Front bottom step
-            addFace([x, y, z + 1, x + 1, y, z + 1, x + 1, y + 0.5, z + 1, x, y + 0.5, z + 1], [0, 0, 1], [0, 0, 1, 0, 1, 0.5, 0, 0.5], [suMin, svMin, suMax, svMax]);
-            // Left side
-            addFace([x, y, z, x, y, z + 1, x, y + 0.5, z + 1, x, y + 0.5, z], [-1, 0, 0], [0, 0, 1, 0, 1, 0.5, 0, 0.5], [suMin, svMin, suMax, svMax]);
-            addFace([x, y + 0.5, z, x, y + 0.5, z + 0.5, x, y + 1, z + 0.5, x, y + 1, z], [-1, 0, 0], [0, 0.5, 0.5, 0.5, 0.5, 1, 0, 1], [suMin, svMin, suMax, svMax]);
-            // Right side
-            addFace([x + 1, y, z + 1, x + 1, y, z, x + 1, y + 0.5, z, x + 1, y + 0.5, z + 1], [1, 0, 0], [0, 0, 1, 0, 1, 0.5, 0, 0.5], [suMin, svMin, suMax, svMax]);
-            addFace([x + 1, y + 0.5, z + 0.5, x + 1, y + 0.5, z, x + 1, y + 1, z, x + 1, y + 1, z + 0.5], [1, 0, 0], [0.5, 0.5, 1, 0.5, 1, 1, 0.5, 1], [suMin, svMin, suMax, svMax]);
-            continue;
+            indices.push(curOffset, curOffset + 1, curOffset + 2, curOffset, curOffset + 2, curOffset + 3);
+            if (isTrans) transIndexOffset += 4;
+            else solidIndexOffset += 4;
           }
         }
       }

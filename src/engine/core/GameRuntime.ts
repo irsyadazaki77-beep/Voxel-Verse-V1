@@ -134,7 +134,9 @@ export class GameRuntime {
     gameMode: GameMode,
     settings: GameSettings,
     preset: WorldPreset,
-    worldData: WorldSaveData | null
+    worldData: WorldSaveData | null,
+    prewarmedWorld?: VoxelWorld,
+    resolvedSpawn?: [number, number, number]
   ) {
     this.worldId = worldId;
     this.worldName = worldName;
@@ -188,17 +190,33 @@ export class GameRuntime {
     this.scene.background = new THREE.Color(0x7eb1eb);
     this.scene.fog = new THREE.FogExp2(0xaaccff, 0.012);
 
-    this.camera = new THREE.PerspectiveCamera(settings.graphics.fov, window.innerWidth / window.innerHeight, 0.1, 400);
+    const width = typeof window !== 'undefined' ? window.innerWidth : (container?.clientWidth || 1280);
+    const height = typeof window !== 'undefined' ? window.innerHeight : (container?.clientHeight || 720);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.camera = new THREE.PerspectiveCamera(settings.graphics.fov, width / Math.max(1, height), 0.1, 400);
+
+    try {
+      this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    } catch {
+      // Headless / testing environment fallback
+      this.renderer = {
+        setSize: () => {},
+        render: () => {},
+        dispose: () => {},
+        domElement: (typeof document !== 'undefined' ? document.createElement('canvas') : {}) as any,
+        shadowMap: { enabled: false, type: THREE.PCFSoftShadowMap },
+        toneMapping: THREE.ACESFilmicToneMapping,
+        toneMappingExposure: 1.0,
+      } as unknown as THREE.WebGLRenderer;
+    }
+    this.renderer.setSize(width, height);
     
     this.renderQualityManager = new RenderQualityManager(this);
     this.renderQualityManager.updateQualitySettings(settings.graphics);
-    this.renderQualityManager.currentResolution = { width: window.innerWidth, height: window.innerHeight };
+    this.renderQualityManager.currentResolution = { width, height };
 
     this.renderPipeline = new RenderPipeline(this.renderer, this.scene, this.camera);
-    this.renderPipeline.updateSettings(settings.graphics, window.innerWidth, window.innerHeight);
+    this.renderPipeline.updateSettings(settings.graphics, width, height);
 
     this.renderer.shadowMap.enabled = settings.graphics.shadows;
     // PCFSoftShadowMap for better soft shadows
@@ -206,8 +224,10 @@ export class GameRuntime {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
 
-    container.innerHTML = '';
-    container.appendChild(this.renderer.domElement);
+    if (container) {
+      container.innerHTML = '';
+      container.appendChild(this.renderer.domElement);
+    }
 
     // 2. Setup Centralized Input Manager
     this.inputManager = new InputManager();
@@ -303,7 +323,7 @@ export class GameRuntime {
       });
     }
 
-    this.world = new VoxelWorld(seed, preset);
+    this.world = prewarmedWorld || new VoxelWorld(seed, preset);
     this.scene.add(this.world.worldGroup);
 
     this.entities = new EntityManager();
@@ -338,12 +358,16 @@ export class GameRuntime {
       AetherNetworkManager.getInstance().deserialize(worldData.aetherEngineering.machines);
     }
 
-    let initialSpawn: [number, number, number] = [0, 80, 0];
+    let initialSpawn: [number, number, number] = resolvedSpawn || [0.5, 80, 0.5];
 
     if (worldData) {
       this.globalModifiedBlocks = worldData.modifiedBlocks || {};
-      SaveManager.applySaveToWorld(this.world, worldData);
-      initialSpawn = worldData.player.position;
+      if (!prewarmedWorld) {
+        SaveManager.applySaveToWorld(this.world, worldData);
+      }
+      if (!resolvedSpawn) {
+        initialSpawn = worldData.player.position;
+      }
       this.stats.health = worldData.player.health;
       this.stats.hunger = worldData.player.hunger;
       this.stats.stamina = worldData.player.stamina;
@@ -361,12 +385,19 @@ export class GameRuntime {
         this.stats.hunger = 100;
         this.stats.saturation = 20;
         this.stats.isDead = false;
-        initialSpawn = this.world.findSafeSpawn(seed);
+        initialSpawn = resolvedSpawn || this.world.findSafeSpawn(seed);
       }
       
-      this.world.preloadSpawnChunks(initialSpawn[0], initialSpawn[2], 2);
+      if (!prewarmedWorld) {
+        this.world.preloadSpawnChunks(initialSpawn[0], initialSpawn[2], 0);
+      }
     } else {
-      initialSpawn = this.world.findSafeSpawn(seed);
+      if (!resolvedSpawn) {
+        initialSpawn = this.world.findSafeSpawn(seed);
+      }
+      if (!prewarmedWorld) {
+        this.world.preloadSpawnChunks(initialSpawn[0], initialSpawn[2], 0);
+      }
 
       const starterInv: (ItemStack | null)[] = new Array(36).fill(null);
       starterInv[0] = InventoryManager.createStack('wooden_pickaxe', 1);
@@ -564,7 +595,9 @@ export class GameRuntime {
     if (this.isDisposed) return;
     this.isDisposed = true;
 
-    cancelAnimationFrame(this.reqId);
+    if (typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(this.reqId);
+    }
 
     // Unsubscribe from SettingsManager and NetworkSession
     if (this.settingsUnsubscribe) {
@@ -674,9 +707,9 @@ export class GameRuntime {
       this.worldStreamingSystem.forceUpdate();
     }
     
-    // 7. Find safe spawn & preload spawn chunks
+    // 7. Find safe spawn & preload spawn chunk
     const safeSpawn = this.world.findSafeSpawn(this.seed);
-    this.world.preloadSpawnChunks(safeSpawn[0], safeSpawn[2], 2);
+    this.world.preloadSpawnChunks(safeSpawn[0], safeSpawn[2], 0);
 
     this.player.position.set(safeSpawn[0], safeSpawn[1], safeSpawn[2]);
     this.player.velocity.set(0, 0, 0);
