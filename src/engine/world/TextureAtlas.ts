@@ -382,7 +382,7 @@ export class TextureAtlas {
     });
 
     // 17. Wood Planks
-    drawTile(0, 2, (c, ox, oy) => {
+    drawTile(9, 1, (c, ox, oy) => {
       fillBg(ox, oy, '#946d42');
       for (let y = 0; y < 16; y++) {
         if (y === 0 || y === 4 || y === 8 || y === 12) {
@@ -398,7 +398,7 @@ export class TextureAtlas {
     });
 
     // 18. Stone Bricks
-    drawTile(1, 2, (c, ox, oy) => {
+    drawTile(10, 1, (c, ox, oy) => {
       fillBg(ox, oy, '#757980');
       for (let y = 0; y < 16; y += 4) {
         for (let x = 0; x < 16; x++) setPx(ox, oy, x, y, '#4b4d52');
@@ -413,8 +413,26 @@ export class TextureAtlas {
       }
     });
 
+    // 18b. Stone Pillar Top
+    drawTile(11, 1, (c, ox, oy) => {
+      fillBg(ox, oy, '#80848a');
+      ctx.fillStyle = '#5c6066';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#9ca3af';
+      ctx.fillRect(ox + 4, oy + 4, 8, 8);
+    });
+
+    // 18c. Stone Pillar Side
+    drawTile(12, 1, (c, ox, oy) => {
+      fillBg(ox, oy, '#80848a');
+      ctx.fillStyle = '#5c6066';
+      ctx.fillRect(ox + 3, oy + 0, 10, 16);
+      ctx.fillStyle = '#9ca3af';
+      ctx.fillRect(ox + 4, oy + 0, 8, 16);
+    });
+
     // 19. Glass
-    drawTile(2, 2, (c, ox, oy) => {
+    drawTile(13, 1, (c, ox, oy) => {
       c.clearRect(ox, oy, 16, 16);
       ctx.fillStyle = 'rgba(210, 240, 255, 0.45)';
       ctx.fillRect(ox, oy, 16, 16);
@@ -428,49 +446,49 @@ export class TextureAtlas {
     });
 
     // 20. Copper Ore
-    drawTile(3, 2, (c, ox, oy) => {
+    drawTile(0, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[3, 4], [4, 4], [4, 5], [10, 8], [11, 8], [10, 9], [7, 12], [8, 12]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#e07646');
     });
 
     // 21. Iron Ore
-    drawTile(4, 2, (c, ox, oy) => {
+    drawTile(1, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[4, 3], [5, 3], [5, 4], [11, 7], [12, 7], [11, 8], [6, 11], [7, 11]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#d4a885');
     });
 
     // 22. Gold Ore
-    drawTile(5, 2, (c, ox, oy) => {
+    drawTile(2, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[3, 3], [4, 3], [10, 6], [11, 6], [7, 10], [8, 10], [12, 12]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#f6c938');
     });
 
     // 23. Mythril Ore
-    drawTile(6, 2, (c, ox, oy) => {
+    drawTile(3, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[3, 3], [4, 3], [4, 4], [10, 7], [11, 7], [8, 11], [9, 11]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#38bdf8');
     });
 
     // 24. Aether Crystal Ore
-    drawTile(7, 2, (c, ox, oy) => {
+    drawTile(4, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#4a4855');
       const specks = [[4, 4], [5, 4], [5, 5], [10, 8], [11, 8], [7, 12]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#c084fc');
     });
 
     // 25. Coal Ore
-    drawTile(0, 3, (c, ox, oy) => {
+    drawTile(5, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[3, 4], [4, 4], [4, 5], [10, 8], [11, 8], [6, 12], [7, 12]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#232428');
     });
 
     // 26. Water
-    drawTile(1, 3, (c, ox, oy) => {
+    drawTile(11, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#246cb8');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
@@ -480,7 +498,7 @@ export class TextureAtlas {
     });
 
     // 27. Lava
-    drawTile(2, 3, (c, ox, oy) => {
+    drawTile(12, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#e24816');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
@@ -490,7 +508,7 @@ export class TextureAtlas {
     });
 
     // 28. Glowstone Crystal
-    drawTile(5, 3, (c, ox, oy) => {
+    drawTile(15, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#fde047');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
@@ -880,6 +898,46 @@ export class TextureAtlas {
       ctx.fillStyle = '#f59e0b';
       ctx.fillRect(ox + 7, oy + 7, 2, 2);
     });
+
+    
+    // 33. Gold Block
+    drawTile(8, 2, (c, ox, oy) => {
+      fillBg(ox, oy, '#fcd34d');
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+    });
+
+    // 34. Torch & Lantern
+    drawTile(13, 2, (c, ox, oy) => {
+      fillBg(ox, oy, 'rgba(0,0,0,0)');
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(ox + 6, oy + 4, 4, 12);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(ox + 6, oy + 0, 4, 4);
+    });
+    drawTile(14, 2, (c, ox, oy) => {
+      fillBg(ox, oy, 'rgba(0,0,0,0)');
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(ox + 4, oy + 2, 8, 12);
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(ox + 5, oy + 3, 6, 10);
+    });
+
+    // 35. Chest & Crafting
+    drawTile(4, 4, (c, ox, oy) => { fillBg(ox, oy, '#92400e'); ctx.fillStyle = '#78350f'; ctx.strokeRect(ox+1, oy+1, 14, 14); });
+    drawTile(5, 4, (c, ox, oy) => { fillBg(ox, oy, '#b45309'); ctx.fillStyle = '#d97706'; ctx.fillRect(ox+7, oy+6, 2, 4); });
+    drawTile(0, 4, (c, ox, oy) => { fillBg(ox, oy, '#d97706'); ctx.fillStyle = '#78350f'; ctx.fillRect(ox, oy, 16, 4); });
+    drawTile(1, 4, (c, ox, oy) => { fillBg(ox, oy, '#92400e'); ctx.fillStyle = '#78350f'; ctx.fillRect(ox+2, oy+2, 12, 12); });
+
+    // 36. Anvil & Bed
+    drawTile(14, 3, (c, ox, oy) => { fillBg(ox, oy, '#475569'); ctx.fillStyle = '#334155'; ctx.fillRect(ox+2, oy+2, 12, 12); });
+    drawTile(13, 3, (c, ox, oy) => { fillBg(ox, oy, '#ef4444'); ctx.fillStyle = '#ffffff'; ctx.fillRect(ox, oy, 16, 6); });
+
+    // 37. Aether Core Adv & Ley Conduit
+    drawTile(7, 4, (c, ox, oy) => { fillBg(ox, oy, '#1e1b4b'); ctx.fillStyle = '#8b5cf6'; ctx.fillRect(ox+4, oy+4, 8, 8); });
+    drawTile(8, 4, (c, ox, oy) => { fillBg(ox, oy, '#0f172a'); ctx.fillStyle = '#38bdf8'; ctx.fillRect(ox+6, oy, 4, 16); });
 
     // 32. Missing Texture Checkerboard (15, 15)
     drawTile(15, 15, (c, ox, oy) => {

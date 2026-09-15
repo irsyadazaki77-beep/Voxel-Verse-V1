@@ -417,11 +417,11 @@ export class BlockShapeResolver {
     }
     const world = worldOrBlockType;
     const x = xOrGetter;
-    const bType = blockType ?? (typeof z === 'number' && typeof y === 'number' ? world.getBlock(x, y, z) : BlockType.FENCE_WOOD);
+    const bType = blockType ?? (typeof z === 'number' && typeof y === 'number' ? world.getBlockLoaded(x, y, z) : BlockType.FENCE_WOOD);
     const neighborGetter = (dx: number, dy: number, dz: number) => {
-      const b = world.getBlock(x + dx, y! + dy, z! + dz);
+      const b = world.getBlockLoaded(x + dx, y! + dy, z! + dz);
       if (b === BlockType.AIR) return null;
-      return world.getBlockState(x + dx, y! + dy, z! + dz);
+      return world.getBlockStateLoaded(x + dx, y! + dy, z! + dz);
     };
     const connections = BlockShapeResolver.resolveFenceConnections(bType, neighborGetter);
     const state: BlockState = {

@@ -62,8 +62,13 @@ export class NetworkSession {
     }
   }
 
-  public onPlayerCorrected(cb: (pos: [number, number, number], vel: [number, number, number]) => void): void {
+  public onPlayerCorrected(cb: (pos: [number, number, number], vel: [number, number, number]) => void): () => void {
     this.onPlayerCorrectedCallback = cb;
+    return () => {
+      if (this.onPlayerCorrectedCallback === cb) {
+        this.onPlayerCorrectedCallback = null;
+      }
+    };
   }
 
   public isConnected(): boolean {
@@ -275,6 +280,11 @@ export class NetworkSession {
       rp.dispose();
     });
     this.remotePlayers.clear();
+    this.chatListeners.clear();
+    this.blockChangeListeners.clear();
+    this.onPlayerCorrectedCallback = null;
+    this.sceneRef = null;
+    this.isMultiplayerActive = false;
     this.transport.disconnect();
   }
 }

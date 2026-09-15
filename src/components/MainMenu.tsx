@@ -90,10 +90,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
   const getOrInitSessionToken = async (targetRealmId?: string): Promise<string | null> => {
     let token: string | null = null;
     let existingPlayerId: string | null = null;
+    let existingPlayerSecret: string | null = null;
     try {
       if (typeof localStorage !== 'undefined') {
         token = localStorage.getItem('voxelverse_session_token');
         existingPlayerId = localStorage.getItem('voxelverse_client_player_id');
+        existingPlayerSecret = localStorage.getItem('voxelverse_client_player_secret');
       }
     } catch (e) {
       console.warn('LocalStorage reads failed inside sandbox', e);
@@ -110,6 +112,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
           realmId: defaultRealm,
           playerName: mpPlayerName.trim() || 'Realm Explorer',
           clientPlayerId: existingPlayerId || undefined,
+          clientPlayerSecret: existingPlayerSecret || undefined,
         }),
       });
       if (res.ok) {
@@ -119,6 +122,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
             if (typeof localStorage !== 'undefined') {
               localStorage.setItem('voxelverse_session_token', data.sessionToken);
               localStorage.setItem('voxelverse_client_player_id', data.playerId);
+              if (data.playerSecret) {
+                localStorage.setItem('voxelverse_client_player_secret', data.playerSecret);
+              }
             }
           } catch (e) {
             console.warn('LocalStorage writes failed inside sandbox', e);
@@ -187,9 +193,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
 
   const handleJoinMpRealm = async (realmId: string) => {
     let existingPlayerId: string | null = null;
+    let existingPlayerSecret: string | null = null;
     try {
       if (typeof localStorage !== 'undefined') {
         existingPlayerId = localStorage.getItem('voxelverse_client_player_id');
+        existingPlayerSecret = localStorage.getItem('voxelverse_client_player_secret');
       }
     } catch (e) {
       console.warn('LocalStorage reads failed inside sandbox', e);
@@ -202,6 +210,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
           realmId,
           playerName: mpPlayerName.trim() || 'Realm Explorer',
           clientPlayerId: existingPlayerId || undefined,
+          clientPlayerSecret: existingPlayerSecret || undefined,
         }),
       });
       if (res.ok) {
@@ -219,6 +228,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
           try {
             if (typeof localStorage !== 'undefined') {
               localStorage.setItem('voxelverse_client_player_id', session.playerId);
+              if (session.playerSecret) {
+                localStorage.setItem('voxelverse_client_player_secret', session.playerSecret);
+              }
             }
           } catch (e) {
             console.warn('LocalStorage writes failed inside sandbox', e);

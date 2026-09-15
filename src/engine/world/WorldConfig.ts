@@ -8,6 +8,14 @@ export const CHUNK_SIZE_Y = 128;
 export const CHUNK_SIZE_Z = 16;
 export const SEA_LEVEL = 28; // Configurable global sea level
 
+// Centralized Authority, Interaction, and Combat Constants (Single Source of Truth)
+export const MAX_INTERACTION_REACH = 8.0; // 8 voxel units max player reach
+export const MAX_COMBAT_REACH = 10.0; // 10 voxel units max melee reach
+export const MAX_BLOCK_TYPE_ID = 255; // Valid block ID range 0..255
+export const MAX_INVENTORY_SLOTS = 36; // 36 slots in player inventory
+export const HOTBAR_SLOTS = 9; // 9 active hotbar slots
+export const MAX_PLAYER_SPEED = 18.0; // Max allowed player velocity units per second
+
 export type WorldPreset = 'standard' | 'continental' | 'archipelago' | 'mountainous' | 'flattish';
 
 export interface WorldGenParameters {

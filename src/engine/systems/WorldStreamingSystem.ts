@@ -1,5 +1,6 @@
 import { GameSystem } from './GameSystem';
 import type { GameRuntime } from '../core/GameRuntime';
+import { CHUNK_SIZE_X, CHUNK_SIZE_Z } from '../world/WorldConfig';
 
 export class WorldStreamingSystem implements GameSystem {
   public readonly name = 'WorldStreamingSystem';
@@ -24,14 +25,21 @@ export class WorldStreamingSystem implements GameSystem {
     this.runtime = runtime;
   }
 
+  private getAdaptiveFrameBudget(): number {
+    const fps = this.runtime.currentFps || 60;
+    if (fps < 30) return 1.2;
+    if (fps < 50) return 2.2;
+    return 3.5;
+  }
+
   public update(deltaTime: number): void {
     const { world, player, settings } = this.runtime;
     if (!world || !player) return;
 
     this.timeSinceLastUpdate += deltaTime;
 
-    const currentChunkX = Math.floor(player.position.x / 16);
-    const currentChunkZ = Math.floor(player.position.z / 16);
+    const currentChunkX = Math.floor(player.position.x / CHUNK_SIZE_X);
+    const currentChunkZ = Math.floor(player.position.z / CHUNK_SIZE_Z);
 
     const dx = player.position.x - this.lastPlayerX;
     const dy = player.position.y - this.lastPlayerY;
@@ -55,11 +63,12 @@ export class WorldStreamingSystem implements GameSystem {
         (chunkCrossed || movedFarEnough || turnedFarEnough || hasPendingDirtyChunks));
 
     if (shouldUpdate) {
+      const budget = this.getAdaptiveFrameBudget();
       world.updateChunks(
         player.position,
         player.getForwardVector(),
         settings.graphics.renderDistance,
-        3.0 // 3.0 ms per-frame budget
+        budget
       );
 
       this.timeSinceLastUpdate = 0;
@@ -84,8 +93,8 @@ export class WorldStreamingSystem implements GameSystem {
     );
 
     this.timeSinceLastUpdate = 0;
-    this.lastPlayerChunkX = Math.floor(player.position.x / 16);
-    this.lastPlayerChunkZ = Math.floor(player.position.z / 16);
+    this.lastPlayerChunkX = Math.floor(player.position.x / CHUNK_SIZE_X);
+    this.lastPlayerChunkZ = Math.floor(player.position.z / CHUNK_SIZE_Z);
     this.lastPlayerX = player.position.x;
     this.lastPlayerY = player.position.y;
     this.lastPlayerZ = player.position.z;

@@ -28,7 +28,7 @@ import { GameEventBus } from '../events/GameEventBus';
 import { FurnaceManager } from '../world/FurnaceManager';
 import { FarmingManager } from '../world/FarmingManager';
 import { GameStatsManager } from '../player/GameStatsManager';
-import { WorldPreset, parseDimensionChunkKey } from '../world/WorldConfig';
+import { WorldPreset, parseDimensionChunkKey, CHUNK_SIZE_X, CHUNK_SIZE_Z } from '../world/WorldConfig';
 import { FirstPersonViewmodel } from '../player/FirstPersonViewmodel';
 import { CameraMotionSystem } from '../player/CameraMotionSystem';
 import { ArtifactSynergyManager } from '../artifacts/ArtifactSynergyManager';
@@ -121,10 +121,14 @@ export class GameRuntime {
 
   private settingsUnsubscribe: (() => void) | null = null;
   private networkBlockUnsubscribe: (() => void) | null = null;
+  private questCompletedUnsubscribe: (() => void) | null = null;
+  private playerCorrectedUnsubscribe: (() => void) | null = null;
   private callbacks: GameRuntimeCallbacks = {};
 
   private accum5Hz: number = 0;
   private accum1Hz: number = 0;
+  private lastVisitedChunkX: number = -999999;
+  private lastVisitedChunkZ: number = -999999;
 
   constructor(
     container: HTMLElement,
@@ -289,9 +293,12 @@ export class GameRuntime {
     this.inputManager.onAction('Map', () => {
       this.openModal('map');
     });
-    this.inputManager.onAction('ContentDebug', () => {
-      this.openModal('contentDebug');
-    });
+    const isProd = (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production') || (typeof import.meta !== 'undefined' && (import.meta as any).env?.PROD);
+    if (!isProd) {
+      this.inputManager.onAction('ContentDebug', () => {
+        this.openModal('contentDebug');
+      });
+    }
     this.inputManager.onAction('Pause', () => {
       this.openModal('pause');
     });
@@ -454,13 +461,13 @@ export class GameRuntime {
     BalanceTelemetry.initialize();
 
     // Register player position correction callback from authoritative server
-    NetworkSession.getInstance().onPlayerCorrected((pos, vel) => {
+    this.playerCorrectedUnsubscribe = NetworkSession.getInstance().onPlayerCorrected((pos, vel) => {
       this.player.position.set(pos[0], pos[1], pos[2]);
       this.player.velocity.set(vel[0], vel[1], vel[2]);
     });
 
     // Listen to QUEST_COMPLETED to deliver XP, items, and reputation rewards to the player!
-    GameEventBus.on('QUEST_COMPLETED', (p) => {
+    this.questCompletedUnsubscribe = GameEventBus.on('QUEST_COMPLETED', (p) => {
       // 1. Award XP
       const leveledUp = this.stats.addXP(p.xpReward);
       if (leveledUp) {
@@ -599,7 +606,7 @@ export class GameRuntime {
       cancelAnimationFrame(this.reqId);
     }
 
-    // Unsubscribe from SettingsManager and NetworkSession
+    // Unsubscribe from SettingsManager, NetworkSession, and GameEventBus
     if (this.settingsUnsubscribe) {
       this.settingsUnsubscribe();
       this.settingsUnsubscribe = null;
@@ -608,8 +615,18 @@ export class GameRuntime {
       this.networkBlockUnsubscribe();
       this.networkBlockUnsubscribe = null;
     }
+    if (this.questCompletedUnsubscribe) {
+      this.questCompletedUnsubscribe();
+      this.questCompletedUnsubscribe = null;
+    }
+    if (this.playerCorrectedUnsubscribe) {
+      this.playerCorrectedUnsubscribe();
+      this.playerCorrectedUnsubscribe = null;
+    }
 
     // Dispose Gameplay Systems & Managers in deterministic order
+    NotificationManager.dispose();
+    NetworkSession.getInstance().dispose();
     QuestManager.dispose();
     ArtifactSynergyManager.dispose();
     BountyContractManager.dispose();
@@ -730,6 +747,13 @@ export class GameRuntime {
     if (this.accum5Hz >= 0.2) {
       FurnaceManager.update(this.accum5Hz);
       DiscoverySystem.update(this.accum5Hz);
+      const curCx = Math.floor(this.player.position.x / CHUNK_SIZE_X);
+      const curCz = Math.floor(this.player.position.z / CHUNK_SIZE_Z);
+      if (curCx !== this.lastVisitedChunkX || curCz !== this.lastVisitedChunkZ) {
+        MapManager.visitChunk(curCx, curCz);
+        this.lastVisitedChunkX = curCx;
+        this.lastVisitedChunkZ = curCz;
+      }
       this.accum5Hz = 0;
     }
     if (this.accum1Hz >= 1.0) {
@@ -743,7 +767,6 @@ export class GameRuntime {
       this.accum1Hz = 0;
     }
     AetherAnomalyManager.update(deltaTime, this);
-    MapManager.visitChunk(Math.floor(this.player.position.x / 16), Math.floor(this.player.position.z / 16));
 
     // 1. Simulation System (Physics, Survival)
     this.simulationSystem.update(deltaTime);

@@ -45,6 +45,7 @@ export interface Realm {
 
 export interface PlayerPersistentState {
   playerId: string; // Opaque UUID
+  playerSecret?: string; // Cryptographic ownership secret to prevent impersonation
   playerName: string; // Mutable display name
   inventory: Array<{ itemId: string; count: number } | null>;
   equipment: Record<string, string | null>;
@@ -409,7 +410,7 @@ async function startServer() {
 
   // Cryptographically Secure Session Handshake Endpoint
   app.post('/api/session/join', restRateLimiter(30, 10000), (req, res) => {
-    const { realmId, playerName, clientPlayerId } = req.body;
+    const { realmId, playerName, clientPlayerId, clientPlayerSecret } = req.body;
     if (!realmId || typeof realmId !== 'string') {
       res.status(400).json({ error: 'Realm ID is required' });
       return;
@@ -426,11 +427,39 @@ async function startServer() {
     // Opaque Persistent Player Identity validation
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let playerId: string;
+    let playerSecret: string;
 
     if (clientPlayerId && typeof clientPlayerId === 'string' && uuidRegex.test(clientPlayerId)) {
-      playerId = clientPlayerId;
+      const existingPlayer = db.getPlayer(clientPlayerId);
+      if (existingPlayer) {
+        // If existing player has a secret, enforce secret match to prevent hijacking
+        if (existingPlayer.playerSecret) {
+          if (clientPlayerSecret === existingPlayer.playerSecret) {
+            playerId = clientPlayerId;
+            playerSecret = existingPlayer.playerSecret;
+          } else {
+            console.warn(`[Server Security] Identity spoofing attempt detected for playerId ${clientPlayerId}. Assigning new identity.`);
+            playerId = crypto.randomUUID();
+            playerSecret = 'sec_' + crypto.randomBytes(32).toString('hex');
+          }
+        } else {
+          // Legacy player without secret - bind provided secret or generate fresh secret
+          playerId = clientPlayerId;
+          playerSecret = (clientPlayerSecret && typeof clientPlayerSecret === 'string')
+            ? clientPlayerSecret
+            : 'sec_' + crypto.randomBytes(32).toString('hex');
+          existingPlayer.playerSecret = playerSecret;
+          db.setPlayer(playerId, existingPlayer);
+        }
+      } else {
+        playerId = clientPlayerId;
+        playerSecret = (clientPlayerSecret && typeof clientPlayerSecret === 'string')
+          ? clientPlayerSecret
+          : 'sec_' + crypto.randomBytes(32).toString('hex');
+      }
     } else {
       playerId = crypto.randomUUID(); // Fresh cryptographically random UUID
+      playerSecret = 'sec_' + crypto.randomBytes(32).toString('hex');
     }
 
     // Load or create player state
@@ -438,6 +467,7 @@ async function startServer() {
     if (!playerState) {
       playerState = {
         playerId,
+        playerSecret,
         playerName: cleanPlayerName,
         inventory: Array(36).fill(null),
         equipment: { head: null, chest: null, legs: null, mainHand: null },
@@ -455,6 +485,9 @@ async function startServer() {
     } else {
       // Update mutable display name without changing persistent identity
       playerState.playerName = cleanPlayerName;
+      if (!playerState.playerSecret) {
+        playerState.playerSecret = playerSecret;
+      }
       db.setPlayer(playerId, playerState);
     }
 
@@ -474,6 +507,7 @@ async function startServer() {
     res.json({
       sessionToken: token,
       playerId,
+      playerSecret,
       realmId,
       realmName: targetRealm.realmName,
       worldSeed: targetRealm.worldSeed,
@@ -823,13 +857,22 @@ async function startServer() {
           const by = Number(msg.y);
           const bz = Number(msg.z);
 
-          if (!Number.isFinite(bx) || !Number.isFinite(by) || !Number.isFinite(bz)) return;
-          if (by < 0 || by > 256) return; // World bounds check
+          // 1. Strict integer check
+          if (!Number.isInteger(bx) || !Number.isInteger(by) || !Number.isInteger(bz)) {
+            console.warn(`[Server Security] Non-integer block coordinates rejected: (${bx}, ${by}, ${bz})`);
+            return;
+          }
 
-          // Server-Authoritative Reach Validation
-          const dx = bx - player.position[0];
-          const dy = by - player.position[1];
-          const dz = bz - player.position[2];
+          // 2. Strict world height bounds check
+          if (by < 0 || by >= 256) {
+            console.warn(`[Server Security] Out of bounds block coordinate rejected: y=${by}`);
+            return;
+          }
+
+          // 3. Server-Authoritative Reach Validation (Euclidean block center)
+          const dx = (bx + 0.5) - player.position[0];
+          const dy = (by + 0.5) - player.position[1];
+          const dz = (bz + 0.5) - player.position[2];
           const reachDistanceSq = dx * dx + dy * dy + dz * dz;
 
           const MAX_REACH = 8.0;
@@ -854,6 +897,53 @@ async function startServer() {
           if (typeof msg.newBlockType !== 'number' || msg.newBlockType < 0 || msg.newBlockType > 255) {
             console.warn(`[Server Security] Invalid block type requested: ${msg.newBlockType}`);
             return;
+          }
+
+          const coordKey = `${bx},${by},${bz}`;
+          const currentServerBlock = realm.worldBlocks[coordKey];
+
+          // 4. Old block state desync check
+          if (currentServerBlock !== undefined && msg.oldBlockType !== undefined && currentServerBlock !== msg.oldBlockType) {
+            console.warn(`[Server Security] Old block state desync rejected for ${player.playerName} at (${bx},${by},${bz}). Server: ${currentServerBlock}, Client: ${msg.oldBlockType}`);
+            ws.send(
+              JSON.stringify({
+                type: 'BLOCK_CHANGE',
+                x: bx,
+                y: by,
+                z: bz,
+                oldBlockType: msg.oldBlockType,
+                newBlockType: currentServerBlock,
+                playerSessionId: activeSessionId,
+                timestamp: Date.now(),
+                protocolVersion: PROTOCOL_VERSION,
+              })
+            );
+            return;
+          }
+
+          // 5. Solid block placement inventory validation
+          if (msg.newBlockType !== 0) {
+            const pState = db.getPlayer(player.playerId);
+            if (pState && pState.inventory) {
+              const hasInventoryItem = pState.inventory.some((slot) => slot && slot.count > 0);
+              if (!hasInventoryItem) {
+                console.warn(`[Server Security] Block placement without inventory item rejected for ${player.playerName}`);
+                ws.send(
+                  JSON.stringify({
+                    type: 'BLOCK_CHANGE',
+                    x: bx,
+                    y: by,
+                    z: bz,
+                    oldBlockType: msg.oldBlockType,
+                    newBlockType: msg.oldBlockType,
+                    playerSessionId: activeSessionId,
+                    timestamp: Date.now(),
+                    protocolVersion: PROTOCOL_VERSION,
+                  })
+                );
+                return;
+              }
+            }
           }
 
           // Solid block placement collision check (prevent trapping player inside block)
@@ -882,7 +972,6 @@ async function startServer() {
           }
 
           // Block Revisioning & AIR Tombstone persistence
-          const coordKey = `${bx},${by},${bz}`;
           if (!realm.worldBlockRevisions) realm.worldBlockRevisions = {};
 
           const currentRev = realm.worldBlockRevisions[coordKey] || 0;

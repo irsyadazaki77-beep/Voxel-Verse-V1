@@ -88,13 +88,82 @@ export interface GameplaySettings {
   chatEnabled: boolean;
 }
 
+export type MobileControlPreset = 'default' | 'compact' | 'large' | 'custom';
+
+export interface MobileControlsSettings {
+  preset: MobileControlPreset;
+  cameraSensitivityX: number; // 0.2 .. 3.0 (default 1.0)
+  cameraSensitivityY: number; // 0.2 .. 3.0 (default 1.0)
+  invertY: boolean; // default false
+  cameraSmoothing: number; // 0.0 .. 0.5 (default 0.15)
+  joystickSensitivity: number; // 0.5 .. 2.0 (default 1.0)
+  joystickDeadzone: number; // 0.05 .. 0.35 (default 0.12)
+  autoSprint: boolean; // default true
+  autoSprintThreshold: number; // 0.70 .. 0.95 (default 0.82)
+  floatingJoystick: boolean; // default false (dynamic vs fixed base)
+  controlScale: number; // 0.7 .. 1.4 (default 1.0)
+  buttonOpacity: number; // 0.2 .. 1.0 (default 0.75)
+  hapticFeedback: boolean; // default true
+  showTouchDebug: boolean; // default false
+  customLayout?: {
+    joystickOffset?: { x: number; y: number };
+    actionOffset?: { x: number; y: number };
+  };
+}
+
 export interface GameSettings {
   audio: AudioSettings;
   graphics: GraphicsSettings;
   controls: ControlSettings;
   accessibility: AccessibilitySettings;
   gameplay: GameplaySettings;
+  mobileControls: MobileControlsSettings;
 }
+
+export const MOBILE_CONTROL_PRESETS: Record<MobileControlPreset, Partial<MobileControlsSettings>> = {
+  default: {
+    preset: 'default',
+    controlScale: 1.0,
+    buttonOpacity: 0.75,
+    joystickDeadzone: 0.12,
+    autoSprint: true,
+    autoSprintThreshold: 0.82,
+    cameraSensitivityX: 1.0,
+    cameraSensitivityY: 1.0,
+    cameraSmoothing: 0.15,
+    floatingJoystick: false,
+    hapticFeedback: true,
+  },
+  compact: {
+    preset: 'compact',
+    controlScale: 0.85,
+    buttonOpacity: 0.6,
+    joystickDeadzone: 0.1,
+    autoSprint: true,
+    autoSprintThreshold: 0.8,
+    cameraSensitivityX: 1.1,
+    cameraSensitivityY: 1.1,
+    cameraSmoothing: 0.12,
+    floatingJoystick: false,
+    hapticFeedback: true,
+  },
+  large: {
+    preset: 'large',
+    controlScale: 1.2,
+    buttonOpacity: 0.85,
+    joystickDeadzone: 0.15,
+    autoSprint: true,
+    autoSprintThreshold: 0.85,
+    cameraSensitivityX: 0.9,
+    cameraSensitivityY: 0.9,
+    cameraSmoothing: 0.18,
+    floatingJoystick: false,
+    hapticFeedback: true,
+  },
+  custom: {
+    preset: 'custom',
+  },
+};
 
 const STORAGE_KEY = 'voxelverse_settings_v1';
 
@@ -182,6 +251,22 @@ export const DEFAULT_SETTINGS: GameSettings = {
     autoSaveInterval: 5,
     chatEnabled: true,
   },
+  mobileControls: {
+    preset: 'default',
+    cameraSensitivityX: 1.0,
+    cameraSensitivityY: 1.0,
+    invertY: false,
+    cameraSmoothing: 0.15,
+    joystickSensitivity: 1.0,
+    joystickDeadzone: 0.12,
+    autoSprint: true,
+    autoSprintThreshold: 0.82,
+    floatingJoystick: false,
+    controlScale: 1.0,
+    buttonOpacity: 0.75,
+    hapticFeedback: true,
+    showTouchDebug: false,
+  },
 };
 
 type Listener = (settings: GameSettings) => void;
@@ -214,6 +299,7 @@ export class SettingsManager {
             },
             accessibility: { ...DEFAULT_SETTINGS.accessibility, ...parsed.accessibility },
             gameplay: { ...DEFAULT_SETTINGS.gameplay, ...parsed.gameplay },
+            mobileControls: { ...DEFAULT_SETTINGS.mobileControls, ...parsed.mobileControls },
           };
         } else {
           this.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -254,7 +340,19 @@ export class SettingsManager {
     if (partial.controls) this.settings.controls = { ...this.settings.controls, ...partial.controls };
     if (partial.accessibility) this.settings.accessibility = { ...this.settings.accessibility, ...partial.accessibility };
     if (partial.gameplay) this.settings.gameplay = { ...this.settings.gameplay, ...partial.gameplay };
+    if (partial.mobileControls) this.settings.mobileControls = { ...this.settings.mobileControls, ...partial.mobileControls };
     this.save();
+  }
+
+  public static applyMobilePreset(preset: MobileControlPreset): void {
+    const presetValues = MOBILE_CONTROL_PRESETS[preset] || {};
+    this.update({
+      mobileControls: {
+        ...this.settings.mobileControls,
+        ...presetValues,
+        preset,
+      },
+    });
   }
 
   public static resetToDefault(): void {

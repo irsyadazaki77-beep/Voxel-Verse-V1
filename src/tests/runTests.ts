@@ -20,6 +20,7 @@ import { InputManager } from '../engine/player/InputManager';
 import { QuestManager } from '../engine/progression/QuestManager';
 import { DiscoverySystem } from '../engine/progression/DiscoverySystem';
 import { GameEventBus } from '../engine/events/GameEventBus';
+import { ServerAuthority } from '../engine/network/ServerAuthority';
 
 let testCount = 0;
 let passedCount = 0;
@@ -133,6 +134,7 @@ async function runTestSuite() {
 
     const newWorld = new VoxelWorld(42819, 'standard', 'aether_expanse');
     SaveManager.applySaveToWorld(newWorld, { modifiedBlocks: serialized } as any);
+    newWorld.ensureChunkLoaded(0, 0);
     assert(newWorld.getBlock(10, 70, 10) === BlockType.CYAN_CRYSTAL_LOG, 'Modified block successfully hydrated into new world');
   }
 
@@ -614,11 +616,134 @@ async function runTestSuite() {
   }
 
   // TEST 20: Canonical BlockState, Geometry, Collision, Placement, Blueprint, & Rotation Regression
-  console.log('\n▶ [20/20] Running Canonical BlockState & Geometry Consistency Tests...');
+  console.log('\n▶ [20/21] Running Canonical BlockState & Geometry Consistency Tests...');
   {
     const { runBlockStateConsistencyTests } = await import('./blockStateConsistencyTest');
     const success = await runBlockStateConsistencyTests();
     assert(success === true, 'All BlockState & canonical geometry consistency tests passed successfully');
+  }
+
+  // TEST 21: Phase 1 Save & World Startup Recovery Suite
+  console.log('\n▶ [21/22] Running Phase 1 Save & World Startup Recovery Tests...');
+  {
+    const { runPhase1RecoveryTests } = await import('./phase1RecoveryTests');
+    const success = await runPhase1RecoveryTests();
+    assert(success === true, 'All Phase 1 Save & Startup Recovery tests passed successfully');
+  }
+
+  // TEST 22: Phase 2 Pure World Query & Heightmap Overhaul Suite
+  console.log('\n▶ [22/23] Running Phase 2 Pure Query & Heightmap Overhaul Tests...');
+  {
+    const { runPhase2PureQueryTests } = await import('./phase2PureQueryTests');
+    const success = await runPhase2PureQueryTests();
+    assert(success === true, 'All Phase 2 Pure Query & Heightmap Overhaul tests passed successfully');
+  }
+
+  // TEST 23: Phase 3 Chunk Worker & Streaming Resilience Overhaul Suite
+  console.log('\n▶ [23/24] Running Phase 3 Chunk Worker & Streaming Resilience Tests...');
+  {
+    const { runPhase3ResilienceTests } = await import('./phase3ResilienceTests');
+    const success = await runPhase3ResilienceTests();
+    assert(success === true, 'All Phase 3 Chunk Worker & Streaming Resilience tests passed successfully');
+  }
+
+  // TEST 24: Phase 4 Structure Regression Overhaul Suite
+  console.log('\n▶ [24/25] Running Phase 4 Structure Regression Overhaul Tests...');
+  {
+    const { runStructureRegressionTests } = await import('./structureRegressionTest');
+    const success = await runStructureRegressionTests();
+    assert(success === true, 'All Phase 4 Structure Regression tests passed successfully');
+  }
+
+  // TEST 25: Server Authority & Checksum Persistence Integrity
+  console.log('\n▶ [25/25] Testing Server Authority Validation & Checksum Verification...');
+  {
+    // 1. Block placement authority checks
+    const playerPos: [number, number, number] = [10, 64, 10];
+    const validInv = [{ itemId: 'oak_log', count: 5 }];
+
+    // Valid placement
+    const validRes = ServerAuthority.validateBlockPlacement(
+      playerPos,
+      12, 64, 10,
+      BlockType.AIR,
+      BlockType.OAK_LOG,
+      validInv
+    );
+    assert(validRes.valid === true, 'Valid block placement approved by ServerAuthority');
+
+    // Out of reach placement
+    const reachRes = ServerAuthority.validateBlockPlacement(
+      playerPos,
+      30, 64, 10,
+      BlockType.AIR,
+      BlockType.OAK_LOG,
+      validInv
+    );
+    assert(reachRes.valid === false && reachRes.reason === 'EXCEEDS_MAX_REACH', 'Out of reach block placement rejected');
+
+    // Float non-integer coordinates placement
+    const floatRes = ServerAuthority.validateBlockPlacement(
+      playerPos,
+      12.5, 64, 10,
+      BlockType.AIR,
+      BlockType.OAK_LOG,
+      validInv
+    );
+    assert(floatRes.valid === false && floatRes.reason === 'COORDINATES_MUST_BE_INTEGERS', 'Non-integer block placement rejected');
+
+    // Missing inventory block placement
+    const emptyInvRes = ServerAuthority.validateBlockPlacement(
+      playerPos,
+      12, 64, 10,
+      BlockType.AIR,
+      BlockType.OAK_LOG,
+      []
+    );
+    assert(emptyInvRes.valid === false && emptyInvRes.reason === 'ITEM_NOT_IN_INVENTORY', 'Missing inventory block placement rejected');
+
+    // Desync old block state placement
+    const desyncRes = ServerAuthority.validateBlockPlacement(
+      playerPos,
+      12, 64, 10,
+      BlockType.STONE,
+      BlockType.OAK_LOG,
+      validInv,
+      BlockType.AIR // World actually contains AIR, but client claimed STONE was replaced
+    );
+    assert(desyncRes.valid === false && desyncRes.reason === 'OLD_BLOCK_STATE_DESYNC', 'Mismatched old block state rejected');
+
+    // Out of bounds height placement
+    const heightRes = ServerAuthority.validateBlockPlacement(
+      playerPos,
+      10, 150, 10,
+      BlockType.AIR,
+      BlockType.OAK_LOG,
+      validInv
+    );
+    assert(heightRes.valid === false && heightRes.reason === 'OUT_OF_WORLD_HEIGHT_BOUNDS', 'Out of bounds height placement rejected');
+
+    // 2. Block break authority checks
+    const breakValid = ServerAuthority.validateBlockBreak(playerPos, 12, 64, 10, BlockType.OAK_LOG, BlockType.OAK_LOG);
+    assert(breakValid.valid === true, 'Valid block break approved by ServerAuthority');
+
+    const breakDesync = ServerAuthority.validateBlockBreak(playerPos, 12, 64, 10, BlockType.OAK_LOG, BlockType.STONE);
+    assert(breakDesync.valid === false && breakDesync.reason === 'OLD_BLOCK_STATE_DESYNC', 'Desynced block break rejected');
+
+    // 3. Save Checksum Generation & Tamper Detection
+    const samplePayload = { id: 'test_save', seed: 42, player: { health: 100 } };
+    const validChecksum = SaveManager.createChecksum(samplePayload);
+    assert(typeof validChecksum === 'string' && validChecksum.length > 0, 'Generated valid hex checksum');
+
+    const validVerification = SaveManager.verifyAndExtractData({ data: samplePayload, checksum: validChecksum });
+    assert(validVerification !== null && validVerification.seed === 42, 'Valid checksum verified data extracted cleanly');
+
+    const tamperedVerification = SaveManager.verifyAndExtractData({ data: samplePayload, checksum: 'deadbeef_invalid' });
+    assert(tamperedVerification === null, 'Tampered checksum rejected by verification');
+
+    // Legacy un-checksummed fallback support
+    const legacyVerification = SaveManager.verifyAndExtractData(samplePayload);
+    assert(legacyVerification !== null && legacyVerification.id === 'test_save', 'Legacy save without checksum supported cleanly');
   }
 
   console.log('\n====================================================');

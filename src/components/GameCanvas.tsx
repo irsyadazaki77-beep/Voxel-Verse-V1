@@ -25,6 +25,9 @@ import { EngineeringModal } from './EngineeringModal';
 import { NetworkSession } from '../engine/network/NetworkSession';
 import { QuestManager } from '../engine/progression/QuestManager';
 import { SettingsManager } from '../engine/ui/SettingsManager';
+import { useOrientation } from '../hooks/useOrientation';
+import { RotateDeviceOverlay } from './RotateDeviceOverlay';
+import { TouchDebugOverlay, TouchDebugData } from './TouchDebugOverlay';
 
 interface GameCanvasProps {
   worldId: string;
@@ -54,6 +57,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<GameRuntime | null>(null);
 
+  // Orientation & Responsive Mobile Viewport
+  const { 
+    isMobile, 
+    isPortrait, 
+    requestLandscape, 
+    toggleFullscreen, 
+    viewportWidth, 
+    viewportHeight 
+  } = useOrientation();
+
+  // Attempt automatic orientation lock to landscape on mobile game startup
+  useEffect(() => {
+    if (isMobile) {
+      requestLandscape().catch(() => {});
+    }
+  }, [isMobile, requestLandscape]);
+
   // Loading state
   const [isWorldLoaded, setIsWorldLoaded] = useState(false);
   const [loadingStage, setLoadingStage] = useState("Initializing Engine...");
@@ -69,6 +89,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [showDebugMap, setShowDebugMap] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [touchTelemetry, setTouchTelemetry] = useState<TouchDebugData | null>(null);
+  const [showTouchDebug, setShowTouchDebug] = useState<boolean>(SettingsManager.get().mobileControls.showTouchDebug);
+
+  useEffect(() => {
+    return SettingsManager.subscribe((s) => {
+      setShowTouchDebug(s.mobileControls.showTouchDebug);
+    });
+  }, []);
 
   // Active interaction positions
   const [activeChestPos, setActiveChestPos] = useState<[number, number, number] | null>(null);
@@ -277,18 +305,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   }, [equipmentState]);
 
-  // Handle window resizing
+  // Handle responsive window and visual viewport resizing
   useEffect(() => {
-    const handleResize = () => {
-      if (runtimeRef.current) {
-        runtimeRef.current.resize(window.innerWidth, window.innerHeight);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
+    if (runtimeRef.current && viewportWidth > 0 && viewportHeight > 0) {
+      runtimeRef.current.resize(viewportWidth, viewportHeight);
+    }
+  }, [viewportWidth, viewportHeight]);
 
   const handleResume = () => {
     setModal('none');
@@ -572,8 +594,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         />
       )}
 
+      {/* Mobile Portrait Warning Overlay (Prompts user to rotate to landscape) */}
+      {isMobile && isPortrait && (
+        <RotateDeviceOverlay
+          onRotateClick={requestLandscape}
+          onFullscreenClick={toggleFullscreen}
+        />
+      )}
+
       {/* Mobile Input Controls Overlay */}
       <MobileControls
+        isBlocked={activeModal !== 'none'}
+        onTelemetryUpdate={setTouchTelemetry}
         onMove={(forward, strafe) => {
           if (runtimeRef.current) {
             runtimeRef.current.inputManager.setMobileJoystick(forward, strafe);
@@ -594,6 +626,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             runtimeRef.current.inputManager.setMobileAction('Sprint', active);
           }
         }}
+        onCrouch={(active) => {
+          if (runtimeRef.current) {
+            runtimeRef.current.inputManager.setMobileAction('Crouch', active);
+          }
+        }}
         onAttack={(active) => {
           if (runtimeRef.current) {
             runtimeRef.current.inputManager.setMobileAction('Attack', active);
@@ -610,7 +647,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         onOpenCrafting={() => {
           if (runtimeRef.current) runtimeRef.current.inputManager.triggerMobileAction('Crafting');
         }}
+        onToggleCamera={() => {
+          if (runtimeRef.current) runtimeRef.current.inputManager.triggerMobileAction('Perspective');
+        }}
+        onOpenPause={() => {
+          setModal('pause');
+        }}
+        onOpenMap={() => {
+          setModal('map');
+        }}
+        onOpenJournal={() => {
+          setModal('journal');
+        }}
       />
+
+      {/* Multitouch Telemetry Debug Overlay */}
+      {showTouchDebug && (
+        <TouchDebugOverlay 
+          data={touchTelemetry} 
+          onClose={() => {
+            SettingsManager.update({ mobileControls: { ...SettingsManager.get().mobileControls, showTouchDebug: false } });
+          }}
+        />
+      )}
     </div>
   );
 };

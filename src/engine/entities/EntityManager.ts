@@ -7,6 +7,7 @@ import { EntityModelBuilder } from './EntityModelBuilder';
 import { EntityModelCache } from './EntityModelCache';
 import { Pathfinder } from '../ai/Pathfinder';
 import { GameEventBus } from '../events/GameEventBus';
+import { CHUNK_SIZE_X, CHUNK_SIZE_Z } from '../world/WorldConfig';
 
 import { SETTLEMENT_REGISTRY, SettlementManager } from '../settlement/SettlementManager';
 import { NPCScheduleManager, NPCRoleType } from '../settlement/NPCScheduleManager';
@@ -130,8 +131,8 @@ export class EntityManager {
     mesh.position.set(...state.position);
     this.entityGroup.add(mesh);
     this.entities.set(state.id, { state, mesh });
-    const cx = Math.floor(state.position[0] / 16);
-    const cz = Math.floor(state.position[2] / 16);
+    const cx = Math.floor(state.position[0] / CHUNK_SIZE_X);
+    const cz = Math.floor(state.position[2] / CHUNK_SIZE_Z);
     const key = `${cx},${cz}`;
     if (!this.spatialGrid.has(key)) this.spatialGrid.set(key, new Set());
     this.spatialGrid.get(key)!.add(state.id);
@@ -276,7 +277,7 @@ export class EntityManager {
 
     // Hostile Entity AI State Machine
     if (state.type === 'hostile' || state.type === 'boss') {
-      const isBoss = state.type === 'boss' || state.modelType.includes('boss');
+      const isBoss = state.type === 'boss' || (state.modelType ? state.modelType.includes('boss') : false);
       const detectRange = isBoss ? 32 : (isNight ? 24 : 16);
 
       // Low health flee for non-bosses
@@ -596,8 +597,8 @@ export class EntityManager {
       // Entity Collision using Spatial Grid (3x3 chunk cells lookup, 0-allocation)
       if (p.fromPlayer) {
         let hit = false;
-        const pcx = Math.floor(p.position.x / 16);
-        const pcz = Math.floor(p.position.z / 16);
+        const pcx = Math.floor(p.position.x / CHUNK_SIZE_X);
+        const pcz = Math.floor(p.position.z / CHUNK_SIZE_Z);
 
         for (let ox = -1; ox <= 1 && !hit; ox++) {
           for (let oz = -1; oz <= 1 && !hit; oz++) {
@@ -714,6 +715,13 @@ export class EntityManager {
         Math.abs(state.velocity[2]) < 0.05 &&
         state.velocity[1] === 0;
 
+      // Check if entity is in an unloaded chunk -> defer update (sleep entity)
+      const entityCX = Math.floor(state.position[0] / CHUNK_SIZE_X);
+      const entityCZ = Math.floor(state.position[2] / CHUNK_SIZE_Z);
+      if (!world.getChunkLoaded(entityCX, entityCZ)) {
+        continue;
+      }
+
       if (!isStationaryAtDistance) {
         // Apply Gravity & Movement
         state.velocity[1] -= 18.0 * dt; // Gravity
@@ -749,13 +757,13 @@ export class EntityManager {
       }
 
       // Update 3D Mesh
-      const oldCx = Math.floor(mesh.position.x / 16);
-      const oldCz = Math.floor(mesh.position.z / 16);
+      const oldCx = Math.floor(mesh.position.x / CHUNK_SIZE_X);
+      const oldCz = Math.floor(mesh.position.z / CHUNK_SIZE_Z);
       
       mesh.position.set(state.position[0], state.position[1], state.position[2]);
       
-      const newCx = Math.floor(state.position[0] / 16);
-      const newCz = Math.floor(state.position[2] / 16);
+      const newCx = Math.floor(state.position[0] / CHUNK_SIZE_X);
+      const newCz = Math.floor(state.position[2] / CHUNK_SIZE_Z);
       if (oldCx !== newCx || oldCz !== newCz) {
         this.spatialGrid.get(`${oldCx},${oldCz}`)?.delete(id);
         const key = `${newCx},${newCz}`;
@@ -784,8 +792,8 @@ export class EntityManager {
         this.entityGroup.remove(mesh);
         this.entities.delete(id);
         PoiseSystem.removeEntity(id);
-        const cx = Math.floor(state.position[0] / 16);
-        const cz = Math.floor(state.position[2] / 16);
+        const cx = Math.floor(state.position[0] / CHUNK_SIZE_X);
+        const cz = Math.floor(state.position[2] / CHUNK_SIZE_Z);
         this.spatialGrid.get(`${cx},${cz}`)?.delete(id);
       }
     }

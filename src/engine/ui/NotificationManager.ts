@@ -32,116 +32,152 @@ export class NotificationManager {
   private static notifications: GameNotification[] = [];
   private static listeners: Set<NotificationListener> = new Set();
   private static initialized = false;
+  private static unsubscribers: (() => void)[] = [];
+  private static cleanupTimer: any = null;
 
   public static init(): void {
     if (this.initialized) return;
     this.initialized = true;
 
     // Subscribe to GameEventBus events
-    GameEventBus.on('BIOME_DISCOVERED', (p) => {
-      this.push({
-        title: 'BIOME DISCOVERED',
-        message: p.biomeName,
-        priority: 'HIGH',
-        icon: '🧭',
-        colorTheme: 'sky',
-        durationMs: 4000,
-      });
-    });
+    this.unsubscribers.push(
+      GameEventBus.on('BIOME_DISCOVERED', (p) => {
+        this.push({
+          title: 'BIOME DISCOVERED',
+          message: p.biomeName,
+          priority: 'HIGH',
+          icon: '🧭',
+          colorTheme: 'sky',
+          durationMs: 4000,
+        });
+      })
+    );
 
-    GameEventBus.on('LANDMARK_DISCOVERED', (p) => {
-      this.push({
-        title: 'LANDMARK LOCATED',
-        message: p.name,
-        priority: 'HIGH',
-        icon: '🏛️',
-        colorTheme: 'amber',
-        durationMs: 4500,
-      });
-    });
+    this.unsubscribers.push(
+      GameEventBus.on('LANDMARK_DISCOVERED', (p) => {
+        this.push({
+          title: 'LANDMARK LOCATED',
+          message: p.name,
+          priority: 'HIGH',
+          icon: '🏛️',
+          colorTheme: 'amber',
+          durationMs: 4500,
+        });
+      })
+    );
 
-    GameEventBus.on('QUEST_COMPLETED', (p) => {
-      this.push({
-        title: 'QUEST COMPLETED',
-        message: `Awarded +${p.xpReward} XP`,
-        priority: 'HIGH',
-        icon: '🏆',
-        colorTheme: 'emerald',
-        durationMs: 5000,
-      });
-    });
+    this.unsubscribers.push(
+      GameEventBus.on('QUEST_COMPLETED', (p) => {
+        this.push({
+          title: 'QUEST COMPLETED',
+          message: `Awarded +${p.xpReward} XP`,
+          priority: 'HIGH',
+          icon: '🏆',
+          colorTheme: 'emerald',
+          durationMs: 5000,
+        });
+      })
+    );
 
-    GameEventBus.on('BOSS_SPAWNED', (p) => {
-      this.push({
-        title: 'ANCIENT THREAT AWAKENED',
-        message: `${p.type.toUpperCase()} HAS ENTERED THE REALM!`,
-        priority: 'CRITICAL',
-        icon: '💀',
-        colorTheme: 'rose',
-        durationMs: 6000,
-      });
-    });
+    this.unsubscribers.push(
+      GameEventBus.on('BOSS_SPAWNED', (p) => {
+        this.push({
+          title: 'ANCIENT THREAT AWAKENED',
+          message: `${p.type.toUpperCase()} HAS ENTERED THE REALM!`,
+          priority: 'CRITICAL',
+          icon: '💀',
+          colorTheme: 'rose',
+          durationMs: 6000,
+        });
+      })
+    );
 
-    GameEventBus.on('BOSS_DEFEATED', (p) => {
-      this.push({
-        title: 'BOSS DEFEATED',
-        message: `${p.bossName} vanquished!`,
-        priority: 'CRITICAL',
-        icon: '⚔️',
-        colorTheme: 'amber',
-        durationMs: 6000,
-      });
-    });
+    this.unsubscribers.push(
+      GameEventBus.on('BOSS_DEFEATED', (p) => {
+        this.push({
+          title: 'BOSS DEFEATED',
+          message: `${p.bossName} vanquished!`,
+          priority: 'CRITICAL',
+          icon: '⚔️',
+          colorTheme: 'amber',
+          durationMs: 6000,
+        });
+      })
+    );
 
-    GameEventBus.on('ARTIFACT_UNLOCKED', (p) => {
-      this.push({
-        title: 'LEGENDARY ARTIFACT UNLOCKED',
-        message: p.name,
-        priority: 'HIGH',
-        icon: '✨',
-        colorTheme: 'purple',
-        durationMs: 5000,
-      });
-    });
+    this.unsubscribers.push(
+      GameEventBus.on('ARTIFACT_UNLOCKED', (p) => {
+        this.push({
+          title: 'LEGENDARY ARTIFACT UNLOCKED',
+          message: p.name,
+          priority: 'HIGH',
+          icon: '✨',
+          colorTheme: 'purple',
+          durationMs: 5000,
+        });
+      })
+    );
 
-    GameEventBus.on('WORLD_EVENT_TRIGGERED', (p) => {
-      this.push({
-        title: 'WORLD EVENT ACTIVE',
-        message: p.eventName,
-        priority: 'HIGH',
-        icon: '🌌',
-        colorTheme: 'indigo',
-        durationMs: 5000,
-      });
-    });
+    this.unsubscribers.push(
+      GameEventBus.on('WORLD_EVENT_TRIGGERED', (p) => {
+        this.push({
+          title: 'WORLD EVENT ACTIVE',
+          message: p.eventName,
+          priority: 'HIGH',
+          icon: '🌌',
+          colorTheme: 'indigo',
+          durationMs: 5000,
+        });
+      })
+    );
 
-    GameEventBus.on('ITEM_COLLECTED', (p) => {
-      if (SUPPRESSED_PICKUP_ITEMS.has(p.itemId)) {
-        return; // Suppress spamming picking up dirt or cobblestone!
-      }
-      this.push({
-        title: 'ITEM ACQUIRED',
-        message: `+${p.count} ${p.itemId.replace(/_/g, ' ')}`,
-        priority: 'LOW',
-        icon: '📦',
-        colorTheme: 'slate',
-        durationMs: 2500,
-      });
-    });
+    this.unsubscribers.push(
+      GameEventBus.on('ITEM_COLLECTED', (p) => {
+        if (SUPPRESSED_PICKUP_ITEMS.has(p.itemId)) {
+          return; // Suppress spamming picking up dirt or cobblestone!
+        }
+        this.push({
+          title: 'ITEM ACQUIRED',
+          message: `+${p.count} ${p.itemId.replace(/_/g, ' ')}`,
+          priority: 'LOW',
+          icon: '📦',
+          colorTheme: 'slate',
+          durationMs: 2500,
+        });
+      })
+    );
 
-    GameEventBus.on('DUNGEON_CLEARED', (p) => {
-      this.push({
-        title: 'DUNGEON CLEARED',
-        message: `${p.theme.toUpperCase()} VAULT PURIFIED!`,
-        priority: 'HIGH',
-        icon: '🏰',
-        colorTheme: 'indigo',
-        durationMs: 5000,
-      });
-    });
+    this.unsubscribers.push(
+      GameEventBus.on('DUNGEON_CLEARED', (p) => {
+        this.push({
+          title: 'DUNGEON CLEARED',
+          message: `${p.theme.toUpperCase()} VAULT PURIFIED!`,
+          priority: 'HIGH',
+          icon: '🏰',
+          colorTheme: 'indigo',
+          durationMs: 5000,
+        });
+      })
+    );
 
     // Cleanup loop every 500ms
-    setInterval(() => this.cleanup(), 500);
+    if (!this.cleanupTimer) {
+      this.cleanupTimer = setInterval(() => this.cleanup(), 500);
+    }
+  }
+
+  public static dispose(): void {
+    this.unsubscribers.forEach(unsub => {
+      try { unsub(); } catch { /* ignore */ }
+    });
+    this.unsubscribers = [];
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.notifications = [];
+    this.listeners.clear();
+    this.initialized = false;
   }
 
   public static push(notif: Omit<GameNotification, 'id' | 'timestamp'>): void {

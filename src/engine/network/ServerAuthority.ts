@@ -5,6 +5,14 @@ import {
   DamageEventMessage,
   InputCommandMessage,
 } from './NetworkProtocol';
+import {
+  WORLD_MIN_Y,
+  WORLD_MAX_Y,
+  MAX_INTERACTION_REACH,
+  MAX_COMBAT_REACH,
+  MAX_BLOCK_TYPE_ID,
+  MAX_PLAYER_SPEED,
+} from '../world/WorldConfig';
 
 export interface ValidationResult {
   valid: boolean;
@@ -12,21 +20,99 @@ export interface ValidationResult {
 }
 
 export class ServerAuthority {
-  private static maxReachDistance = 7.0; // 7 voxel units max reach
-  private static maxPlayerSpeed = 18.0; // Units per second max velocity
+  public static readonly maxReachDistance = MAX_INTERACTION_REACH;
+  public static readonly maxCombatReach = MAX_COMBAT_REACH;
+  public static readonly maxPlayerSpeed = MAX_PLAYER_SPEED;
+
+  public static validateBlockPlacement(
+    playerPos: [number, number, number],
+    x: number,
+    y: number,
+    z: number,
+    oldBlockType: number,
+    newBlockType: number,
+    inventory?: Array<{ itemId: string; count: number } | null>,
+    worldCurrentBlock?: number
+  ): ValidationResult {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) {
+      return { valid: false, reason: 'COORDINATES_MUST_BE_INTEGERS' };
+    }
+    if (y < WORLD_MIN_Y || y >= WORLD_MAX_Y) {
+      return { valid: false, reason: 'OUT_OF_WORLD_HEIGHT_BOUNDS' };
+    }
+    if (typeof newBlockType !== 'number' || newBlockType < 0 || newBlockType > MAX_BLOCK_TYPE_ID) {
+      return { valid: false, reason: 'INVALID_BLOCK_ID' };
+    }
+    if (worldCurrentBlock !== undefined && worldCurrentBlock !== oldBlockType) {
+      return { valid: false, reason: 'OLD_BLOCK_STATE_DESYNC' };
+    }
+    const dx = (x + 0.5) - playerPos[0];
+    const dy = (y + 0.5) - playerPos[1];
+    const dz = (z + 0.5) - playerPos[2];
+    const distSq = dx * dx + dy * dy + dz * dz;
+    if (distSq > this.maxReachDistance * this.maxReachDistance) {
+      return { valid: false, reason: 'EXCEEDS_MAX_REACH' };
+    }
+    if (inventory !== undefined && newBlockType !== 0) {
+      const hasItem = inventory.some((slot) => slot && slot.count > 0);
+      if (!hasItem) {
+        return { valid: false, reason: 'ITEM_NOT_IN_INVENTORY' };
+      }
+    }
+    return { valid: true };
+  }
+
+  public static validateBlockBreak(
+    playerPos: [number, number, number],
+    x: number,
+    y: number,
+    z: number,
+    oldBlockType: number,
+    worldCurrentBlock?: number
+  ): ValidationResult {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) {
+      return { valid: false, reason: 'COORDINATES_MUST_BE_INTEGERS' };
+    }
+    if (y < WORLD_MIN_Y || y >= WORLD_MAX_Y) {
+      return { valid: false, reason: 'OUT_OF_WORLD_HEIGHT_BOUNDS' };
+    }
+    if (worldCurrentBlock !== undefined && worldCurrentBlock !== oldBlockType) {
+      return { valid: false, reason: 'OLD_BLOCK_STATE_DESYNC' };
+    }
+    const dx = (x + 0.5) - playerPos[0];
+    const dy = (y + 0.5) - playerPos[1];
+    const dz = (z + 0.5) - playerPos[2];
+    const distSq = dx * dx + dy * dy + dz * dz;
+    if (distSq > this.maxReachDistance * this.maxReachDistance) {
+      return { valid: false, reason: 'EXCEEDS_MAX_REACH' };
+    }
+    return { valid: true };
+  }
 
   public static validateBlockChange(msg: BlockChangeMessage, playerPos: [number, number, number]): ValidationResult {
-    const dx = msg.x - playerPos[0];
-    const dy = msg.y - playerPos[1];
-    const dz = msg.z - playerPos[2];
+    // 1. Integer coordinates check
+    if (!Number.isInteger(msg.x) || !Number.isInteger(msg.y) || !Number.isInteger(msg.z)) {
+      return { valid: false, reason: 'Block coordinates must be integers' };
+    }
+
+    // 2. World height boundary check
+    if (msg.y < WORLD_MIN_Y || msg.y >= WORLD_MAX_Y) {
+      return { valid: false, reason: `Block Y out of world bounds [${WORLD_MIN_Y}, ${WORLD_MAX_Y})` };
+    }
+
+    // 3. Block ID range check
+    if (typeof msg.newBlockType !== 'number' || msg.newBlockType < 0 || msg.newBlockType > MAX_BLOCK_TYPE_ID) {
+      return { valid: false, reason: 'Invalid block ID' };
+    }
+
+    // 4. Reach distance check (center of block to player eye/feet)
+    const dx = (msg.x + 0.5) - playerPos[0];
+    const dy = (msg.y + 0.5) - playerPos[1];
+    const dz = (msg.z + 0.5) - playerPos[2];
     const distSq = dx * dx + dy * dy + dz * dz;
 
     if (distSq > this.maxReachDistance * this.maxReachDistance) {
       return { valid: false, reason: 'Block change exceeds reach distance' };
-    }
-
-    if (msg.newBlockType < 0 || msg.newBlockType > 255) {
-      return { valid: false, reason: 'Invalid block ID' };
     }
 
     return { valid: true };
@@ -58,7 +144,7 @@ export class ServerAuthority {
     const dz = attackerPos[2] - targetPos[2];
     const distSq = dx * dx + dy * dy + dz * dz;
 
-    if (distSq > 100.0) { // 10 blocks max attack reach
+    if (distSq > this.maxCombatReach * this.maxCombatReach) {
       return { valid: false, reason: 'Target out of combat range' };
     }
 

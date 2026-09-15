@@ -93,7 +93,7 @@ export class IndexedDBStorage {
           const request = store.get(key);
 
           request.onsuccess = () => {
-            resolve((request.result as T) || null);
+            resolve((request.result as T) ?? null);
           };
 
           request.onerror = () => {
@@ -102,8 +102,8 @@ export class IndexedDBStorage {
         });
       })();
 
-      const timeoutPromise = new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), 1200)
+      const timeoutPromise = new Promise<T | null>((_, reject) =>
+        setTimeout(() => reject(new Error('IndexedDB get timed out')), 2000)
       );
 
       return await Promise.race([getPromise, timeoutPromise]);
@@ -119,10 +119,11 @@ export class IndexedDBStorage {
       return new Promise((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readwrite');
         const store = transaction.objectStore(storeName);
-        const request = store.put(value);
+        store.put(value);
 
-        request.onsuccess = () => resolve(true);
-        request.onerror = () => reject(request.error);
+        transaction.oncomplete = () => resolve(true);
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(new Error('IndexedDB transaction aborted'));
       });
     } catch (e) {
       Logger.error('IndexedDBStorage', `Failed to set item in store '${storeName}'`, { error: (e as Error).message });
@@ -136,10 +137,11 @@ export class IndexedDBStorage {
       return new Promise((resolve, reject) => {
         const transaction = db.transaction(storeName, 'readwrite');
         const store = transaction.objectStore(storeName);
-        const request = store.delete(key);
+        store.delete(key);
 
-        request.onsuccess = () => resolve(true);
-        request.onerror = () => reject(request.error);
+        transaction.oncomplete = () => resolve(true);
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(new Error('IndexedDB delete transaction aborted'));
       });
     } catch (e) {
       Logger.error('IndexedDBStorage', `Failed to remove key '${key}' from store '${storeName}'`, { error: (e as Error).message });

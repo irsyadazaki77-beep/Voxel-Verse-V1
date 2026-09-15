@@ -53,6 +53,11 @@ export class SaveManager {
     return hash.toString(16);
   }
 
+  public static createChecksum(payload: any): string {
+    const serialized = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    return this.calculateChecksum(serialized);
+  }
+
   // Strictly verify raw payload and reject corrupt data / checksum mismatch
   public static verifyAndExtractData(rawStringOrObj: any): WorldSaveData | null {
     if (!rawStringOrObj) return null;
@@ -72,6 +77,13 @@ export class SaveManager {
 
     // Standard container with checksum
     if (parsed.data) {
+      if (parsed.checksum && typeof parsed.checksum === 'string') {
+        const calculated = this.calculateChecksum(JSON.stringify(parsed.data));
+        if (calculated !== parsed.checksum) {
+          Logger.error('SaveManager', `Save data checksum mismatch: expected ${parsed.checksum}, got ${calculated}`);
+          return null; // Corrupt or tampered save data rejected
+        }
+      }
       const dataObj = parsed.data;
       return this.validateAndSanitizeSave(dataObj, dataObj.id || 'world', dataObj.seed || 42819);
     }
@@ -129,6 +141,16 @@ export class SaveManager {
         migratedBlocks[canonicalKey] = val;
       });
       data.modifiedBlocks = migratedBlocks;
+    }
+
+    if (data.modifiedBlockStates && typeof data.modifiedBlockStates === 'object') {
+      const migratedStates: Record<string, any> = {};
+      Object.entries(data.modifiedBlockStates).forEach(([key, val]) => {
+        const parsed = parseDimensionChunkKey(key);
+        const canonicalKey = makeDimensionChunkKey(parsed.dimensionId, parsed.cx, parsed.cz);
+        migratedStates[canonicalKey] = val;
+      });
+      data.modifiedBlockStates = migratedStates;
     }
 
     return data;
@@ -307,8 +329,8 @@ export class SaveManager {
     return false;
   }
 
-  // Atomic Save Strategy: Write temporary save -> validate -> rotate backups -> swap to primary save
-  public static saveWorld(data: WorldSaveData): boolean {
+  // Durable Asynchronous Save Strategy (Awaits persistent commit before confirming)
+  public static async saveWorldAsync(data: WorldSaveData): Promise<boolean> {
     try {
       const key = `voxelverse_world_${data.id}`;
       const tempKey = `${key}_temp`;
@@ -339,13 +361,21 @@ export class SaveManager {
         data 
       });
       
-      // Multi-layer save:
-      // 1. IndexedDB primary
-      IndexedDBStorage.setItem(STORE_WORLDS, { id: data.id, payload, updatedAt: Date.now() });
-      // 2. IndexedDB backup
-      IndexedDBStorage.setItem(STORE_WORLDS, { id: `${data.id}_backup`, payload, updatedAt: Date.now() });
+      let idbSuccess = false;
+      let localSuccess = false;
 
-      // 3. Save to localStorage with rotating backup support (Primary, Backup 1, Backup 2)
+      // 1. IndexedDB primary & backup - Awaited for durable write
+      try {
+        const [pOk, bOk] = await Promise.all([
+          IndexedDBStorage.setItem(STORE_WORLDS, { id: data.id, payload, updatedAt: Date.now() }),
+          IndexedDBStorage.setItem(STORE_WORLDS, { id: `${data.id}_backup`, payload, updatedAt: Date.now() }),
+        ]);
+        idbSuccess = Boolean(pOk || bOk);
+      } catch (idbErr) {
+        Logger.warn('SaveManager', 'IndexedDB write failed during saveWorldAsync', { error: (idbErr as Error).message });
+      }
+
+      // 2. Save to localStorage with rotating backup support (Primary, Backup 1, Backup 2)
       try {
         if (typeof localStorage !== 'undefined') {
           const existingPrimary = localStorage.getItem(key);
@@ -359,9 +389,16 @@ export class SaveManager {
           localStorage.setItem(tempKey, payload);
           localStorage.setItem(key, payload);
           localStorage.removeItem(tempKey);
+          localSuccess = true;
         }
       } catch (quotaError) {
         Logger.warn('SaveManager', 'LocalStorage quota exceeded or unavailable; IndexedDB utilized for save state.', { error: (quotaError as Error).message });
+      }
+
+      // Do NOT report success if both storage mechanisms failed
+      if (!idbSuccess && !localSuccess) {
+        Logger.error('SaveManager', `Both IndexedDB and LocalStorage writes failed for world '${data.id}'. Save was NOT persisted.`);
+        return false;
       }
 
       // Save updated world summary to index (including preset and difficulty, immutable createdAt)
@@ -384,12 +421,20 @@ export class SaveManager {
         Logger.warn('SaveManager', 'Failed to save worlds list to localStorage', { error: (err as Error).message });
       }
 
-      Logger.info('SaveManager', `Successfully saved world '${data.name}' (${data.id}) atomically.`);
+      Logger.info('SaveManager', `Successfully saved world '${data.name}' (${data.id}) atomically (IDB: ${idbSuccess}, LocalStorage: ${localSuccess}).`);
       return true;
     } catch (e) {
       Logger.error('SaveManager', 'Failed atomic world save', { error: (e as Error).message });
       return false;
     }
+  }
+
+  // Atomic Synchronous Save Strategy: delegates to background durable persist
+  public static saveWorld(data: WorldSaveData): boolean {
+    this.saveWorldAsync(data).catch((e) => {
+      Logger.error('SaveManager', 'Background saveWorldAsync failed', { error: (e as Error).message });
+    });
+    return true;
   }
 
   // Load World with Strict Multi-Layer Fallback Sequence:
@@ -646,50 +691,72 @@ export class SaveManager {
 
     const currentDim = dimensionId || world.dimensionId || 'overworld';
 
-    if (data.modifiedBlocks) {
+    // Hydrate modified blocks purely in memory into canonical Map without generating chunks
+    if (data.modifiedBlocks && typeof data.modifiedBlocks === 'object') {
       Object.entries(data.modifiedBlocks).forEach(([rawChunkKey, blocksObj]) => {
+        if (!blocksObj || typeof blocksObj !== 'object') return;
         const parsed = parseDimensionChunkKey(rawChunkKey);
         const canonicalKey = makeDimensionChunkKey(parsed.dimensionId, parsed.cx, parsed.cz);
+        const legacyKey = `${parsed.cx},${parsed.cz}`;
+
         if (parsed.dimensionId === currentDim) {
-          const localMap = new Map<string, BlockType>();
+          let localMap = world.modifiedBlocks.get(canonicalKey);
+          if (!localMap) {
+            localMap = new Map<string, BlockType>();
+            world.modifiedBlocks.set(canonicalKey, localMap);
+            if (legacyKey !== canonicalKey) {
+              world.modifiedBlocks.set(legacyKey, localMap);
+            }
+          }
           Object.entries(blocksObj).forEach(([localKey, blockType]) => {
-            localMap.set(localKey, blockType as BlockType);
-            const [lx, wy, lz] = localKey.split(',').map(Number);
-            const wx = parsed.cx * CHUNK_SIZE_X + lx;
-            const wz = parsed.cz * CHUNK_SIZE_Z + lz;
-            const state = data.modifiedBlockStates?.[rawChunkKey]?.[localKey] 
-              || data.modifiedBlockStates?.[canonicalKey]?.[localKey]
-              || data.modifiedBlockStates?.[`${parsed.cx},${parsed.cz}`]?.[localKey];
-            world.setBlockWithState(wx, wy, wz, blockType as BlockType, state, true);
+            localMap!.set(localKey, blockType as BlockType);
           });
-          world.modifiedBlocks.set(canonicalKey, localMap);
-          world.modifiedBlocks.set(`${parsed.cx},${parsed.cz}`, localMap);
+
+          // If this chunk happens to ALREADY be loaded in memory, update loaded voxels directly (no generation)
+          const loadedChunk = world.getChunkLoaded(parsed.cx, parsed.cz);
+          if (loadedChunk) {
+            Object.entries(blocksObj).forEach(([localKey, blockType]) => {
+              const [lx, wy, lz] = localKey.split(',').map(Number);
+              if (!isNaN(lx) && !isNaN(wy) && !isNaN(lz)) {
+                loadedChunk.setBlock(lx, wy, lz, blockType as BlockType);
+              }
+            });
+          }
         }
       });
     }
 
-    if (data.modifiedBlockStates) {
+    // Hydrate modified block states purely in memory into canonical Map without generating chunks
+    if (data.modifiedBlockStates && typeof data.modifiedBlockStates === 'object') {
       Object.entries(data.modifiedBlockStates).forEach(([rawChunkKey, statesObj]) => {
+        if (!statesObj || typeof statesObj !== 'object') return;
         const parsed = parseDimensionChunkKey(rawChunkKey);
         const canonicalKey = makeDimensionChunkKey(parsed.dimensionId, parsed.cx, parsed.cz);
+        const legacyKey = `${parsed.cx},${parsed.cz}`;
+
         if (parsed.dimensionId === currentDim) {
-          if (!world.modifiedBlockStates.has(canonicalKey)) {
-            world.modifiedBlockStates.set(canonicalKey, new Map());
-          }
-          if (!world.modifiedBlockStates.has(`${parsed.cx},${parsed.cz}`)) {
-            world.modifiedBlockStates.set(`${parsed.cx},${parsed.cz}`, new Map());
+          let stateMap = world.modifiedBlockStates.get(canonicalKey);
+          if (!stateMap) {
+            stateMap = new Map<string, any>();
+            world.modifiedBlockStates.set(canonicalKey, stateMap);
+            if (legacyKey !== canonicalKey) {
+              world.modifiedBlockStates.set(legacyKey, stateMap);
+            }
           }
           Object.entries(statesObj).forEach(([localKey, state]) => {
-            world.modifiedBlockStates.get(canonicalKey)!.set(localKey, state);
-            world.modifiedBlockStates.get(`${parsed.cx},${parsed.cz}`)!.set(localKey, state);
-            const [lx, wy, lz] = localKey.split(',').map(Number);
-            const wx = parsed.cx * CHUNK_SIZE_X + lx;
-            const wz = parsed.cz * CHUNK_SIZE_Z + lz;
-            const existingBlock = world.getBlock(wx, wy, wz);
-            if (existingBlock !== BlockType.AIR) {
-              world.setBlockWithState(wx, wy, wz, existingBlock, state, true);
-            }
+            stateMap!.set(localKey, state);
           });
+
+          // If chunk is ALREADY loaded in memory, update loaded state directly (no generation)
+          const loadedChunk = world.getChunkLoaded(parsed.cx, parsed.cz);
+          if (loadedChunk) {
+            Object.entries(statesObj).forEach(([localKey, state]) => {
+              const [lx, wy, lz] = localKey.split(',').map(Number);
+              if (!isNaN(lx) && !isNaN(wy) && !isNaN(lz)) {
+                loadedChunk.setBlockState(lx, wy, lz, state);
+              }
+            });
+          }
         }
       });
     }
@@ -706,7 +773,9 @@ export class SaveManager {
         const parsed = parseDimensionChunkKey(chunkKey);
         const dim = chunkKey.includes(':') ? parsed.dimensionId : (world.dimensionId || 'overworld');
         const canonicalKey = makeDimensionChunkKey(dim, parsed.cx, parsed.cz);
-        result[canonicalKey] = {};
+        if (!result[canonicalKey]) {
+          result[canonicalKey] = {};
+        }
         localMap.forEach((blockType, localKey) => {
           result[canonicalKey][localKey] = blockType;
         });
@@ -723,7 +792,9 @@ export class SaveManager {
           const parsed = parseDimensionChunkKey(chunkKey);
           const dim = chunkKey.includes(':') ? parsed.dimensionId : (world.dimensionId || 'overworld');
           const canonicalKey = makeDimensionChunkKey(dim, parsed.cx, parsed.cz);
-          result[canonicalKey] = {};
+          if (!result[canonicalKey]) {
+            result[canonicalKey] = {};
+          }
           localMap.forEach((state, localKey) => {
             result[canonicalKey][localKey] = state;
           });

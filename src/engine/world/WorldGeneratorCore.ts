@@ -3,6 +3,7 @@ import { BlockType, DIMENSION_AETHER } from '../../types';
 import { SimplexNoise } from '../math/Noise';
 import { SEA_LEVEL, WORLD_PRESETS, WorldPreset, WorldGenParameters, CHUNK_SIZE_Y } from './WorldConfig';
 import { StructureGenerator } from './StructureGenerator';
+import { StructureManager } from './StructureManager';
 
 const CHUNK_SIZE_X = 16;
 const CHUNK_SIZE_Z = 16;
@@ -265,39 +266,25 @@ export class WorldGeneratorCore {
     }
 
     // 3. MULTI-BIOME PROCEDURAL STRUCTURES & TREES (MULTI-CHUNK BLUEPRINTS)
-    // Check candidate structure origins from neighbor chunks [cx-2..cx+2, cz-2..cz+2]
-    for (let ocx = cx - 2; ocx <= cx + 2; ocx++) {
-      for (let ocz = cz - 2; ocz <= cz + 2; ocz++) {
-        const originHash = Math.abs(Math.imul(ocx, 73856093) ^ Math.imul(ocz, 19349663) ^ Math.imul(this.seed, 83492791));
-        if ((originHash % 33) === 0) {
-          const originWx = ocx * 16 + 8;
-          const originWz = ocz * 16 + 8;
-          const originRegion = this.regionManager.getDominantRegion(originWx, originWz);
-          if (originRegion.structurePool.length > 0) {
-            const sType = originRegion.structurePool[originHash % originRegion.structurePool.length];
-            const structBlocks = StructureGenerator.generateNusantaraStructure(sType);
-            if (structBlocks.length > 0) {
-              // Get ground height at originWx, originWz
-              const localOlx = 8, localOlz = 8;
-              const originY = (ocx === cx && ocz === cz) ? heightMap[localOlx + localOlz * 16] : p.seaLevel + 4;
-              if (originY >= p.seaLevel) {
-                for (const item of structBlocks) {
-                  const bWx = originWx + item.dx;
-                  const bWy = originY + 1 + item.dy;
-                  const bWz = originWz + item.dz;
+    const overlappingStructures = StructureManager.getOverlappingStructuresForChunk(
+      cx, cz, this.seed, 
+      (wx, wz) => this.getTerrainHeight(wx, wz),
+      (wx, wz) => this.regionManager.getDominantRegion(wx, wz)
+    );
 
-                  const targetCx = Math.floor(bWx / 16);
-                  const targetCz = Math.floor(bWz / 16);
+    for (const instance of overlappingStructures) {
+      for (const item of instance.placements) {
+        const bWx = instance.originX + item.dx;
+        const bWy = instance.originY + 1 + item.dy;
+        const bWz = instance.originZ + item.dz;
 
-                  if (targetCx === cx && targetCz === cz && bWy >= 0 && bWy < 128) {
-                    const lx = bWx - cx * 16;
-                    const lz = bWz - cz * 16;
-                    blocks[getIndex(lx, bWy, lz)] = item.block;
-                  }
-                }
-              }
-            }
-          }
+        const targetCx = Math.floor(bWx / 16);
+        const targetCz = Math.floor(bWz / 16);
+
+        if (targetCx === cx && targetCz === cz && bWy >= 0 && bWy < 128) {
+          const lx = bWx - cx * 16;
+          const lz = bWz - cz * 16;
+          blocks[getIndex(lx, bWy, lz)] = item.block;
         }
       }
     }
@@ -311,6 +298,17 @@ export class WorldGeneratorCore {
         const height = heightMap[lx + lz * 16];
         
         if (height < p.seaLevel + 1) continue;
+
+        // Prevent trees from spawning inside structures
+        let insideStructure = false;
+        for (const s of overlappingStructures) {
+           if (wx >= s.boundingBox.minX && wx <= s.boundingBox.maxX &&
+               wz >= s.boundingBox.minZ && wz <= s.boundingBox.maxZ) {
+             insideStructure = true;
+             break;
+           }
+        }
+        if (insideStructure) continue;
 
         const topBlock = blocks[getIndex(lx, height, lz)];
         

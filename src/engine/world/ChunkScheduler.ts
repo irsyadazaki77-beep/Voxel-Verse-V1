@@ -1,20 +1,35 @@
-// Chunk Streaming Scheduler with Camera Direction Priority, Frame Time Budget & Load Hysteresis
+// Chunk Streaming Scheduler with Camera Direction Priority, Frame Time Budget, Mesh Integration Queue & Resilience Watchdog
 import * as THREE from 'three';
-import { Chunk, ChunkState, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z } from './Chunk';
+import { Chunk, ChunkState, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, transitionChunkState } from './Chunk';
 import { VoxelWorld } from './VoxelWorld';
 import { ChunkWorkerPool } from './ChunkWorkerPool';
+import { TransferableMeshData } from './VoxelMesher';
+import { Logger } from '../ui/Logger';
+
+export interface MeshIntegrationItem {
+  key: string;
+  cx: number;
+  cz: number;
+  meshData: TransferableMeshData;
+  sourceRevision: number;
+  sessionToken: number;
+  priority: number;
+}
 
 export class ChunkScheduler {
   private world: VoxelWorld;
-  private workerPool: ChunkWorkerPool;
+  public workerPool: ChunkWorkerPool;
   private dirtyQueue: Set<string> = new Set(); // Chunk keys scheduled for remesh
-  public warmCache: Map<string, { chunk: Chunk; unloadTime: number }> = new Map();
+  private meshIntegrationQueue: MeshIntegrationItem[] = [];
+  public warmCache: Map<string, { chunk: Chunk; unloadTime: number; estimatedMB: number }> = new Map();
 
   private projScreenMatrix = new THREE.Matrix4();
   private frustum = new THREE.Frustum();
-  private tempBox = new THREE.Box3();
 
-  // Metrics for Performance Profiler
+  private lastZombieCheckTime: number = 0;
+  private zombieCount: number = 0;
+
+  // Metrics for Performance Profiler & Telemetry
   public metrics = {
     activeChunks: 0,
     cachedChunks: 0,
@@ -22,7 +37,6 @@ export class ChunkScheduler {
     generatingTasks: 0,
     dirtyChunks: 0,
     meshUploadsPerFrame: 0,
-    // Debug overlay counts
     loadedChunks: 0,
     generatedChunks: 0,
     meshedChunks: 0,
@@ -34,11 +48,18 @@ export class ChunkScheduler {
     worldGroupChildren: 0,
     solidMeshCount: 0,
     waterMeshCount: 0,
+    healthyWorkers: 0,
+    busyWorkers: 0,
+    recoveringWorkers: 0,
+    failedWorkers: 0,
+    p95GenMs: 0,
+    p95MeshMs: 0,
+    zombieChunks: 0,
+    cacheMemoryMB: 0,
   };
 
   private lastDiscoveryPlayerCX: number = -999999;
   private lastDiscoveryPlayerCZ: number = -999999;
-  private lastDiscoveryTime: number = 0;
 
   constructor(world: VoxelWorld) {
     this.world = world;
@@ -68,10 +89,6 @@ export class ChunkScheduler {
   }
 
   private lastCacheCleanTime: number = 0;
-  private static readonly NEIGHBOR_OFFSETS: readonly [number, number][] = [
-    [-1, 0], [1, 0], [0, -1], [0, 1],
-    [-1, -1], [1, -1], [-1, 1], [1, 1]
-  ];
 
   public get dirtyChunkCount(): number {
     return this.dirtyQueue.size;
@@ -96,7 +113,7 @@ export class ChunkScheduler {
       }
     }
 
-    // 2. Fill borders from 8 neighbors if present
+    // 2. Fill borders from 8 neighbors using pure loaded query (no implicit chunk generation)
     const offsets = [
       [-1, 0], [1, 0], [0, -1], [0, 1],
       [-1, -1], [1, -1], [-1, 1], [1, 1]
@@ -105,7 +122,7 @@ export class ChunkScheduler {
     for (let i = 0; i < offsets.length; i++) {
       const [ox, oz] = offsets[i];
       const nChunkKey = world.getChunkKey(cx + ox, cz + oz);
-      const nChunk = world.chunks.get(nChunkKey);
+      const nChunk = world.getChunkLoaded(cx + ox, cz + oz);
       if (!nChunk || !nChunk.blocks) continue;
       const nBlocks = nChunk.blocks;
 
@@ -145,6 +162,34 @@ export class ChunkScheduler {
     this.spiralOffsets.sort((a, b) => (a[0] * a[0] + a[1] * a[1]) - (b[0] * b[0] + b[1] * b[1]));
   }
 
+  public resetSession(token: number): void {
+    this.workerPool.setSessionToken(token);
+    this.dirtyQueue.clear();
+    this.meshIntegrationQueue = [];
+    for (const cached of this.warmCache.values()) {
+      cached.chunk.dispose();
+    }
+    this.warmCache.clear();
+    this.lastDiscoveryPlayerCX = -999999;
+    this.lastDiscoveryPlayerCZ = -999999;
+  }
+
+  public triggerBorderRemesh(cx: number, cz: number): void {
+    const neighbors = [
+      this.world.getChunkKey(cx - 1, cz),
+      this.world.getChunkKey(cx + 1, cz),
+      this.world.getChunkKey(cx, cz - 1),
+      this.world.getChunkKey(cx, cz + 1),
+    ];
+    for (let i = 0; i < neighbors.length; i++) {
+      const nChunk = this.world.chunks.get(neighbors[i]);
+      if (nChunk && nChunk.state !== ChunkState.QUEUED_GENERATION && nChunk.state !== ChunkState.UNLOADED) {
+        nChunk.setDirty();
+        this.dirtyQueue.add(neighbors[i]);
+      }
+    }
+  }
+
   public update(
     playerPos: THREE.Vector3,
     cameraDir: THREE.Vector3,
@@ -152,8 +197,9 @@ export class ChunkScheduler {
     frameBudgetMs: number = 3.0
   ): void {
     ChunkScheduler.initSpiralOffsets();
-    
+
     const startTime = performance.now();
+    const now = Date.now();
     const playerCX = Math.floor(playerPos.x / CHUNK_SIZE_X);
     const playerCZ = Math.floor(playerPos.z / CHUNK_SIZE_Z);
 
@@ -162,23 +208,53 @@ export class ChunkScheduler {
     const loadRadiusSq = loadRadius * loadRadius + 1;
     const unloadRadiusSq = unloadRadius * unloadRadius;
 
-    // 1. Identify chunks within Load Radius and calculate Priority (Capped & Prioritized)
+    // 0. Zombie Detector Watchdog (Runs every 1000ms)
+    if (now - this.lastZombieCheckTime > 1000) {
+      this.lastZombieCheckTime = now;
+      let zombiesDetected = 0;
+
+      for (const [key, chunk] of this.world.chunks.entries()) {
+        const isStuckGenerating =
+          (chunk.state === ChunkState.GENERATING || chunk.state === ChunkState.QUEUED_GENERATION) &&
+          now - chunk.lastStateChangeTime > 5000;
+
+        const isStuckMeshing =
+          (chunk.state === ChunkState.MESHING || chunk.state === ChunkState.QUEUED_MESH) &&
+          now - chunk.lastStateChangeTime > 5000;
+
+        if (isStuckGenerating || isStuckMeshing) {
+          zombiesDetected++;
+          Logger.warn('ChunkScheduler', `[ZombieDetector] Recovered zombie chunk (${chunk.cx}, ${chunk.cz}) in state '${chunk.state}'`);
+
+          if (isStuckGenerating) {
+            transitionChunkState(chunk, chunk.state, ChunkState.UNLOADED, 'zombie_recovery');
+            this.world.chunks.delete(key);
+            this.world.worldGroup.remove(chunk.group);
+          } else {
+            chunk.setDirty();
+            transitionChunkState(chunk, chunk.state, ChunkState.DIRTY, 'zombie_recovery');
+            this.dirtyQueue.add(key);
+          }
+        }
+      }
+      this.zombieCount = zombiesDetected;
+    }
+
+    // 1. Streaming Candidate Discovery (Budget-aware)
     let tasksEnqueuedThisFrame = 0;
-    const maxNewTasksPerCall = 4; // Prevent worker starvation / CPU spike
+    const maxNewTasksPerCall = 4;
 
     discoveryLoop:
     for (let i = 0; i < ChunkScheduler.spiralOffsets.length; i++) {
       const [dx, dz] = ChunkScheduler.spiralOffsets[i];
       const distSq = dx * dx + dz * dz;
-      
+
       if (distSq > loadRadiusSq) {
-        // Since offsets are sorted by distance, we can safely stop checking further
         break discoveryLoop;
       }
 
       const isVeryNear = distSq <= 4; // 2 chunks radius close-range fail-safe
 
-      // Enforce frame budget check unless very near player
       if (!isVeryNear && performance.now() - startTime >= frameBudgetMs) {
         break discoveryLoop;
       }
@@ -187,79 +263,91 @@ export class ChunkScheduler {
       const cz = playerCZ + dz;
       const key = this.world.getChunkKey(cx, cz);
 
-          if (!this.world.chunks.has(key)) {
-            // Check Warm Cache first (fast synchronous recovery)
-            if (this.warmCache.has(key)) {
-              const cached = this.warmCache.get(key)!;
-              this.warmCache.delete(key);
-              this.world.chunks.set(key, cached.chunk);
-              this.world.worldGroup.add(cached.chunk.group);
-            } else if (isVeryNear || tasksEnqueuedThisFrame < maxNewTasksPerCall) {
-              // Calculate Priority (Camera Direction Boost)
-              const invDist = distSq > 0 ? 1 / Math.sqrt(distSq) : 0;
-              const dirX = dx * invDist;
-              const dirZ = dz * invDist;
-              const dot = dirX * cameraDir.x + dirZ * cameraDir.z;
-
-              let priority = 1000 - distSq * 10;
-              if (dot > 0) priority += dot * 250; // Boost chunks in front of camera
-              if (dx === 0 && dz === 0) priority += 2000; // Player current chunk top priority
-
-              // Create new Chunk & Enqueue Async Worker Task
-              const chunk = new Chunk(cx, cz);
-              chunk.state = ChunkState.QUEUED;
-              this.world.chunks.set(key, chunk);
-              this.world.worldGroup.add(chunk.group);
-              
-              if (!isVeryNear) {
-                tasksEnqueuedThisFrame++;
-              }
-
-              const modBlocksObj = this.getModifiedBlocksObject(cx, cz);
-
-              this.workerPool.enqueueTask({
-                type: 'generate',
-                taskId: `task_${key}_${Date.now()}`,
-                cx,
-                cz,
-                seed: this.world.seed,
-                preset: this.world.preset,
-                dimensionId: this.world.dimensionId,
-                priority,
-                sessionToken: this.workerPool.currentSessionToken,
-                modifiedBlocks: modBlocksObj,
-                onComplete: (buffer) => {
-                  const targetChunk = this.world.chunks.get(key);
-                  if (targetChunk) {
-                    targetChunk.setBlocks(new Uint8Array(buffer));
-                    targetChunk.state = ChunkState.GENERATED;
-                    targetChunk.isDirty = true;
-                    this.dirtyQueue.add(key);
-
-                    // Re-mesh adjacent neighbor chunks to resolve border face culling seams
-                    const n1 = this.world.getChunkKey(cx - 1, cz);
-                    const n2 = this.world.getChunkKey(cx + 1, cz);
-                    const n3 = this.world.getChunkKey(cx, cz - 1);
-                    const n4 = this.world.getChunkKey(cx, cz + 1);
-                    const neighbors = [n1, n2, n3, n4];
-                    for (let i = 0; i < neighbors.length; i++) {
-                      const nChunk = this.world.chunks.get(neighbors[i]);
-                      if (nChunk && nChunk.state !== ChunkState.QUEUED && nChunk.state !== ChunkState.UNLOADED) {
-                        nChunk.setDirty();
-                        this.dirtyQueue.add(neighbors[i]);
-                      }
-                    }
-                  }
-                },
-              });
-            }
+      if (!this.world.chunks.has(key)) {
+        // Check Warm Cache first
+        if (this.warmCache.has(key)) {
+          const cached = this.warmCache.get(key)!;
+          this.warmCache.delete(key);
+          if (cached.chunk && cached.chunk.blocks && cached.chunk.state === ChunkState.READY) {
+            this.world.chunks.set(key, cached.chunk);
+            this.world.worldGroup.add(cached.chunk.group);
+            this.triggerBorderRemesh(cx, cz);
+            continue;
+          } else {
+            cached.chunk.dispose();
           }
+        }
+
+        if (isVeryNear || tasksEnqueuedThisFrame < maxNewTasksPerCall) {
+          const invDist = distSq > 0 ? 1 / Math.sqrt(distSq) : 0;
+          const dirX = dx * invDist;
+          const dirZ = dz * invDist;
+          const dot = dirX * cameraDir.x + dirZ * cameraDir.z;
+
+          let priority = 1000 - distSq * 10;
+          if (dot > 0) priority += dot * 250;
+          if (dx === 0 && dz === 0) priority += 2000;
+
+          const chunk = new Chunk(cx, cz);
+          transitionChunkState(chunk, ChunkState.UNLOADED, ChunkState.QUEUED_GENERATION, 'scheduler_discovery');
+          this.world.chunks.set(key, chunk);
+          this.world.worldGroup.add(chunk.group);
+
+          if (!isVeryNear) {
+            tasksEnqueuedThisFrame++;
+          }
+
+          const modBlocksObj = this.getModifiedBlocksObject(cx, cz);
+
+          this.workerPool.enqueueTask({
+            type: 'generate',
+            taskId: `gen_${key}_${Date.now()}`,
+            cx,
+            cz,
+            seed: this.world.seed,
+            preset: this.world.preset,
+            dimensionId: this.world.dimensionId,
+            priority,
+            sessionToken: this.workerPool.currentSessionToken,
+            modifiedBlocks: modBlocksObj,
+            onComplete: (buffer) => {
+              const targetChunk = this.world.chunks.get(key);
+              if (targetChunk) {
+                targetChunk.setBlocks(new Uint8Array(buffer));
+
+                const statesMap = this.world.getModifiedBlockStates(cx, cz);
+                if (statesMap) {
+                  statesMap.forEach((st, localKey) => {
+                    const [lx, wy, lz] = localKey.split(',').map(Number);
+                    if (!isNaN(lx) && !isNaN(wy) && !isNaN(lz)) {
+                      targetChunk.setBlockState(lx, wy, lz, st);
+                    }
+                  });
+                }
+
+                transitionChunkState(targetChunk, [ChunkState.QUEUED_GENERATION, ChunkState.GENERATING, ChunkState.GENERATION_RETRY, ChunkState.GENERATED], ChunkState.GENERATED, 'gen_complete');
+                targetChunk.isDirty = true;
+                this.dirtyQueue.add(key);
+                this.triggerBorderRemesh(cx, cz);
+              }
+            },
+            onError: (_err) => {
+              const targetChunk = this.world.chunks.get(key);
+              if (targetChunk) {
+                targetChunk.setDirty();
+                transitionChunkState(targetChunk, targetChunk.state, ChunkState.DIRTY, 'gen_error');
+                this.dirtyQueue.add(key);
+              }
+            },
+          });
+        }
+      }
     }
 
-    // Cancel queued tasks for chunks that are now out of range
+    // Cancel queued tasks for chunks out of range
     this.workerPool.cancelTasksOutofRange(playerCX, playerCZ, unloadRadius);
 
-    // 2. Unload Chunks outside Unload Radius (with Hysteresis) - Zero string split
+    // 2. Unload Chunks outside Unload Radius (Hardened Warm Cache)
     for (const [key, chunk] of this.world.chunks.entries()) {
       const dx = chunk.cx - playerCX;
       const dz = chunk.cz - playerCZ;
@@ -270,24 +358,29 @@ export class ChunkScheduler {
         this.world.chunks.delete(key);
         this.dirtyQueue.delete(key);
 
-        // Place into Warm Cache for 10 seconds before full disposal (capped at 100 entries)
-        if (this.warmCache.size >= 100) {
-          const oldestKey = this.warmCache.keys().next().value;
-          if (oldestKey !== undefined) {
-            const old = this.warmCache.get(oldestKey);
-            if (old) old.chunk.dispose();
-            this.warmCache.delete(oldestKey);
+        // Requirement 24: DO NOT CACHE BROKEN / DIRTY / MESHING / GENERATING CHUNKS
+        const isCacheable = chunk.state === ChunkState.READY || chunk.state === ChunkState.GENERATED;
+        if (isCacheable && chunk.blocks) {
+          // Warm Cache LRU Eviction (max 64 entries)
+          if (this.warmCache.size >= 64) {
+            const oldestKey = this.warmCache.keys().next().value;
+            if (oldestKey !== undefined) {
+              const old = this.warmCache.get(oldestKey);
+              if (old) old.chunk.dispose();
+              this.warmCache.delete(oldestKey);
+            }
           }
+          const estimatedMB = 0.35; // ~350 KB per cached chunk
+          this.warmCache.set(key, { chunk, unloadTime: now, estimatedMB });
+        } else {
+          chunk.dispose();
         }
-        this.warmCache.set(key, { chunk, unloadTime: Date.now() });
       } else {
-        // Update Shadow LOD based on distance
         chunk.updateShadowLOD(distSq);
       }
     }
 
     // Clean warm cache items older than 10s (Throttled check every 1500ms)
-    const now = Date.now();
     if (now - this.lastCacheCleanTime > 1500) {
       this.lastCacheCleanTime = now;
       for (const [key, cached] of this.warmCache.entries()) {
@@ -298,12 +391,10 @@ export class ChunkScheduler {
       }
     }
 
-    // 3. Process Remesh / Dirty Queue to Worker (Stepwise & Budget-capped)
-    let uploads = 0;
+    // 3. Process Remesh / Dirty Queue to Worker
     let meshingTasksEnqueued = 0;
     const maxMeshTasksPerCall = 3;
 
-    // Convert Set to Array and sort by distance to prevent near-chunk starvation
     const dirtyBatch = Array.from(this.dirtyQueue);
     dirtyBatch.sort((a, b) => {
       const ca = this.world.chunks.get(a);
@@ -316,33 +407,35 @@ export class ChunkScheduler {
     });
 
     for (const key of dirtyBatch) {
-      // Guarantee at least some meshing progress even if generation took the whole budget,
-      // but break if we exceed the budget and have already enqueued tasks.
       if (meshingTasksEnqueued >= maxMeshTasksPerCall || (meshingTasksEnqueued > 0 && performance.now() - startTime >= frameBudgetMs)) {
         break;
       }
 
       const chunk = this.world.chunks.get(key);
-      if (chunk && chunk.isDirty && chunk.state !== ChunkState.QUEUED && chunk.state !== ChunkState.GENERATING && chunk.state !== ChunkState.MESHING) {
+      if (
+        chunk &&
+        chunk.isDirty &&
+        chunk.state !== ChunkState.QUEUED_GENERATION &&
+        chunk.state !== ChunkState.GENERATING &&
+        chunk.state !== ChunkState.MESHING &&
+        chunk.state !== ChunkState.QUEUED_MESH
+      ) {
         const cx = chunk.cx;
         const cz = chunk.cz;
 
         const dx = cx - playerCX;
         const dz = cz - playerCZ;
         const distSq = dx * dx + dz * dz;
-        const isVeryNear = distSq <= 4; // 2 chunks radius close-range fail-safe
+        const isVeryNear = distSq <= 4;
 
         if (!isVeryNear && meshingTasksEnqueued >= maxMeshTasksPerCall) {
-          break; // Stop enqueuing far meshes if limit is hit
+          break;
         }
 
-        // Build compact 18x128x18 halo buffer (41.4 KB transferable vs 295 KB 9 full chunks)
-        const haloBuffer = ChunkScheduler.buildHaloBuffer(chunk, this.world);
-
-        chunk.state = ChunkState.MESHING;
+        transitionChunkState(chunk, [ChunkState.GENERATED, ChunkState.DIRTY, ChunkState.READY], ChunkState.QUEUED_MESH, 'enqueue_mesh');
         chunk.isDirty = false;
         this.dirtyQueue.delete(key);
-        
+
         if (!isVeryNear) {
           meshingTasksEnqueued++;
         }
@@ -355,7 +448,7 @@ export class ChunkScheduler {
         let meshPriority = Math.max(10, 1200 - distSq * 20);
         if (dot > 0) meshPriority += dot * 250;
         if (dx === 0 && dz === 0) meshPriority += 2000;
-        meshPriority += 150; // Meshing boost so re-meshing always beats far generation
+        meshPriority += 150;
 
         const chunkSourceRev = chunk.voxelRevision;
 
@@ -367,44 +460,94 @@ export class ChunkScheduler {
           sourceRevision: chunkSourceRev,
           priority: meshPriority,
           sessionToken: this.workerPool.currentSessionToken,
-          haloBuffer,
-          centerBuffer: chunk.blocks!.buffer,
-          neighborBuffers: {},
+          // Requirement 3 & 4: Provide fresh buffer dynamically at execution time
+          bufferProvider: () => {
+            const freshChunk = this.world.getChunkLoaded(cx, cz);
+            if (!freshChunk || !freshChunk.blocks) return {};
+            const freshHalo = ChunkScheduler.buildHaloBuffer(freshChunk, this.world);
+            return { haloBuffer: freshHalo };
+          },
           onComplete: (meshData, sourceRevision) => {
+            // Push to Mesh Integration Queue (Req 18 & 19)
+            this.meshIntegrationQueue.push({
+              key,
+              cx,
+              cz,
+              meshData,
+              sourceRevision,
+              sessionToken: this.workerPool.currentSessionToken,
+              priority: meshPriority,
+            });
+          },
+          onError: (_err) => {
             const targetChunk = this.world.chunks.get(key);
             if (targetChunk) {
-              const applied = targetChunk.applyTransferableMesh(
-                meshData, 
-                this.world.solidMaterial, 
-                this.world.transMaterial, 
-                this.world.waterMaterial,
-                sourceRevision
-              );
-              if (applied) {
-                targetChunk.state = ChunkState.READY;
-                targetChunk.updateShadowLOD(distSq);
-                uploads++;
-              } else {
-                // Chunk voxels changed while worker was meshing; mark dirty so it re-meshes with new revision
-                targetChunk.setDirty();
-                this.dirtyQueue.add(key);
-              }
+              targetChunk.setDirty();
+              transitionChunkState(targetChunk, targetChunk.state, ChunkState.DIRTY, 'mesh_error');
+              this.dirtyQueue.add(key);
             }
-          }
+          },
         });
       } else if (!chunk) {
         this.dirtyQueue.delete(key);
       }
     }
 
-    // Calculate chunk counts for debug overlay
+    // 4. GPU Mesh Integration Queue (Req 18 & 19)
+    let uploads = 0;
+    if (this.meshIntegrationQueue.length > 0) {
+      // Sort integration queue by priority (near player first)
+      this.meshIntegrationQueue.sort((a, b) => b.priority - a.priority);
+
+      const maxUploadsPerFrame = 3;
+      const gpuStart = performance.now();
+
+      while (
+        this.meshIntegrationQueue.length > 0 &&
+        uploads < maxUploadsPerFrame &&
+        performance.now() - gpuStart < 2.0
+      ) {
+        const item = this.meshIntegrationQueue.shift()!;
+        if (item.sessionToken !== this.workerPool.currentSessionToken) continue;
+
+        const targetChunk = this.world.chunks.get(item.key);
+        if (targetChunk) {
+          const applied = targetChunk.applyTransferableMesh(
+            item.meshData,
+            this.world.solidMaterial,
+            this.world.transMaterial,
+            this.world.waterMaterial,
+            item.sourceRevision
+          );
+
+          if (applied) {
+            transitionChunkState(targetChunk, [ChunkState.QUEUED_MESH, ChunkState.MESHING, ChunkState.DIRTY, ChunkState.READY], ChunkState.READY, 'mesh_applied');
+            const dx = targetChunk.cx - playerCX;
+            const dz = targetChunk.cz - playerCZ;
+            targetChunk.updateShadowLOD(dx * dx + dz * dz);
+            uploads++;
+            this.triggerBorderRemesh(item.cx, item.cz);
+          } else {
+            // Stale revision: mark dirty and re-enqueue
+            targetChunk.setDirty();
+            transitionChunkState(targetChunk, targetChunk.state, ChunkState.DIRTY, 'stale_revision');
+            this.dirtyQueue.add(item.key);
+          }
+        }
+      }
+    }
+
+    // Process Worker Queue
+    this.workerPool.processQueue(1.5);
+
+    // 5. Update Profiler Metrics
     let loaded = 0;
     let generated = 0;
     let meshed = 0;
     let visible = 0;
     let pendingGen = 0;
     let pendingMesh = this.dirtyQueue.size;
-    let pendingUpload = 0;
+    let pendingUpload = this.meshIntegrationQueue.length;
     let culled = 0;
     let solidCount = 0;
     let waterCount = 0;
@@ -424,21 +567,25 @@ export class ChunkScheduler {
       if (chunk.state === ChunkState.GENERATED || chunk.state === ChunkState.READY) {
         generated++;
       }
-      if (chunk.state === ChunkState.QUEUED || chunk.state === ChunkState.GENERATING) {
+      if (chunk.state === ChunkState.QUEUED_GENERATION || chunk.state === ChunkState.GENERATING) {
         pendingGen++;
       }
-      if (chunk.state === ChunkState.MESHING) {
-        pendingUpload++;
+      if (chunk.state === ChunkState.QUEUED_MESH || chunk.state === ChunkState.MESHING) {
+        pendingMesh++;
       }
     }
 
-    // 4. Update Profiler Metrics
+    let cacheMemMB = 0;
+    for (const cached of this.warmCache.values()) {
+      cacheMemMB += cached.estimatedMB;
+    }
+
     const poolStats = this.workerPool.getStats();
     this.metrics = {
       activeChunks: this.world.chunks.size,
       cachedChunks: this.warmCache.size,
       queuedTasks: poolStats.queuedTasks,
-      generatingTasks: poolStats.activeWorkers,
+      generatingTasks: poolStats.busyWorkers,
       dirtyChunks: this.dirtyQueue.size,
       meshUploadsPerFrame: uploads,
       loadedChunks: loaded,
@@ -452,6 +599,14 @@ export class ChunkScheduler {
       worldGroupChildren: this.world.worldGroup.children.length,
       solidMeshCount: solidCount,
       waterMeshCount: waterCount,
+      healthyWorkers: poolStats.healthyWorkers,
+      busyWorkers: poolStats.busyWorkers,
+      recoveringWorkers: poolStats.recoveringWorkers,
+      failedWorkers: poolStats.failedWorkers,
+      p95GenMs: poolStats.p95GenMs,
+      p95MeshMs: poolStats.p95MeshMs,
+      zombieChunks: this.zombieCount,
+      cacheMemoryMB: Math.round(cacheMemMB * 10) / 10,
     };
   }
 
@@ -465,9 +620,8 @@ export class ChunkScheduler {
   }
 
   private getModifiedBlocksObject(cx: number, cz: number): Record<string, number> | undefined {
-    const cKey = this.world.getChunkKey(cx, cz);
-    if (!this.world.modifiedBlocks.has(cKey)) return undefined;
-    const map = this.world.modifiedBlocks.get(cKey)!;
+    const map = this.world.getModifiedBlocks(cx, cz);
+    if (!map || map.size === 0) return undefined;
     const obj: Record<string, number> = {};
     map.forEach((val, key) => {
       obj[key] = val;
@@ -478,6 +632,7 @@ export class ChunkScheduler {
   public dispose(): void {
     this.workerPool.dispose();
     this.dirtyQueue.clear();
+    this.meshIntegrationQueue = [];
     for (const cached of this.warmCache.values()) {
       cached.chunk.dispose();
     }

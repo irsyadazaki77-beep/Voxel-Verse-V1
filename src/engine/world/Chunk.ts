@@ -12,13 +12,39 @@ export const CHUNK_VOL = CHUNK_SIZE_X * CHUNK_SIZE_Y * CHUNK_SIZE_Z; // 32,768 v
 
 export enum ChunkState {
   UNLOADED = 'unloaded',
-  QUEUED = 'queued',
+  QUEUED_GENERATION = 'queued_generation',
+  QUEUED = 'queued_generation', // Backward compatibility alias
   GENERATING = 'generating',
   GENERATED = 'generated',
+  QUEUED_MESH = 'queued_mesh',
   MESHING = 'meshing',
   READY = 'ready',
   DIRTY = 'dirty',
+  GENERATION_RETRY = 'generation_retry',
+  MESH_RETRY = 'mesh_retry',
+  ERROR = 'error',
   UNLOADING = 'unloading',
+}
+
+export function transitionChunkState(
+  chunk: Chunk,
+  expected: ChunkState | ChunkState[],
+  next: ChunkState,
+  reason?: string
+): boolean {
+  const allowed = Array.isArray(expected) ? expected.includes(chunk.state) : chunk.state === expected;
+  if (!allowed) {
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[ChunkState] Invalid transition for chunk (${chunk.cx}, ${chunk.cz}): expected [${
+          Array.isArray(expected) ? expected.join(', ') : expected
+        }] but current state is '${chunk.state}' -> target '${next}' (${reason || 'unspecified'})`
+      );
+    }
+  }
+  chunk.state = next;
+  chunk.lastStateChangeTime = Date.now();
+  return allowed;
 }
 
 
@@ -54,10 +80,12 @@ export class Chunk {
   public state: ChunkState = ChunkState.UNLOADED;
   public blocks: Uint8Array;
   public blockStates: Map<number, BlockState> = new Map();
+  public surfaceHeightMap: Uint8Array = new Uint8Array(CHUNK_SIZE_X * CHUNK_SIZE_Z);
   public isDirty: boolean = true;
   public voxelRevision: number = 0;
   public meshRevision: number = 0;
   public lastActiveTime: number = Date.now();
+  public lastStateChangeTime: number = Date.now();
 
   // Three.js Render Meshes
   public solidMesh: THREE.Mesh | null = null;
@@ -94,7 +122,63 @@ export class Chunk {
     this.blocks = data;
     this.voxelRevision++;
     this.isDirty = true;
-    this.state = ChunkState.GENERATED;
+    transitionChunkState(this, this.state, ChunkState.GENERATED, 'setBlocks');
+    this.buildHeightMap();
+  }
+
+  public buildHeightMap(): void {
+    if (!this.blocks) return;
+    for (let lx = 0; lx < CHUNK_SIZE_X; lx++) {
+      for (let lz = 0; lz < CHUNK_SIZE_Z; lz++) {
+        let surfaceY = 0;
+        for (let ly = CHUNK_SIZE_Y - 1; ly >= 0; ly--) {
+          const idx = Chunk.getIndex(lx, ly, lz);
+          const b = this.blocks[idx];
+          if (b !== BlockType.AIR) {
+            const st = this.blockStates.get(idx);
+            if (BlockShapeResolver.isSolidForCollision(b, st)) {
+              surfaceY = ly;
+              break;
+            }
+          }
+        }
+        this.surfaceHeightMap[lx + lz * CHUNK_SIZE_X] = surfaceY;
+      }
+    }
+  }
+
+  public updateHeightMapColumn(lx: number, lz: number, editY: number): void {
+    if (!this.blocks) return;
+    const colIdx = lx + lz * CHUNK_SIZE_X;
+    const currentSurfaceY = this.surfaceHeightMap[colIdx];
+
+    const idx = Chunk.getIndex(lx, editY, lz);
+    const b = this.blocks[idx];
+    const st = this.blockStates.get(idx);
+    const isSolid = b !== BlockType.AIR && BlockShapeResolver.isSolidForCollision(b, st);
+
+    if (isSolid) {
+      if (editY >= currentSurfaceY) {
+        this.surfaceHeightMap[colIdx] = editY;
+      }
+    } else {
+      if (editY >= currentSurfaceY) {
+        // Current surface top or higher was removed/changed to non-solid -> scan downward
+        let newSurface = 0;
+        for (let ly = editY - 1; ly >= 0; ly--) {
+          const scanIdx = Chunk.getIndex(lx, ly, lz);
+          const scanB = this.blocks[scanIdx];
+          if (scanB !== BlockType.AIR) {
+            const scanSt = this.blockStates.get(scanIdx);
+            if (BlockShapeResolver.isSolidForCollision(scanB, scanSt)) {
+              newSurface = ly;
+              break;
+            }
+          }
+        }
+        this.surfaceHeightMap[colIdx] = newSurface;
+      }
+    }
   }
 
   public updateShadowLOD(distSq: number): void {
@@ -159,7 +243,7 @@ export class Chunk {
       this.meshRevision = this.voxelRevision;
     }
     this.isDirty = false;
-    this.state = ChunkState.READY;
+    transitionChunkState(this, this.state, ChunkState.READY, 'applyTransferableMesh');
     return true;
   }
 
@@ -193,6 +277,7 @@ export class Chunk {
     if (this.blocks[idx] !== type) {
       this.blocks[idx] = type;
       this.blockStates.delete(idx);
+      this.updateHeightMapColumn(lx, lz, ly);
       this.voxelRevision++;
       this.isDirty = true;
       this.state = ChunkState.DIRTY;
@@ -212,6 +297,7 @@ export class Chunk {
     } else {
       this.blockStates.delete(idx);
     }
+    this.updateHeightMapColumn(lx, lz, ly);
     this.voxelRevision++;
     this.isDirty = true;
     this.state = ChunkState.DIRTY;
@@ -227,6 +313,7 @@ export class Chunk {
     const existing = this.blockStates.get(idx) || BlockShapeResolver.getDefaultState(currentBlock);
     const updated = BlockStateUtils.createDefaultState(currentBlock, { ...existing, ...state });
     this.blockStates.set(idx, updated);
+    this.updateHeightMapColumn(lx, lz, ly);
     this.voxelRevision++;
     this.isDirty = true;
     this.state = ChunkState.DIRTY;

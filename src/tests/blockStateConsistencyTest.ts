@@ -301,6 +301,7 @@ export async function runBlockStateConsistencyTests(): Promise<boolean> {
     // Deserialize into a fresh world
     const loadedWorld = new VoxelWorld();
     SaveManager.applySaveToWorld(saveData, loadedWorld, 'overworld');
+    loadedWorld.ensureChunkLoaded(Math.floor(120 / 16), Math.floor(120 / 16));
 
     const loadedStairs = loadedWorld.getBlock(120, 70, 120);
     const loadedStairsState = loadedWorld.getBlockState(120, 70, 120);

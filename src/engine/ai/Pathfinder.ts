@@ -74,6 +74,21 @@ export class Pathfinder {
     // Don't pathfind if too far
     if (start.distanceTo(goal) > maxDistance) return null;
 
+    if (world && world.profiler) {
+      world.profiler.pathfinderQueries++;
+    }
+
+    const queryCache = new Map<string, { block: number | null; state: any }>();
+    const queryLoaded = (x: number, y: number, z: number) => {
+      const k = `${x},${y},${z}`;
+      if (queryCache.has(k)) return queryCache.get(k)!;
+      const b = world.getBlockIfLoaded(x, y, z);
+      const st = b !== null ? world.getBlockStateIfLoaded(x, y, z) : null;
+      const val = { block: b, state: st };
+      queryCache.set(k, val);
+      return val;
+    };
+
     const openSet: PathNode[] = [];
     const closedSet = new Set<string>();
 
@@ -115,7 +130,7 @@ export class Pathfinder {
       const key = `${current.x},${current.y},${current.z}`;
       closedSet.add(key);
 
-      const neighbors = this.getNeighbors(world, current.x, current.y, current.z);
+      const neighbors = this.getNeighbors(queryLoaded, current.x, current.y, current.z);
 
       for (const neighbor of neighbors) {
         const neighborKey = `${neighbor.x},${neighbor.y},${neighbor.z}`;
@@ -176,7 +191,12 @@ export class Pathfinder {
     return Math.abs(x1 - x2) + Math.abs(y1 - y2) + Math.abs(z1 - z2);
   }
 
-  private static getNeighbors(world: VoxelWorld, cx: number, cy: number, cz: number) {
+  private static getNeighbors(
+    queryLoaded: (x: number, y: number, z: number) => { block: number | null; state: any },
+    cx: number,
+    cy: number,
+    cz: number
+  ) {
     const neighbors = [];
     const dirs = [
       [1, 0, 0],
@@ -198,22 +218,20 @@ export class Pathfinder {
         const ny = cy + nyOff;
         
         // Block we are trying to stand on
-        const standBlock = world.getBlock(nx, ny - 1, nz);
-        if (standBlock === 0) continue; // Air underneath, can't stand
-        const standState = world.getBlockState(nx, ny - 1, nz);
-        if (!BlockShapeResolver.isSolidForCollision(standBlock, standState)) continue;
+        const standInfo = queryLoaded(nx, ny - 1, nz);
+        if (standInfo.block === null || standInfo.block === 0) continue; // Unloaded or air underneath, can't stand
+        if (!BlockShapeResolver.isSolidForCollision(standInfo.block, standInfo.state)) continue;
 
         // Fences have 1.5 block collision height, cannot step up directly over them
-        if (nyOff === 1 && BlockShapeResolver.isFence(standBlock)) continue;
+        if (nyOff === 1 && BlockShapeResolver.isFence(standInfo.block)) continue;
         
         // Blocks our body occupies
-        const bodyBlock1 = world.getBlock(nx, ny, nz);
-        const bodyBlock2 = world.getBlock(nx, ny + 1, nz);
-        const bodyState1 = world.getBlockState(nx, ny, nz);
-        const bodyState2 = world.getBlockState(nx, ny + 1, nz);
+        const body1 = queryLoaded(nx, ny, nz);
+        const body2 = queryLoaded(nx, ny + 1, nz);
+        if (body1.block === null || body2.block === null) continue; // Cannot pass through unloaded chunks
 
-        const isOcc1 = bodyBlock1 !== 0 && BlockShapeResolver.isSolidForCollision(bodyBlock1, bodyState1);
-        const isOcc2 = bodyBlock2 !== 0 && BlockShapeResolver.isSolidForCollision(bodyBlock2, bodyState2);
+        const isOcc1 = body1.block !== 0 && BlockShapeResolver.isSolidForCollision(body1.block, body1.state);
+        const isOcc2 = body2.block !== 0 && BlockShapeResolver.isSolidForCollision(body2.block, body2.state);
 
         if (!isOcc1 && !isOcc2) {
           // Valid placement

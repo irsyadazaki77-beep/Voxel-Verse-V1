@@ -1,10 +1,11 @@
 // Settings & Accessibility Interface Modal
 import React, { useState, useEffect } from 'react';
-import { SettingsManager, GameSettings, KeyBindingAction } from '../engine/ui/SettingsManager';
+import { SettingsManager, GameSettings, KeyBindingAction, MobileControlPreset } from '../engine/ui/SettingsManager';
 import { 
   Monitor, Volume2, Keyboard, Gamepad2, Settings2, 
-  Eye, Zap, X, AlertTriangle, MonitorSmartphone
+  Eye, Zap, X, AlertTriangle, MonitorSmartphone, Smartphone, Sliders
 } from 'lucide-react';
+import { triggerHaptic } from '../utils/haptics';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -13,7 +14,7 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [settings, setSettings] = useState<GameSettings>(SettingsManager.get());
-  const [activeTab, setActiveTab] = useState<'graphics' | 'audio' | 'controls' | 'gameplay' | 'accessibility'>('graphics');
+  const [activeTab, setActiveTab] = useState<'graphics' | 'audio' | 'controls' | 'mobile' | 'gameplay' | 'accessibility'>('graphics');
   const [rebindingAction, setRebindingAction] = useState<KeyBindingAction | null>(null);
 
   useEffect(() => {
@@ -50,6 +51,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   const updateControls = (partial: Partial<typeof settings.controls>) => {
     SettingsManager.update({ controls: { ...settings.controls, ...partial } });
+  };
+
+  const updateMobile = (partial: Partial<typeof settings.mobileControls>) => {
+    SettingsManager.update({ mobileControls: { ...settings.mobileControls, ...partial } });
+  };
+
+  const setMobilePreset = (preset: MobileControlPreset) => {
+    triggerHaptic('medium');
+    SettingsManager.applyMobilePreset(preset);
   };
 
   const updateAccessibility = (partial: Partial<typeof settings.accessibility>) => {
@@ -144,7 +154,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const TABS = [
     { id: 'graphics', label: 'Graphics', icon: Monitor },
     { id: 'audio', label: 'Audio', icon: Volume2 },
-    { id: 'controls', label: 'Controls', icon: Keyboard },
+    { id: 'controls', label: 'Keyboard/Mouse', icon: Keyboard },
+    { id: 'mobile', label: 'Mobile Controls', icon: Smartphone },
     { id: 'gameplay', label: 'Gameplay', icon: Gamepad2 },
     { id: 'accessibility', label: 'Accessibility', icon: Eye },
   ] as const;
@@ -530,6 +541,277 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         </button>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* MOBILE TOUCH CONTROLS TAB */}
+              {activeTab === 'mobile' && (
+                <div className="space-y-6">
+                  {/* Preset Selector */}
+                  <div className="space-y-3 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-white text-sm">Control Layout Preset</span>
+                      <span className="text-xs font-mono text-[var(--vv-primary)] uppercase">
+                        {settings.mobileControls.preset}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {(['default', 'compact', 'large', 'custom'] as const).map(preset => (
+                        <button
+                          key={preset}
+                          onClick={() => setMobilePreset(preset)}
+                          className={`py-2 px-3 rounded-lg font-bold text-xs capitalize transition-all cursor-pointer ${
+                            settings.mobileControls.preset === preset
+                              ? 'bg-[var(--vv-primary)] text-black shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                              : 'bg-black/40 text-[var(--vv-text-muted)] hover:bg-[var(--vv-elevated)] hover:text-white border border-white/5'
+                          }`}
+                        >
+                          {preset === 'default' ? 'Default' : preset === 'compact' ? 'Compact' : preset === 'large' ? 'Large' : 'Custom'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Camera & Touch Look Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2 flex items-center gap-2">
+                      <Eye className="w-5 h-5 text-[var(--vv-primary)]" /> Camera & Touch Look
+                    </h3>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {/* Horizontal Sensitivity */}
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <div className="flex justify-between font-bold text-white text-sm">
+                          <span>Horizontal Sensitivity</span>
+                          <span className="font-mono text-[var(--vv-primary)]">
+                            {settings.mobileControls.cameraSensitivityX.toFixed(2)}x
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.2"
+                          max="3.0"
+                          step="0.05"
+                          value={settings.mobileControls.cameraSensitivityX}
+                          onChange={(e) => updateMobile({ cameraSensitivityX: parseFloat(e.target.value), preset: 'custom' })}
+                          className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                        />
+                      </div>
+
+                      {/* Vertical Sensitivity */}
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <div className="flex justify-between font-bold text-white text-sm">
+                          <span>Vertical Sensitivity</span>
+                          <span className="font-mono text-[var(--vv-primary)]">
+                            {settings.mobileControls.cameraSensitivityY.toFixed(2)}x
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.2"
+                          max="3.0"
+                          step="0.05"
+                          value={settings.mobileControls.cameraSensitivityY}
+                          onChange={(e) => updateMobile({ cameraSensitivityY: parseFloat(e.target.value), preset: 'custom' })}
+                          className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {/* Invert Y */}
+                      <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                        <div>
+                          <div className="font-bold text-sm text-white">Invert Y-Axis</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Touch look vertical inversion</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.mobileControls.invertY}
+                          onChange={(e) => updateMobile({ invertY: e.target.checked, preset: 'custom' })}
+                          className="w-5 h-5 accent-[var(--vv-primary)] cursor-pointer"
+                        />
+                      </label>
+
+                      {/* Camera Smoothing */}
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <div className="flex justify-between font-bold text-white text-sm">
+                          <span>Camera Smoothing</span>
+                          <span className="font-mono text-[var(--vv-primary)]">
+                            {Math.round(settings.mobileControls.cameraSmoothing * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.0"
+                          max="0.5"
+                          step="0.05"
+                          value={settings.mobileControls.cameraSmoothing}
+                          onChange={(e) => updateMobile({ cameraSmoothing: parseFloat(e.target.value), preset: 'custom' })}
+                          className="w-full accent-[var(--vv-primary)] cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Joystick & Movement Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2 flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-amber-400" /> Joystick & Movement
+                    </h3>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {/* Joystick Deadzone */}
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <div className="flex justify-between font-bold text-white text-sm">
+                          <span>Joystick Deadzone</span>
+                          <span className="font-mono text-amber-400">
+                            {Math.round(settings.mobileControls.joystickDeadzone * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.05"
+                          max="0.35"
+                          step="0.01"
+                          value={settings.mobileControls.joystickDeadzone}
+                          onChange={(e) => updateMobile({ joystickDeadzone: parseFloat(e.target.value), preset: 'custom' })}
+                          className="w-full accent-amber-400 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                        />
+                      </div>
+
+                      {/* Joystick Sensitivity */}
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <div className="flex justify-between font-bold text-white text-sm">
+                          <span>Joystick Sensitivity</span>
+                          <span className="font-mono text-amber-400">
+                            {settings.mobileControls.joystickSensitivity.toFixed(2)}x
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.5"
+                          max="2.0"
+                          step="0.05"
+                          value={settings.mobileControls.joystickSensitivity}
+                          onChange={(e) => updateMobile({ joystickSensitivity: parseFloat(e.target.value), preset: 'custom' })}
+                          className="w-full accent-amber-400 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {/* Auto-Sprint Toggle */}
+                      <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                        <div>
+                          <div className="font-bold text-sm text-white">Auto-Sprint Threshold</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">
+                            Push joystick forward past {Math.round(settings.mobileControls.autoSprintThreshold * 100)}% to run
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.mobileControls.autoSprint}
+                          onChange={(e) => updateMobile({ autoSprint: e.target.checked, preset: 'custom' })}
+                          className="w-5 h-5 accent-amber-400 cursor-pointer"
+                        />
+                      </label>
+
+                      {/* Floating Joystick Mode */}
+                      <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                        <div>
+                          <div className="font-bold text-sm text-white">Floating Joystick</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Dynamic center follows initial thumb contact</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.mobileControls.floatingJoystick}
+                          onChange={(e) => updateMobile({ floatingJoystick: e.target.checked, preset: 'custom' })}
+                          className="w-5 h-5 accent-amber-400 cursor-pointer"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Sizing, Opacity & Haptic Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2 flex items-center gap-2">
+                      <Sliders className="w-5 h-5 text-emerald-400" /> Sizing & Visual Appearance
+                    </h3>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {/* Control Scale */}
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <div className="flex justify-between font-bold text-white text-sm">
+                          <span>Touch Button Scale</span>
+                          <span className="font-mono text-emerald-400">
+                            {Math.round(settings.mobileControls.controlScale * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.7"
+                          max="1.4"
+                          step="0.05"
+                          value={settings.mobileControls.controlScale}
+                          onChange={(e) => updateMobile({ controlScale: parseFloat(e.target.value), preset: 'custom' })}
+                          className="w-full accent-emerald-400 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                        />
+                      </div>
+
+                      {/* Button Opacity */}
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <div className="flex justify-between font-bold text-white text-sm">
+                          <span>Button Transparency / Opacity</span>
+                          <span className="font-mono text-emerald-400">
+                            {Math.round(settings.mobileControls.buttonOpacity * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.2"
+                          max="1.0"
+                          step="0.05"
+                          value={settings.mobileControls.buttonOpacity}
+                          onChange={(e) => updateMobile({ buttonOpacity: parseFloat(e.target.value), preset: 'custom' })}
+                          className="w-full accent-emerald-400 cursor-pointer h-2 bg-black/40 rounded-lg appearance-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {/* Haptic Feedback */}
+                      <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                        <div>
+                          <div className="font-bold text-sm text-white">Haptic Feedback (Vibration)</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Tactile response on button touches & block placement</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.mobileControls.hapticFeedback}
+                          onChange={(e) => {
+                            updateMobile({ hapticFeedback: e.target.checked, preset: 'custom' });
+                            if (e.target.checked) triggerHaptic('medium');
+                          }}
+                          className="w-5 h-5 accent-emerald-400 cursor-pointer"
+                        />
+                      </label>
+
+                      {/* Touch Telemetry Debug Overlay */}
+                      <label className="flex items-center justify-between bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)] cursor-pointer hover:border-[var(--vv-border)] transition-colors">
+                        <div>
+                          <div className="font-bold text-sm text-white">Touch Telemetry Overlay</div>
+                          <div className="text-[10px] text-[var(--vv-text-muted)] mt-0.5">Display active touch points & delta vectors for testing</div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.mobileControls.showTouchDebug}
+                          onChange={(e) => updateMobile({ showTouchDebug: e.target.checked })}
+                          className="w-5 h-5 accent-cyan-400 cursor-pointer"
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}

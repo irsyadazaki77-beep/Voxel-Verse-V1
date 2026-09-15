@@ -27,6 +27,7 @@ import {
 import { TelemetryStore } from '../engine/ui/TelemetryStore';
 import { GameEventBus } from '../engine/events/GameEventBus';
 import { AetherAnomalyManager } from '../engine/anomaly/AetherAnomalyManager';
+import { triggerHaptic } from '../utils/haptics';
 
 interface HUDProps {
   hotbar: (ItemStack | null)[];
@@ -729,7 +730,12 @@ export const HUD: React.FC<HUDProps> = ({
     <div 
       id="game-hud" 
       className="absolute inset-0 pointer-events-none flex flex-col justify-between z-10 select-none font-sans hud-scaled"
-      style={{ padding: 'var(--safe-area-padding)' }}
+      style={{
+        paddingTop: 'max(8px, env(safe-area-inset-top))',
+        paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(14px, env(safe-area-inset-left))',
+        paddingRight: 'max(14px, env(safe-area-inset-right))',
+      }}
     >
       
       {/* Damage Flash Vignette Overlay */}
@@ -1004,7 +1010,7 @@ export const HUD: React.FC<HUDProps> = ({
         <HUDVitalsBars />
 
         {/* Hotbar (1-9) */}
-        <div className="flex items-center gap-1.5 p-2 voxel-panel shadow-2xl pointer-events-auto border-white/15">
+        <div className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:p-2 voxel-panel shadow-2xl pointer-events-auto border-white/15 max-w-[98vw] overflow-x-auto">
           {hotbar.map((slot, idx) => {
             const isActive = idx === activeHotbarIndex;
             const itemDef = slot ? ITEM_DEFS[slot.itemId] : null;
@@ -1017,8 +1023,16 @@ export const HUD: React.FC<HUDProps> = ({
               <button
                 key={`hotbar-slot-${idx}`}
                 id={`hotbar_slot_${idx}`}
-                onClick={() => onSelectHotbar(idx)}
-                className={`w-12 h-12 rounded-xl flex items-center justify-center relative transition-all duration-100 cursor-pointer ${
+                onClick={() => {
+                  triggerHaptic('selection');
+                  onSelectHotbar(idx);
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  triggerHaptic('selection');
+                  onSelectHotbar(idx);
+                }}
+                className={`w-9 h-9 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center relative transition-all duration-100 cursor-pointer shrink-0 ${
                   isActive
                     ? 'bg-sky-500/20 border-2 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.4)] scale-105'
                     : slot
@@ -1027,10 +1041,10 @@ export const HUD: React.FC<HUDProps> = ({
                 }`}
               >
                 {slot && itemDef ? (
-                  <div className="flex flex-col items-center justify-center w-full h-full p-1 relative">
+                  <div className="flex flex-col items-center justify-center w-full h-full p-0.5 sm:p-1 relative">
                     {/* Item Icon Box */}
                     <div 
-                      className="w-6 h-6 rounded-md flex items-center justify-center font-bold text-[10px] shadow-sm text-white" 
+                      className="w-5 h-5 sm:w-6 sm:h-6 rounded-md flex items-center justify-center font-bold text-[9px] sm:text-[10px] shadow-sm text-white" 
                       style={{ backgroundColor: itemDef.iconColor }}
                     >
                       {itemDef.name.substring(0, 2).toUpperCase()}
@@ -1038,14 +1052,14 @@ export const HUD: React.FC<HUDProps> = ({
 
                     {/* Quantity Badge */}
                     {slot.count > 1 && (
-                      <span className="absolute bottom-1 right-1 text-[9px] font-mono font-black text-white drop-shadow bg-black/60 px-1 rounded">
+                      <span className="absolute bottom-0.5 right-0.5 sm:bottom-1 sm:right-1 text-[8px] sm:text-[9px] font-mono font-black text-white drop-shadow bg-black/60 px-0.5 sm:px-1 rounded">
                         {slot.count}
                       </span>
                     )}
 
                     {/* Durability Bar (if damaged) */}
                     {hasDurability && (
-                      <div className="absolute bottom-0.5 left-1 right-1 h-1 bg-black/80 rounded-full overflow-hidden">
+                      <div className="absolute bottom-0.5 left-0.5 right-0.5 sm:left-1 sm:right-1 h-0.5 sm:h-1 bg-black/80 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
                             duraPercent < 25 ? 'bg-rose-500' : duraPercent < 50 ? 'bg-amber-400' : 'bg-emerald-400'
@@ -1058,7 +1072,7 @@ export const HUD: React.FC<HUDProps> = ({
                 ) : (
                   <div className="w-1.5 h-1.5 rounded-full bg-white/15" />
                 )}
-                <span className="absolute top-0.5 left-1 text-[8px] font-mono text-zinc-400">{idx + 1}</span>
+                <span className="absolute top-0.5 left-1 text-[7px] sm:text-[8px] font-mono text-zinc-400">{idx + 1}</span>
               </button>
             );
           })}

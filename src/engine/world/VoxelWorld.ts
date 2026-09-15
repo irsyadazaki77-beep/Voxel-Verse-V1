@@ -13,6 +13,7 @@ import { MiningVisualEngine } from './MiningVisualEngine';
 import { Logger } from '../ui/Logger';
 import { BlockState } from './BlockState';
 import { BlockShapeResolver } from './BlockShapeResolver';
+import { SafeSpawnResolver } from './SafeSpawnResolver';
 
 export { SEA_LEVEL };
 
@@ -26,6 +27,26 @@ export interface RaycastHit {
 }
 
 export class VoxelWorld {
+  public static implicitChunkGenerationCount: number = 0;
+
+  public profiler = {
+    blockQueriesPerFrame: 0,
+    blockStateQueriesPerFrame: 0,
+    surfaceHeightQueries: 0,
+    surfaceHeightFallbackScans: 0,
+    implicitChunkGenerations: 0,
+    pathfinderQueries: 0,
+  };
+
+  public resetProfilerCounters(): void {
+    this.profiler.blockQueriesPerFrame = 0;
+    this.profiler.blockStateQueriesPerFrame = 0;
+    this.profiler.surfaceHeightQueries = 0;
+    this.profiler.surfaceHeightFallbackScans = 0;
+    this.profiler.implicitChunkGenerations = 0;
+    this.profiler.pathfinderQueries = 0;
+  }
+
   public seed: number;
   public preset: WorldPreset;
   public dimensionId: string;
@@ -606,36 +627,80 @@ export class VoxelWorld {
     return this.chunks.get(this.getChunkKey(cx, cz));
   }
 
-  public getBlock(wx: number, wy: number, wz: number): BlockType {
-    if (wy < 0 || wy >= CHUNK_SIZE_Y) return BlockType.AIR;
-    const cx = Math.floor(wx / CHUNK_SIZE_X);
-    const cz = Math.floor(wz / CHUNK_SIZE_Z);
-    let chunk = this.getChunk(cx, cz);
+  /**
+   * Loaded-only chunk query: guarantees zero side-effect chunk generation.
+   */
+  public getChunkLoaded(cx: number, cz: number): Chunk | undefined {
+    return this.chunks.get(this.getChunkKey(cx, cz));
+  }
+
+  public ensureChunkLoaded(cx: number, cz: number): Chunk {
+    let chunk = this.getChunkLoaded(cx, cz);
     if (!chunk) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[VoxelWorld] Explicit chunk load requested for chunk (${cx}, ${cz})`);
+      }
       chunk = this.generateChunk(cx, cz);
       this.chunks.set(this.getChunkKey(cx, cz), chunk);
       this.worldGroup.add(chunk.group);
     }
+    return chunk;
+  }
+
+  public getBlockIfLoaded(wx: number, wy: number, wz: number): BlockType | null {
+    this.profiler.blockQueriesPerFrame++;
+    if (wy < 0 || wy >= CHUNK_SIZE_Y) return BlockType.AIR;
+    const cx = Math.floor(wx / CHUNK_SIZE_X);
+    const cz = Math.floor(wz / CHUNK_SIZE_Z);
+    const chunk = this.getChunkLoaded(cx, cz);
+    if (!chunk) return null;
 
     const lx = ((wx % CHUNK_SIZE_X) + CHUNK_SIZE_X) % CHUNK_SIZE_X;
     const lz = ((wz % CHUNK_SIZE_Z) + CHUNK_SIZE_Z) % CHUNK_SIZE_Z;
     return chunk.getBlock(lx, wy, lz);
   }
 
-  public getBlockState(wx: number, wy: number, wz: number): BlockState {
+  public getBlockStateIfLoaded(wx: number, wy: number, wz: number): BlockState | null {
+    this.profiler.blockStateQueriesPerFrame++;
     if (wy < 0 || wy >= CHUNK_SIZE_Y) return BlockShapeResolver.getDefaultState(BlockType.AIR);
     const cx = Math.floor(wx / CHUNK_SIZE_X);
     const cz = Math.floor(wz / CHUNK_SIZE_Z);
-    let chunk = this.getChunk(cx, cz);
-    if (!chunk) {
-      chunk = this.generateChunk(cx, cz);
-      this.chunks.set(this.getChunkKey(cx, cz), chunk);
-      this.worldGroup.add(chunk.group);
-    }
+    const chunk = this.getChunkLoaded(cx, cz);
+    if (!chunk) return null;
 
     const lx = ((wx % CHUNK_SIZE_X) + CHUNK_SIZE_X) % CHUNK_SIZE_X;
     const lz = ((wz % CHUNK_SIZE_Z) + CHUNK_SIZE_Z) % CHUNK_SIZE_Z;
     return chunk.getBlockState(lx, wy, lz);
+  }
+
+  public getModifiedBlocks(cx: number, cz: number): Map<string, BlockType> | undefined {
+    const dimKey = makeDimensionChunkKey(this.dimensionId, cx, cz);
+    const legacyKey = this.getChunkKey(cx, cz);
+    return this.modifiedBlocks.get(dimKey) ?? this.modifiedBlocks.get(legacyKey);
+  }
+
+  public getModifiedBlockStates(cx: number, cz: number): Map<string, BlockState> | undefined {
+    const dimKey = makeDimensionChunkKey(this.dimensionId, cx, cz);
+    const legacyKey = this.getChunkKey(cx, cz);
+    return this.modifiedBlockStates.get(dimKey) ?? this.modifiedBlockStates.get(legacyKey);
+  }
+
+  public getBlockLoaded(wx: number, wy: number, wz: number): BlockType {
+    const res = this.getBlockIfLoaded(wx, wy, wz);
+    return res !== null ? res : BlockType.AIR;
+  }
+
+  public getBlockStateLoaded(wx: number, wy: number, wz: number): BlockState {
+    const res = this.getBlockStateIfLoaded(wx, wy, wz);
+    return res !== null ? res : BlockShapeResolver.getDefaultState(BlockType.AIR);
+  }
+
+  public getBlock(wx: number, wy: number, wz: number): BlockType {
+    return this.getBlockLoaded(wx, wy, wz);
+  }
+
+  public getBlockState(wx: number, wy: number, wz: number): BlockState {
+    return this.getBlockStateLoaded(wx, wy, wz);
   }
 
   public setBlock(wx: number, wy: number, wz: number, type: BlockType, recordModification: boolean = true): boolean {
@@ -668,19 +733,35 @@ export class VoxelWorld {
       chunk.isDirty = true;
       this.scheduler.markDirty(cx, cz);
 
-      // Track player modification for persistent saving
+      // Track player modification for persistent saving in canonical format
       if (recordModification) {
-        const cKey = this.getChunkKey(cx, cz);
-        if (!this.modifiedBlocks.has(cKey)) {
-          this.modifiedBlocks.set(cKey, new Map());
-        }
-        if (!this.modifiedBlockStates.has(cKey)) {
-          this.modifiedBlockStates.set(cKey, new Map());
-        }
+        const canonicalKey = makeDimensionChunkKey(this.dimensionId, cx, cz);
+        const legacyKey = this.getChunkKey(cx, cz);
         const localKey = `${lx},${wy},${lz}`;
-        this.modifiedBlocks.get(cKey)!.set(localKey, type);
+
+        if (!this.modifiedBlocks.has(canonicalKey)) {
+          this.modifiedBlocks.set(canonicalKey, new Map());
+        }
+        this.modifiedBlocks.get(canonicalKey)!.set(localKey, type);
+
+        if (!this.modifiedBlockStates.has(canonicalKey)) {
+          this.modifiedBlockStates.set(canonicalKey, new Map());
+        }
         const resolvedState = chunk.getBlockState(lx, wy, lz);
-        this.modifiedBlockStates.get(cKey)!.set(localKey, resolvedState);
+        this.modifiedBlockStates.get(canonicalKey)!.set(localKey, resolvedState);
+
+        // Also update legacy key reference for backwards compatibility
+        if (canonicalKey !== legacyKey) {
+          if (!this.modifiedBlocks.has(legacyKey)) {
+            this.modifiedBlocks.set(legacyKey, new Map());
+          }
+          this.modifiedBlocks.get(legacyKey)!.set(localKey, type);
+
+          if (!this.modifiedBlockStates.has(legacyKey)) {
+            this.modifiedBlockStates.set(legacyKey, new Map());
+          }
+          this.modifiedBlockStates.get(legacyKey)!.set(localKey, resolvedState);
+        }
       }
 
       // Mark neighbor chunks dirty if on edge
@@ -714,13 +795,22 @@ export class VoxelWorld {
       this.scheduler.markDirty(cx, cz);
 
       if (recordModification) {
-        const cKey = this.getChunkKey(cx, cz);
-        if (!this.modifiedBlockStates.has(cKey)) {
-          this.modifiedBlockStates.set(cKey, new Map());
-        }
+        const canonicalKey = makeDimensionChunkKey(this.dimensionId, cx, cz);
+        const legacyKey = this.getChunkKey(cx, cz);
         const localKey = `${lx},${wy},${lz}`;
         const resolvedState = chunk.getBlockState(lx, wy, lz);
-        this.modifiedBlockStates.get(cKey)!.set(localKey, resolvedState);
+
+        if (!this.modifiedBlockStates.has(canonicalKey)) {
+          this.modifiedBlockStates.set(canonicalKey, new Map());
+        }
+        this.modifiedBlockStates.get(canonicalKey)!.set(localKey, resolvedState);
+
+        if (canonicalKey !== legacyKey) {
+          if (!this.modifiedBlockStates.has(legacyKey)) {
+            this.modifiedBlockStates.set(legacyKey, new Map());
+          }
+          this.modifiedBlockStates.get(legacyKey)!.set(localKey, resolvedState);
+        }
       }
 
       if (lx === 0) this.scheduler.markDirty(cx - 1, cz);
@@ -737,22 +827,27 @@ export class VoxelWorld {
     const dimKey = makeDimensionChunkKey(this.dimensionId, cx, cz);
 
     const modifiedBlocks: Record<string, number> = {};
-    if (this.modifiedBlocks.has(dimKey)) {
-      this.modifiedBlocks.get(dimKey)!.forEach((blockType, localKey) => {
+    // Check canonical dimension key first, fallback to legacy key
+    const canonicalMods = this.modifiedBlocks.get(dimKey);
+    if (canonicalMods) {
+      canonicalMods.forEach((blockType, localKey) => {
         modifiedBlocks[localKey] = blockType;
       });
     }
-    if (this.modifiedBlocks.has(cKey)) {
-      this.modifiedBlocks.get(cKey)!.forEach((blockType, localKey) => {
-        modifiedBlocks[localKey] = blockType;
+    const legacyMods = this.modifiedBlocks.get(cKey);
+    if (legacyMods) {
+      legacyMods.forEach((blockType, localKey) => {
+        if (modifiedBlocks[localKey] === undefined) {
+          modifiedBlocks[localKey] = blockType;
+        }
       });
     }
 
     const blocksData = this.generatorCore.generateChunkData(cx, cz, modifiedBlocks);
     chunk.setBlocks(new Uint8Array(blocksData));
 
-    // Restore any modified block states
-    const statesMap = this.modifiedBlockStates.get(cKey) ?? this.modifiedBlockStates.get(dimKey);
+    // Restore any modified block states lazily
+    const statesMap = this.modifiedBlockStates.get(dimKey) ?? this.modifiedBlockStates.get(cKey);
     if (statesMap) {
       statesMap.forEach((st, localKey) => {
         const [lx, wy, lz] = localKey.split(',').map(Number);
@@ -828,12 +923,12 @@ export class VoxelWorld {
       }
     }
 
-    // Synchronously mesh only the immediate spawn chunk; let surrounding chunks mesh via worker pool
+    // Synchronously mesh only the immediate spawn chunk using loaded-only query (zero side-effect chunk generation)
     const centerKey = this.getChunkKey(centerCX, centerCZ);
     const centerChunk = this.chunks.get(centerKey);
     if (centerChunk && centerChunk.isDirty) {
       centerChunk.rebuildMesh(
-        (wx, wy, wz) => this.getBlock(wx, wy, wz),
+        (wx, wy, wz) => this.getBlockStateLoaded(wx, wy, wz),
         this.solidMaterial,
         this.transMaterial,
         this.waterMaterial
@@ -858,7 +953,7 @@ export class VoxelWorld {
       this.chunks.set(centerKey, centerChunk);
       this.worldGroup.add(centerChunk.group);
       centerChunk.rebuildMesh(
-        (wx, wy, wz) => this.getBlock(wx, wy, wz),
+        (wx, wy, wz) => this.getBlockStateLoaded(wx, wy, wz),
         this.solidMaterial,
         this.transMaterial,
         this.waterMaterial
@@ -893,44 +988,8 @@ export class VoxelWorld {
   }
 
   // Fast Deterministic Safe Spawn Finder
-  // Instantly calculates terrain surface height via procedural noise math without blocking main thread
   public findSafeSpawn(seed: number = this.seed): [number, number, number] {
-    Logger.info('VoxelWorld', `[findSafeSpawn] Calculating fast deterministic safe spawn point for seed ${seed}...`);
-    try {
-      // 1. Primary check at coordinate (0, 0)
-      const h0 = Math.round(this.generatorCore.getTerrainHeight(0, 0));
-      if (h0 > SEA_LEVEL + 1) {
-        const safeY = h0 + 2;
-        Logger.info('VoxelWorld', `[findSafeSpawn] Found dry land safe spawn at [0.5, ${safeY}, 0.5]`);
-        return [0.5, safeY, 0.5];
-      }
-
-      // 2. Outward deterministic spiral probe to find nearest dry ground above sea level
-      const spiralOffsets: [number, number][] = [
-        [16, 0], [0, 16], [-16, 0], [0, -16],
-        [16, 16], [-16, 16], [16, -16], [-16, -16],
-        [32, 0], [0, 32], [-32, 0], [0, -32],
-        [32, 32], [-32, 32], [32, -32], [-32, -32],
-        [48, 0], [0, 48], [-48, 0], [0, -48],
-        [64, 0], [0, 64], [-64, 0], [0, -64],
-      ];
-
-      for (const [ox, oz] of spiralOffsets) {
-        const h = Math.round(this.generatorCore.getTerrainHeight(ox, oz));
-        if (h > SEA_LEVEL + 1) {
-          const safeY = h + 2;
-          Logger.info('VoxelWorld', `[findSafeSpawn] Found spiral dry land safe spawn at [${ox + 0.5}, ${safeY}, ${oz + 0.5}]`);
-          return [ox + 0.5, safeY, oz + 0.5];
-        }
-      }
-
-      // 3. Ocean spawn fallback
-      const safeY = Math.max(SEA_LEVEL + 2, h0 + 2);
-      Logger.info('VoxelWorld', `[findSafeSpawn] Ocean spawn fallback at [0.5, ${safeY}, 0.5]`);
-      return [0.5, safeY, 0.5];
-    } catch {
-      return [0.5, SEA_LEVEL + 5, 0.5];
-    }
+    return SafeSpawnResolver.resolve(seed, this.preset, this.dimensionId);
   }
 
   // Update streamed chunks around player position using ChunkScheduler
@@ -973,7 +1032,11 @@ export class VoxelWorld {
     let distance = 0;
 
     while (distance < maxDistance) {
-      const block = this.getBlock(ix, iy, iz);
+      const block = this.getBlockIfLoaded(ix, iy, iz);
+      if (block === null) {
+        // Stopped raycast when stepping into an unloaded chunk
+        return null;
+      }
       if (block !== BlockType.AIR && block !== BlockType.WATER) {
         const placePos: [number, number, number] = [
           ix + faceNormal[0],
@@ -1098,14 +1161,31 @@ export class VoxelWorld {
     }
   }
 
+  public getLoadedSurfaceHeight(wx: number, wz: number): number | null {
+    const cx = Math.floor(wx / CHUNK_SIZE_X);
+    const cz = Math.floor(wz / CHUNK_SIZE_Z);
+    const chunk = this.getChunkLoaded(cx, cz);
+    if (!chunk) return null;
+
+    const lx = ((wx % CHUNK_SIZE_X) + CHUNK_SIZE_X) % CHUNK_SIZE_X;
+    const lz = ((wz % CHUNK_SIZE_Z) + CHUNK_SIZE_Z) % CHUNK_SIZE_Z;
+    const surfaceY = chunk.surfaceHeightMap[lx + lz * CHUNK_SIZE_X];
+    return surfaceY + 1;
+  }
+
+  public getProceduralTerrainHeight(wx: number, wz: number): number {
+    const h = Math.round(this.generatorCore.getTerrainHeight(wx, wz));
+    return Math.max(1, h + 1);
+  }
+
   public getSpawnHeight(wx: number, wz: number): number {
-    for (let y = CHUNK_SIZE_Y - 2; y >= 1; y--) {
-      const b = this.getBlock(wx, y, wz);
-      if (b !== BlockType.AIR && b !== BlockType.WATER) {
-        return y + 1;
-      }
+    const loadedH = this.getLoadedSurfaceHeight(wx, wz);
+    if (loadedH !== null) {
+      this.profiler.surfaceHeightQueries++;
+      return loadedH;
     }
-    return 28;
+    this.profiler.surfaceHeightFallbackScans++;
+    return this.getProceduralTerrainHeight(wx, wz);
   }
 
   public dispose(): void {
