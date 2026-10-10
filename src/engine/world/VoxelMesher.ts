@@ -1,10 +1,9 @@
-// High Performance Greedy Voxel Mesher with Face Culling, AO, Texture Atlas UVs & Specialized Meshers
+// High Performance Zero-Allocation Greedy Voxel Mesher with Face Culling, AO, Texture Atlas UVs & Specialized Meshers
 import { BlockShape, BlockType } from '../../types';
 import { BLOCK_DEFS } from './BlockRegistry';
 import { TextureAtlas } from './TextureAtlas';
 import { BlockShapeResolver } from './BlockShapeResolver';
 import { BlockState, BlockStateUtils, Direction6 } from './BlockState';
-
 
 export interface TransferableMeshData {
   solidPositions: Float32Array;
@@ -32,37 +31,185 @@ export interface TransferableMeshData {
   waterMaterials: Float32Array;
 }
 
-export interface ChunkMeshData {
-  solidPositions: number[];
-  solidNormals: number[];
-  solidColors: number[];
-  solidUvs: number[];
-  solidTileRects: number[];
-  solidIndices: number[];
-  solidMaterials: number[];
+// Reusable High-Performance Typed Mesh Buffer Writer
+class DynamicMeshBuffer {
+  public positions: Float32Array;
+  public normals: Float32Array;
+  public colors: Float32Array;
+  public uvs: Float32Array;
+  public tileRects: Float32Array;
+  public indices: Uint32Array;
+  public materials: Float32Array;
 
-  transPositions: number[];
-  transNormals: number[];
-  transColors: number[];
-  transUvs: number[];
-  transTileRects: number[];
-  transIndices: number[];
-  transMaterials: number[];
+  public vertexCount: number = 0;
+  public indexCount: number = 0;
 
-  waterPositions: number[];
-  waterNormals: number[];
-  waterColors: number[];
-  waterUvs: number[];
-  waterTileRects: number[];
-  waterIndices: number[];
-  waterMaterials: number[];
+  constructor(initialVertexCapacity: number = 16384, initialIndexCapacity: number = 24576) {
+    this.positions = new Float32Array(initialVertexCapacity * 3);
+    this.normals = new Float32Array(initialVertexCapacity * 3);
+    this.colors = new Float32Array(initialVertexCapacity * 3);
+    this.uvs = new Float32Array(initialVertexCapacity * 2);
+    this.tileRects = new Float32Array(initialVertexCapacity * 4);
+    this.materials = new Float32Array(initialVertexCapacity);
+    this.indices = new Uint32Array(initialIndexCapacity);
+  }
+
+  public reset(): void {
+    this.vertexCount = 0;
+    this.indexCount = 0;
+  }
+
+  private ensureVertexCapacity(additionalVertices: number): void {
+    const required = this.vertexCount + additionalVertices;
+    const currentCap = this.materials.length;
+    if (required > currentCap) {
+      const newCap = Math.max(required, currentCap * 2);
+      
+      const newPos = new Float32Array(newCap * 3);
+      newPos.set(this.positions.subarray(0, this.vertexCount * 3));
+      this.positions = newPos;
+
+      const newNorm = new Float32Array(newCap * 3);
+      newNorm.set(this.normals.subarray(0, this.vertexCount * 3));
+      this.normals = newNorm;
+
+      const newCol = new Float32Array(newCap * 3);
+      newCol.set(this.colors.subarray(0, this.vertexCount * 3));
+      this.colors = newCol;
+
+      const newUv = new Float32Array(newCap * 2);
+      newUv.set(this.uvs.subarray(0, this.vertexCount * 2));
+      this.uvs = newUv;
+
+      const newTile = new Float32Array(newCap * 4);
+      newTile.set(this.tileRects.subarray(0, this.vertexCount * 4));
+      this.tileRects = newTile;
+
+      const newMat = new Float32Array(newCap);
+      newMat.set(this.materials.subarray(0, this.vertexCount));
+      this.materials = newMat;
+    }
+  }
+
+  private ensureIndexCapacity(additionalIndices: number): void {
+    const required = this.indexCount + additionalIndices;
+    const currentCap = this.indices.length;
+    if (required > currentCap) {
+      const newCap = Math.max(required, currentCap * 2);
+      const newInd = new Uint32Array(newCap);
+      newInd.set(this.indices.subarray(0, this.indexCount));
+      this.indices = newInd;
+    }
+  }
+
+  public addQuad(
+    x0: number, y0: number, z0: number,
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    x3: number, y3: number, z3: number,
+    nx: number, ny: number, nz: number,
+    c0: number, c1: number, c2: number, c3: number,
+    u0: number, v0: number,
+    u1: number, v1: number,
+    u2: number, v2: number,
+    u3: number, v3: number,
+    tuMin: number, tvMin: number, tuMax: number, tvMax: number,
+    matClass: number
+  ): void {
+    this.ensureVertexCapacity(4);
+    this.ensureIndexCapacity(6);
+
+    const vIdx = this.vertexCount;
+    const pOffset = vIdx * 3;
+    const uvOffset = vIdx * 2;
+    const tOffset = vIdx * 4;
+
+    // Positions
+    this.positions[pOffset] = x0;     this.positions[pOffset + 1] = y0; this.positions[pOffset + 2] = z0;
+    this.positions[pOffset + 3] = x1; this.positions[pOffset + 4] = y1; this.positions[pOffset + 5] = z1;
+    this.positions[pOffset + 6] = x2; this.positions[pOffset + 7] = y2; this.positions[pOffset + 8] = z2;
+    this.positions[pOffset + 9] = x3; this.positions[pOffset + 10] = y3; this.positions[pOffset + 11] = z3;
+
+    // Normals
+    this.normals[pOffset] = nx;     this.normals[pOffset + 1] = ny; this.normals[pOffset + 2] = nz;
+    this.normals[pOffset + 3] = nx; this.normals[pOffset + 4] = ny; this.normals[pOffset + 5] = nz;
+    this.normals[pOffset + 6] = nx; this.normals[pOffset + 7] = ny; this.normals[pOffset + 8] = nz;
+    this.normals[pOffset + 9] = nx; this.normals[pOffset + 10] = ny; this.normals[pOffset + 11] = nz;
+
+    // Colors
+    this.colors[pOffset] = c0;     this.colors[pOffset + 1] = c0; this.colors[pOffset + 2] = c0;
+    this.colors[pOffset + 3] = c1; this.colors[pOffset + 4] = c1; this.colors[pOffset + 5] = c1;
+    this.colors[pOffset + 6] = c2; this.colors[pOffset + 7] = c2; this.colors[pOffset + 8] = c2;
+    this.colors[pOffset + 9] = c3; this.colors[pOffset + 10] = c3; this.colors[pOffset + 11] = c3;
+
+    // UVs
+    this.uvs[uvOffset] = u0;     this.uvs[uvOffset + 1] = v0;
+    this.uvs[uvOffset + 2] = u1; this.uvs[uvOffset + 3] = v1;
+    this.uvs[uvOffset + 4] = u2; this.uvs[uvOffset + 5] = v2;
+    this.uvs[uvOffset + 6] = u3; this.uvs[uvOffset + 7] = v3;
+
+    // TileRects
+    for (let i = 0; i < 4; i++) {
+      const to = tOffset + i * 4;
+      this.tileRects[to] = tuMin;
+      this.tileRects[to + 1] = tvMin;
+      this.tileRects[to + 2] = tuMax;
+      this.tileRects[to + 3] = tvMax;
+    }
+
+    // Materials
+    this.materials[vIdx] = matClass;
+    this.materials[vIdx + 1] = matClass;
+    this.materials[vIdx + 2] = matClass;
+    this.materials[vIdx + 3] = matClass;
+
+    // Indices
+    const iIdx = this.indexCount;
+    this.indices[iIdx] = vIdx;
+    this.indices[iIdx + 1] = vIdx + 1;
+    this.indices[iIdx + 2] = vIdx + 2;
+    this.indices[iIdx + 3] = vIdx;
+    this.indices[iIdx + 4] = vIdx + 2;
+    this.indices[iIdx + 5] = vIdx + 3;
+
+    this.vertexCount += 4;
+    this.indexCount += 6;
+  }
+
+  public toTransferable(): {
+    positions: Float32Array;
+    normals: Float32Array;
+    colors: Float32Array;
+    uvs: Float32Array;
+    tileRects: Float32Array;
+    indices: Uint32Array;
+    materials: Float32Array;
+  } {
+    const v = this.vertexCount;
+    const ind = this.indexCount;
+    return {
+      positions: this.positions.slice(0, v * 3),
+      normals: this.normals.slice(0, v * 3),
+      colors: this.colors.slice(0, v * 3),
+      uvs: this.uvs.slice(0, v * 2),
+      tileRects: this.tileRects.slice(0, v * 4),
+      indices: this.indices.slice(0, ind),
+      materials: this.materials.slice(0, v),
+    };
+  }
 }
+
+// Module-level reusable instances for single-threaded or worker-threaded execution
+const solidBuffer = new DynamicMeshBuffer(24576, 36864);
+const transBuffer = new DynamicMeshBuffer(4096, 6144);
+const waterBuffer = new DynamicMeshBuffer(4096, 6144);
+const reusableMask = new Int32Array(2048);
 
 export class VoxelMesher {
   public static getBlockMaterialClass(block: number): number {
     switch (block) {
       case 2: // GRASS
-        return 1; // GRASS
+        return 1;
       case 3: // STONE
       case 4: // COBBLESTONE
       case 17: // STONE_BRICKS
@@ -186,7 +333,6 @@ export class VoxelMesher {
   }
 
   private static aoToFactor(ao: number): number {
-    // Balanced AO response: preserves geometric depth while keeping corners readable in darkness
     return 0.58 + (ao / 3.0) * 0.42;
   }
 
@@ -212,35 +358,9 @@ export class VoxelMesher {
     chunkHeight: number,
     chunkDepth: number
   ): TransferableMeshData {
-    const data: ChunkMeshData = {
-      solidPositions: [],
-      solidNormals: [],
-      solidColors: [],
-      solidUvs: [],
-      solidTileRects: [],
-      solidIndices: [],
-      solidMaterials: [],
-
-      transPositions: [],
-      transNormals: [],
-      transColors: [],
-      transUvs: [],
-      transTileRects: [],
-      transIndices: [],
-      transMaterials: [],
-
-      waterPositions: [],
-      waterNormals: [],
-      waterColors: [],
-      waterUvs: [],
-      waterTileRects: [],
-      waterIndices: [],
-      waterMaterials: [],
-    };
-
-    let solidIndexOffset = 0;
-    let transIndexOffset = 0;
-    let waterIndexOffset = 0;
+    solidBuffer.reset();
+    transBuffer.reset();
+    waterBuffer.reset();
 
     const getBlockRaw = (x: number, y: number, z: number): { type: BlockType; state: BlockState } => {
       const raw = getBlock(x, y, z);
@@ -252,13 +372,12 @@ export class VoxelMesher {
       return { type: BlockType.AIR, state: BlockShapeResolver.getDefaultState(BlockType.AIR) };
     };
 
-    // Helper for adding non-greedy / specialized shapes
     const isSolidBlock = (x: number, y: number, z: number) => {
       const info = getBlockRaw(x, y, z);
       return VoxelMesher.isSolidOpaque(info.type);
     };
 
-    // 1. GREEDY MESHING FOR FULL-CUBE BLOCKS
+    // 1. HIGH SPEED ZERO-ALLOCATION GREEDY MESHING FOR FULL-CUBE BLOCKS
     for (let faceDir = 0; faceDir < 6; faceDir++) {
       const isTop = faceDir === 0;
       const isBottom = faceDir === 1;
@@ -276,8 +395,10 @@ export class VoxelMesher {
         dMax = chunkWidth; uMax = chunkDepth; vMax = chunkHeight;
       }
 
+      const sliceSize = uMax * vMax;
+
       for (let d = 0; d < dMax; d++) {
-        const mask = new Array(uMax * vMax).fill(null);
+        reusableMask.fill(0, 0, sliceSize);
 
         for (let v = 0; v < vMax; v++) {
           for (let u = 0; u < uMax; u++) {
@@ -354,21 +475,21 @@ export class VoxelMesher {
               ao3 = VoxelMesher.calculateAO(sL, sU, isSolidBlock(x - 1, y + 1, z - 1));
             }
 
-            const faceKey = `${block}_${ao0}_${ao1}_${ao2}_${ao3}`;
-            mask[u + v * uMax] = { block, faceKey, ao0, ao1, ao2, ao3, transparent: Boolean(def.transparent) };
+            const isTrans = def.transparent ? 1 : 0;
+            const packedKey = (block & 0xFFFF) | ((ao0 & 3) << 16) | ((ao1 & 3) << 18) | ((ao2 & 3) << 20) | ((ao3 & 3) << 22) | (isTrans << 24) | (1 << 25);
+            reusableMask[u + v * uMax] = packedKey;
           }
         }
 
-        // Greedy Quad Merging
+        // Fast Greedy Quad Merging using packed 32-bit integer equality
         for (let v = 0; v < vMax; v++) {
           for (let u = 0; u < uMax; u++) {
-            const cell = mask[u + v * uMax];
-            if (!cell) continue;
+            const cell = reusableMask[u + v * uMax];
+            if (cell === 0) continue;
 
             let w = 1;
             while (u + w < uMax) {
-              const nextCell = mask[(u + w) + v * uMax];
-              if (nextCell && nextCell.faceKey === cell.faceKey) w++;
+              if (reusableMask[(u + w) + v * uMax] === cell) w++;
               else break;
             }
 
@@ -376,8 +497,7 @@ export class VoxelMesher {
             let canExtendH = true;
             while (v + h < vMax && canExtendH) {
               for (let k = 0; k < w; k++) {
-                const nextCell = mask[(u + k) + (v + h) * uMax];
-                if (!nextCell || nextCell.faceKey !== cell.faceKey) {
+                if (reusableMask[(u + k) + (v + h) * uMax] !== cell) {
                   canExtendH = false;
                   break;
                 }
@@ -387,100 +507,92 @@ export class VoxelMesher {
 
             for (let dh = 0; dh < h; dh++) {
               for (let dw = 0; dw < w; dw++) {
-                mask[(u + dw) + (v + dh) * uMax] = null;
+                reusableMask[(u + dw) + (v + dh) * uMax] = 0;
               }
             }
 
-            const block = cell.block;
+            const block = cell & 0xFFFF;
+            const ao0 = (cell >> 16) & 3;
+            const ao1 = (cell >> 18) & 3;
+            const ao2 = (cell >> 20) & 3;
+            const ao3 = (cell >> 22) & 3;
+            const isTransparent = ((cell >> 24) & 1) === 1;
+
             const faceType = isTop ? 'top' : isBottom ? 'bottom' : 'side';
             const tile = TextureAtlas.getTileForBlock(block, faceType);
             const [tuMin, tvMin, tuMax, tvMax] = TextureAtlas.getUVs(tile);
 
-            let positions = cell.transparent ? data.transPositions : data.solidPositions;
-            let normals = cell.transparent ? data.transNormals : data.solidNormals;
-            let colors = cell.transparent ? data.transColors : data.solidColors;
-            let uvs = cell.transparent ? data.transUvs : data.solidUvs;
-            let tileRects = cell.transparent ? data.transTileRects : data.solidTileRects;
-            let indices = cell.transparent ? data.transIndices : data.solidIndices;
-            let indexOffset = cell.transparent ? transIndexOffset : solidIndexOffset;
+            const buffer = isTransparent ? transBuffer : solidBuffer;
 
             let x0 = 0, y0 = 0, z0 = 0;
             let x1 = 0, y1 = 0, z1 = 0;
             let x2 = 0, y2 = 0, z2 = 0;
             let x3 = 0, y3 = 0, z3 = 0;
-            let norm: [number, number, number] = [0, 0, 0];
-            let lu0: [number, number] = [0, 0];
-            let lu1: [number, number] = [0, 0];
-            let lu2: [number, number] = [0, 0];
-            let lu3: [number, number] = [0, 0];
+            let nx = 0, ny = 0, nz = 0;
+            let lu0x = 0, lu0y = 0;
+            let lu1x = 0, lu1y = 0;
+            let lu2x = 0, lu2y = 0;
+            let lu3x = 0, lu3y = 0;
 
             if (isTop) {
-              norm = [0, 1, 0];
-              x0 = u;     y0 = d + 1; z0 = v + h; lu0 = [0, h];
-              x1 = u + w; y1 = d + 1; z1 = v + h; lu1 = [w, h];
-              x2 = u + w; y2 = d + 1; z2 = v;     lu2 = [w, 0];
-              x3 = u;     y3 = d + 1; z3 = v;     lu3 = [0, 0];
+              nx = 0; ny = 1; nz = 0;
+              x0 = u;     y0 = d + 1; z0 = v + h; lu0x = 0; lu0y = h;
+              x1 = u + w; y1 = d + 1; z1 = v + h; lu1x = w; lu1y = h;
+              x2 = u + w; y2 = d + 1; z2 = v;     lu2x = w; lu2y = 0;
+              x3 = u;     y3 = d + 1; z3 = v;     lu3x = 0; lu3y = 0;
             } else if (isBottom) {
-              norm = [0, -1, 0];
-              x0 = u;     y0 = d; z0 = v;     lu0 = [0, 0];
-              x1 = u + w; y1 = d; z1 = v;     lu1 = [w, 0];
-              x2 = u + w; y2 = d; z2 = v + h; lu2 = [w, h];
-              x3 = u;     y3 = d; z3 = v + h; lu3 = [0, h];
+              nx = 0; ny = -1; nz = 0;
+              x0 = u;     y0 = d; z0 = v;     lu0x = 0; lu0y = 0;
+              x1 = u + w; y1 = d; z1 = v;     lu1x = w; lu1y = 0;
+              x2 = u + w; y2 = d; z2 = v + h; lu2x = w; lu2y = h;
+              x3 = u;     y3 = d; z3 = v + h; lu3x = 0; lu3y = h;
             } else if (isFront) {
-              norm = [0, 0, 1];
-              x0 = u;     y0 = v;     z0 = d + 1; lu0 = [0, 0];
-              x1 = u + w; y1 = v;     z1 = d + 1; lu1 = [w, 0];
-              x2 = u + w; y2 = v + h; z2 = d + 1; lu2 = [w, h];
-              x3 = u;     y3 = v + h; z3 = d + 1; lu3 = [0, h];
+              nx = 0; ny = 0; nz = 1;
+              x0 = u;     y0 = v;     z0 = d + 1; lu0x = 0; lu0y = 0;
+              x1 = u + w; y1 = v;     z1 = d + 1; lu1x = w; lu1y = 0;
+              x2 = u + w; y2 = v + h; z2 = d + 1; lu2x = w; lu2y = h;
+              x3 = u;     y3 = v + h; z3 = d + 1; lu3x = 0; lu3y = h;
             } else if (isBack) {
-              norm = [0, 0, -1];
-              x0 = u + w; y0 = v;     z0 = d; lu0 = [w, 0];
-              x1 = u;     y1 = v;     z1 = d; lu1 = [0, 0];
-              x2 = u;     y2 = v + h; z2 = d; lu2 = [0, h];
-              x3 = u + w; y3 = v + h; z3 = d; lu3 = [w, h];
+              nx = 0; ny = 0; nz = -1;
+              x0 = u + w; y0 = v;     z0 = d; lu0x = w; lu0y = 0;
+              x1 = u;     y1 = v;     z1 = d; lu1x = 0; lu1y = 0;
+              x2 = u;     y2 = v + h; z2 = d; lu2x = 0; lu2y = h;
+              x3 = u + w; y3 = v + h; z3 = d; lu3x = w; lu3y = h;
             } else if (isRight) {
-              norm = [1, 0, 0];
-              x0 = d + 1; y0 = v;     z0 = u + w; lu0 = [w, 0];
-              x1 = d + 1; y1 = v;     z1 = u;     lu1 = [0, 0];
-              x2 = d + 1; y2 = v + h; z2 = u;     lu2 = [0, h];
-              x3 = d + 1; y3 = v + h; z3 = u + w; lu3 = [w, h];
+              nx = 1; ny = 0; nz = 0;
+              x0 = d + 1; y0 = v;     z0 = u + w; lu0x = w; lu0y = 0;
+              x1 = d + 1; y1 = v;     z1 = u;     lu1x = 0; lu1y = 0;
+              x2 = d + 1; y2 = v + h; z2 = u;     lu2x = 0; lu2y = h;
+              x3 = d + 1; y3 = v + h; z3 = u + w; lu3x = w; lu3y = h;
             } else if (isLeft) {
-              norm = [-1, 0, 0];
-              x0 = d; y0 = v;     z0 = u;     lu0 = [0, 0];
-              x1 = d; y1 = v;     z1 = u + w; lu1 = [w, 0];
-              x2 = d; y2 = v + h; z2 = u + w; lu2 = [w, h];
-              x3 = d; y3 = v + h; z3 = u;     lu3 = [0, h];
+              nx = -1; ny = 0; nz = 0;
+              x0 = d; y0 = v;     z0 = u;     lu0x = 0; lu0y = 0;
+              x1 = d; y1 = v;     z1 = u + w; lu1x = w; lu1y = 0;
+              x2 = d; y2 = v + h; z2 = u + w; lu2x = w; lu2y = h;
+              x3 = d; y3 = v + h; z3 = u;     lu3x = 0; lu3y = h;
             }
 
-            positions.push(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3);
-            normals.push(...norm, ...norm, ...norm, ...norm);
-
             const dirShade = isTop ? 1.0 : isBottom ? 0.68 : (isFront || isBack) ? 0.85 : 0.90;
-            const f0 = VoxelMesher.aoToFactor(cell.ao0) * dirShade;
-            const f1 = VoxelMesher.aoToFactor(cell.ao1) * dirShade;
-            const f2 = VoxelMesher.aoToFactor(cell.ao2) * dirShade;
-            const f3 = VoxelMesher.aoToFactor(cell.ao3) * dirShade;
-            colors.push(f0, f0, f0, f1, f1, f1, f2, f2, f2, f3, f3, f3);
-
-            // Local quad UVs (0..w, 0..h)
-            uvs.push(...lu0, ...lu1, ...lu2, ...lu3);
-
-            // Atlas tile bounding rect (tuMin, tvMin, tuMax, tvMax)
-            tileRects.push(
-              tuMin, tvMin, tuMax, tvMax,
-              tuMin, tvMin, tuMax, tvMax,
-              tuMin, tvMin, tuMax, tvMax,
-              tuMin, tvMin, tuMax, tvMax
-            );
-
-            let materials = cell.transparent ? data.transMaterials : data.solidMaterials;
+            const f0 = VoxelMesher.aoToFactor(ao0) * dirShade;
+            const f1 = VoxelMesher.aoToFactor(ao1) * dirShade;
+            const f2 = VoxelMesher.aoToFactor(ao2) * dirShade;
+            const f3 = VoxelMesher.aoToFactor(ao3) * dirShade;
             const matClass = VoxelMesher.getBlockMaterialClass(block);
-            materials.push(matClass, matClass, matClass, matClass);
 
-            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset, indexOffset + 2, indexOffset + 3);
-
-            if (cell.transparent) transIndexOffset += 4;
-            else solidIndexOffset += 4;
+            buffer.addQuad(
+              x0, y0, z0,
+              x1, y1, z1,
+              x2, y2, z2,
+              x3, y3, z3,
+              nx, ny, nz,
+              f0, f1, f2, f3,
+              lu0x, lu0y,
+              lu1x, lu1y,
+              lu2x, lu2y,
+              lu3x, lu3y,
+              tuMin, tvMin, tuMax, tvMax,
+              matClass
+            );
           }
         }
       }
@@ -518,34 +630,26 @@ export class VoxelMesher {
                 shoreFactor = 1.0;
               } else if (isSolid(x, y - 1, z)) {
                 shoreFactor = 0.88;
-              } else if (isSolid(x - 1, y, z - 1) || isSolid(x + 1, y, z - 1) || isSolid(x - 1, y, z + 1) || isSolid(x + 1, y, z + 1)) {
+              } else if (isSolid(x - 1, y - 1, z) || isSolid(x + 1, y - 1, z) || isSolid(x, y - 1, z - 1) || isSolid(x, y - 1, z + 1)) {
                 shoreFactor = 0.72;
               } else if (isSolid(x - 2, y, z) || isSolid(x + 2, y, z) || isSolid(x, y, z - 2) || isSolid(x, y, z + 2)) {
                 shoreFactor = 0.45;
               }
 
-              data.waterPositions.push(
+              waterBuffer.addQuad(
                 x, y + 0.88, z + 1,
                 x + 1, y + 0.88, z + 1,
                 x + 1, y + 0.88, z,
-                x, y + 0.88, z
+                x, y + 0.88, z,
+                0, 1, 0,
+                depthFactor, depthFactor, depthFactor, depthFactor,
+                0, 0,
+                1, 0,
+                1, 1,
+                0, 1,
+                uMin, vMin, uMax, vMax,
+                9 // WATER
               );
-              data.waterNormals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
-              
-              for (let i = 0; i < 4; i++) data.waterColors.push(depthFactor, shoreFactor, 1.0);
-              
-              const matClass = 9; // WATER
-              for (let i = 0; i < 4; i++) data.waterMaterials.push(matClass);
-              
-              data.waterUvs.push(0, 0, 1, 0, 1, 1, 0, 1);
-              data.waterTileRects.push(
-                uMin, vMin, uMax, vMax,
-                uMin, vMin, uMax, vMax,
-                uMin, vMin, uMax, vMax,
-                uMin, vMin, uMax, vMax
-              );
-              data.waterIndices.push(waterIndexOffset, waterIndexOffset + 1, waterIndexOffset + 2, waterIndexOffset, waterIndexOffset + 2, waterIndexOffset + 3);
-              waterIndexOffset += 4;
             }
             continue;
           }
@@ -559,38 +663,35 @@ export class VoxelMesher {
           if (def.shape === 'cross') {
             const tile = TextureAtlas.getTileForBlock(block, 'side');
             const [uMin, vMin, uMax, vMax] = TextureAtlas.getUVs(tile);
+            const matClass = VoxelMesher.getBlockMaterialClass(block);
 
-            const addCrossQuad = (x1: number, z1: number, x2: number, z2: number, norm: [number, number, number]) => {
-              data.transPositions.push(
-                x + x1, y, z + z1,
-                x + x2, y, z + z2,
-                x + x2, y + 0.9, z + z2,
-                x + x1, y + 0.9, z + z1
-              );
-              data.transNormals.push(...norm, ...norm, ...norm, ...norm);
-              for (let i = 0; i < 4; i++) data.transColors.push(1.0, 1.0, 1.0);
-              
-              const matClass = VoxelMesher.getBlockMaterialClass(block);
-              for (let i = 0; i < 4; i++) data.transMaterials.push(matClass);
+            transBuffer.addQuad(
+              x + 0.15, y, z + 0.15,
+              x + 0.85, y, z + 0.85,
+              x + 0.85, y + 0.9, z + 0.85,
+              x + 0.15, y + 0.9, z + 0.15,
+              -0.707, 0, 0.707,
+              1.0, 1.0, 1.0, 1.0,
+              0, 0, 1, 0, 1, 1, 0, 1,
+              uMin, vMin, uMax, vMax,
+              matClass
+            );
 
-              data.transUvs.push(0, 0, 1, 0, 1, 1, 0, 1);
-              data.transTileRects.push(
-                uMin, vMin, uMax, vMax,
-                uMin, vMin, uMax, vMax,
-                uMin, vMin, uMax, vMax,
-                uMin, vMin, uMax, vMax
-              );
-              data.transIndices.push(transIndexOffset, transIndexOffset + 1, transIndexOffset + 2, transIndexOffset, transIndexOffset + 2, transIndexOffset + 3);
-              data.transIndices.push(transIndexOffset, transIndexOffset + 2, transIndexOffset + 1, transIndexOffset, transIndexOffset + 3, transIndexOffset + 2);
-              transIndexOffset += 4;
-            };
-
-            addCrossQuad(0.15, 0.15, 0.85, 0.85, [-0.707, 0, 0.707]);
-            addCrossQuad(0.15, 0.85, 0.85, 0.15, [0.707, 0, 0.707]);
+            transBuffer.addQuad(
+              x + 0.15, y, z + 0.85,
+              x + 0.85, y, z + 0.15,
+              x + 0.85, y + 0.9, z + 0.15,
+              x + 0.15, y + 0.9, z + 0.85,
+              0.707, 0, 0.707,
+              1.0, 1.0, 1.0, 1.0,
+              0, 0, 1, 0, 1, 1, 0, 1,
+              uMin, vMin, uMax, vMax,
+              matClass
+            );
             continue;
           }
 
-          // Canonical BlockShapeResolver Rendering Quads for all shapes
+          // Canonical BlockShapeResolver Rendering Quads for all complex shapes
           const isNeighborSolid = (face: Direction6) => {
             let nx = 0, ny = 0, nz = 0;
             switch (face) {
@@ -607,81 +708,69 @@ export class VoxelMesher {
 
           const quads = BlockShapeResolver.getRenderQuads(block, state, isNeighborSolid);
           const isTrans = Boolean(def.transparent);
-
-          let positions = isTrans ? data.transPositions : data.solidPositions;
-          let normals = isTrans ? data.transNormals : data.solidNormals;
-          let colors = isTrans ? data.transColors : data.solidColors;
-          let uvs = isTrans ? data.transUvs : data.solidUvs;
-          let tileRects = isTrans ? data.transTileRects : data.solidTileRects;
-          let indices = isTrans ? data.transIndices : data.solidIndices;
+          const buffer = isTrans ? transBuffer : solidBuffer;
           const matClass = VoxelMesher.getBlockMaterialClass(block);
-          let materials = isTrans ? data.transMaterials : data.solidMaterials;
 
           for (const q of quads) {
-            const curOffset = isTrans ? transIndexOffset : solidIndexOffset;
-
-            // Resolve tile face
             const tileFace = q.colorType ?? (q.faceType === 'top' ? 'top' : q.faceType === 'bottom' ? 'bottom' : 'side');
             const tile = TextureAtlas.getTileForBlock(block, tileFace);
             const [tuMin, tvMin, tuMax, tvMax] = TextureAtlas.getUVs(tile);
 
-            for (let v = 0; v < 4; v++) {
-              const p = q.positions[v];
-              positions.push(x + p[0], y + p[1], z + p[2]);
-              normals.push(q.normal[0], q.normal[1], q.normal[2]);
+            const dirShade = q.normal[1] > 0.5 ? 1.0 : q.normal[1] < -0.5 ? 0.68 : (Math.abs(q.normal[2]) > 0.5) ? 0.85 : 0.90;
+            const p0 = q.positions[0];
+            const p1 = q.positions[1];
+            const p2 = q.positions[2];
+            const p3 = q.positions[3];
 
-              const dirShade = q.normal[1] > 0.5 ? 1.0 : q.normal[1] < -0.5 ? 0.68 : (Math.abs(q.normal[2]) > 0.5) ? 0.85 : 0.90;
-              colors.push(dirShade, dirShade, dirShade);
-              materials.push(matClass);
-            }
-
-            uvs.push(
+            buffer.addQuad(
+              x + p0[0], y + p0[1], z + p0[2],
+              x + p1[0], y + p1[1], z + p1[2],
+              x + p2[0], y + p2[1], z + p2[2],
+              x + p3[0], y + p3[1], z + p3[2],
+              q.normal[0], q.normal[1], q.normal[2],
+              dirShade, dirShade, dirShade, dirShade,
               q.uvs[0][0], q.uvs[0][1],
               q.uvs[1][0], q.uvs[1][1],
               q.uvs[2][0], q.uvs[2][1],
-              q.uvs[3][0], q.uvs[3][1]
+              q.uvs[3][0], q.uvs[3][1],
+              tuMin, tvMin, tuMax, tvMax,
+              matClass
             );
-
-            tileRects.push(
-              tuMin, tvMin, tuMax, tvMax,
-              tuMin, tvMin, tuMax, tvMax,
-              tuMin, tvMin, tuMax, tvMax,
-              tuMin, tvMin, tuMax, tvMax
-            );
-
-            indices.push(curOffset, curOffset + 1, curOffset + 2, curOffset, curOffset + 2, curOffset + 3);
-            if (isTrans) transIndexOffset += 4;
-            else solidIndexOffset += 4;
           }
         }
       }
     }
 
-    // 3. CONVERT ARRAYS TO TYPED ARRAYS FOR WORKER TRANSFER
+    // 3. CONVERT BUFFERS TO COMPACT TRANSFERABLE TYPED ARRAYS
+    const solid = solidBuffer.toTransferable();
+    const trans = transBuffer.toTransferable();
+    const water = waterBuffer.toTransferable();
+
     return {
-      solidPositions: new Float32Array(data.solidPositions),
-      solidNormals: new Float32Array(data.solidNormals),
-      solidColors: new Float32Array(data.solidColors),
-      solidUvs: new Float32Array(data.solidUvs),
-      solidTileRects: new Float32Array(data.solidTileRects),
-      solidIndices: new Uint32Array(data.solidIndices),
-      solidMaterials: new Float32Array(data.solidMaterials),
+      solidPositions: solid.positions,
+      solidNormals: solid.normals,
+      solidColors: solid.colors,
+      solidUvs: solid.uvs,
+      solidTileRects: solid.tileRects,
+      solidIndices: solid.indices,
+      solidMaterials: solid.materials,
 
-      transPositions: new Float32Array(data.transPositions),
-      transNormals: new Float32Array(data.transNormals),
-      transColors: new Float32Array(data.transColors),
-      transUvs: new Float32Array(data.transUvs),
-      transTileRects: new Float32Array(data.transTileRects),
-      transIndices: new Uint32Array(data.transIndices),
-      transMaterials: new Float32Array(data.transMaterials),
+      transPositions: trans.positions,
+      transNormals: trans.normals,
+      transColors: trans.colors,
+      transUvs: trans.uvs,
+      transTileRects: trans.tileRects,
+      transIndices: trans.indices,
+      transMaterials: trans.materials,
 
-      waterPositions: new Float32Array(data.waterPositions),
-      waterNormals: new Float32Array(data.waterNormals),
-      waterColors: new Float32Array(data.waterColors),
-      waterUvs: new Float32Array(data.waterUvs),
-      waterTileRects: new Float32Array(data.waterTileRects),
-      waterIndices: new Uint32Array(data.waterIndices),
-      waterMaterials: new Float32Array(data.waterMaterials),
+      waterPositions: water.positions,
+      waterNormals: water.normals,
+      waterColors: water.colors,
+      waterUvs: water.uvs,
+      waterTileRects: water.tileRects,
+      waterIndices: water.indices,
+      waterMaterials: water.materials,
     };
   }
 }
+

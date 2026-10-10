@@ -106,7 +106,14 @@ export class StructureManager {
     // 1 in 8 structures is a full settlement
     if (cellHash % 8 === 0) {
       type = 'settlement';
-      placements = NusantaraSettlementGenerator.generateSettlement(region.id, 0, 0, 0, cellHash);
+      placements = NusantaraSettlementGenerator.generateSettlement(
+        region.id, 
+        0, 
+        0, 
+        0, 
+        cellHash,
+        (dx, dz) => getTerrainHeight(originX + dx, originZ + dz) - originY
+      );
     } else {
       if (!region.structurePool || region.structurePool.length === 0) return null;
       type = region.structurePool[cellHash % region.structurePool.length];
@@ -129,24 +136,31 @@ export class StructureManager {
     let minH = Infinity;
     let maxH = -Infinity;
     const samples = 9;
-    for(let i=0; i<samples; i++) {
-        const sx = originX + fpMinX + (fpMaxX - fpMinX) * (i % 3) / 2;
-        const sz = originZ + fpMinZ + (fpMaxZ - fpMinZ) * Math.floor(i / 3) / 2;
-        const h = getTerrainHeight(sx, sz);
-        if (h < minH) minH = h;
-        if (h > maxH) maxH = h;
+    for (let i = 0; i < samples; i++) {
+      const sx = originX + fpMinX + (fpMaxX - fpMinX) * (i % 3) / 2;
+      const sz = originZ + fpMinZ + (fpMaxZ - fpMinZ) * Math.floor(i / 3) / 2;
+      const h = getTerrainHeight(sx, sz);
+      if (h < minH) minH = h;
+      if (h > maxH) maxH = h;
     }
 
-    // If slope is extreme, reject placement
-    if (maxH - minH > 12) return null; 
+    // If slope is extreme, reject placement (settlements are allowed larger terrace slopes)
+    const maxSlopeAllowed = type === 'settlement' ? 18 : 12;
+    if (maxH - minH > maxSlopeAllowed) return null; 
 
     // Post-process placements for Foundation System
     const foundationBlocks = new Set([
       BlockType.STONE_ALANG_PILLAR, 
       BlockType.TEAK_WOOD_LOG, 
+      BlockType.ULIN_IRONWOOD_LOG,
+      BlockType.STONE_PILLAR,
       BlockType.COBBLESTONE, 
       BlockType.CARVED_ANDESITE_STONE,
-      BlockType.OAK_LOG
+      BlockType.VOLCANIC_BRICK,
+      BlockType.OAK_LOG,
+      BlockType.BAMBOO_STALK_BLOCK,
+      BlockType.WOOD_PLANKS,
+      BlockType.CLAY
     ]);
     
     const finalPlacements: VoxelBlockPlacement[] = [];

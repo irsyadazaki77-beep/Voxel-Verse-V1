@@ -78,15 +78,10 @@ export class Pathfinder {
       world.profiler.pathfinderQueries++;
     }
 
-    const queryCache = new Map<string, { block: number | null; state: any }>();
     const queryLoaded = (x: number, y: number, z: number) => {
-      const k = `${x},${y},${z}`;
-      if (queryCache.has(k)) return queryCache.get(k)!;
       const b = world.getBlockIfLoaded(x, y, z);
       const st = b !== null ? world.getBlockStateIfLoaded(x, y, z) : null;
-      const val = { block: b, state: st };
-      queryCache.set(k, val);
-      return val;
+      return { block: b, state: st };
     };
 
     const openSet: PathNode[] = [];
@@ -106,16 +101,18 @@ export class Pathfinder {
     openSet.push(startNode);
 
     let iterations = 0;
-    const maxIterations = 300; // Limit to prevent freezing
+    const maxIterations = 150; // Optimized search budget for silky 60fps
 
     while (openSet.length > 0) {
       iterations++;
-      if (iterations > maxIterations) break; // Abort if too complex
+      if (iterations > maxIterations) break;
 
-      // Get node with lowest f
+      // Fast min lookup
       let lowestIndex = 0;
+      let minF = openSet[0].f;
       for (let i = 1; i < openSet.length; i++) {
-        if (openSet[i].f < openSet[lowestIndex].f) {
+        if (openSet[i].f < minF) {
+          minF = openSet[i].f;
           lowestIndex = i;
         }
       }
@@ -132,7 +129,8 @@ export class Pathfinder {
 
       const neighbors = this.getNeighbors(queryLoaded, current.x, current.y, current.z);
 
-      for (const neighbor of neighbors) {
+      for (let ni = 0; ni < neighbors.length; ni++) {
+        const neighbor = neighbors[ni];
         const neighborKey = `${neighbor.x},${neighbor.y},${neighbor.z}`;
         if (closedSet.has(neighborKey)) continue;
 

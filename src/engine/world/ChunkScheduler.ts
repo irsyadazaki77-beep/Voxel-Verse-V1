@@ -526,7 +526,6 @@ export class ChunkScheduler {
             const dz = targetChunk.cz - playerCZ;
             targetChunk.updateShadowLOD(dx * dx + dz * dz);
             uploads++;
-            this.triggerBorderRemesh(item.cx, item.cz);
           } else {
             // Stale revision: mark dirty and re-enqueue
             targetChunk.setDirty();

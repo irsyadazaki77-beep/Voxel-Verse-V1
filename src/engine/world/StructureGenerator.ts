@@ -1445,12 +1445,21 @@ export class StructureGenerator {
       // Papua
       case 'honai': result = NusantaraBuildingKit.generateHonai(); break;
       case 'pilamo': result = NusantaraBuildingKit.generateHonai(); break;
-      case 'highland_watchpost': result = NusantaraBuildingKit.generateSasakLumbung(); break;
+      case 'ebeai': result = NusantaraBuildingKit.generateEbeai(); break;
+      case 'highland_watchpost': result = NusantaraBuildingKit.generateVillageWatchpost(); break;
       // Eastern Isles
       case 'sasak_lumbung': result = NusantaraBuildingKit.generateSasakLumbung(); break;
+      case 'sasak_bale_tani': result = NusantaraBuildingKit.generateSasakBaleTani(); break;
       case 'uma_kalada':
       case 'uma_mbaru': result = NusantaraBuildingKit.generateUmaKalada(); break;
       case 'coastal_stilt': result = NusantaraBuildingKit.generateRiverPier(8); break;
+      // Modular Village Props
+      case 'village_well': result = NusantaraBuildingKit.generateVillageWell('andesite'); break;
+      case 'drying_rack': result = NusantaraBuildingKit.generateDryingRack('grain'); break;
+      case 'firewood_stack': result = NusantaraBuildingKit.generateFirewoodStack(); break;
+      case 'traditional_forge': result = NusantaraBuildingKit.generateTraditionalForge(); break;
+      case 'livestock_shelter': result = NusantaraBuildingKit.generateLivestockShelter(); break;
+      case 'subak_plot': result = NusantaraBuildingKit.generateSubakTerracePlot(); break;
       default: result = []; break;
     }
 

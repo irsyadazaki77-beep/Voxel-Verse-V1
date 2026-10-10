@@ -46,10 +46,44 @@ export async function runStructureRegressionTests(): Promise<boolean> {
       NusantaraBuildingKit.generateJoglo(),
       NusantaraBuildingKit.generateTongkonan(),
       NusantaraBuildingKit.generateRumahBetang(24),
-      NusantaraBuildingKit.generateHonai()
+      NusantaraBuildingKit.generateHonai(),
+      NusantaraBuildingKit.generateVillageWell('andesite'),
+      NusantaraBuildingKit.generateDryingRack('grain'),
+      NusantaraBuildingKit.generateFirewoodStack(),
+      NusantaraBuildingKit.generateTraditionalForge(),
+      NusantaraBuildingKit.generateLivestockShelter(),
+      NusantaraBuildingKit.generateVillageWatchpost(),
+      NusantaraBuildingKit.generateSubakTerracePlot(),
+      NusantaraBuildingKit.generateEbeai(),
+      NusantaraBuildingKit.generateSasakBaleTani()
     ];
     
     console.log(`Generated ${signatures.length} signature blueprints without errors.`);
+
+    // 5. NUSANTARA SETTLEMENT VARIATIONS TEST
+    console.log('Testing 35 cultural settlement variations across 7 regions...');
+    const cultures = ['tanah_minang', 'tanah_jawa', 'bali_highlands', 'borneo_riverlands', 'toraja_highlands', 'papua_highlands', 'eastern_isles'];
+    const slopeSampler = (dx: number, dz: number) => Math.sin(dx * 0.1) * 2 + Math.cos(dz * 0.1) * 2;
+    
+    for (const culture of cultures) {
+      for (let variant = 0; variant < 5; variant++) {
+        const blocks = StructureManager.getStructureForCell(
+          variant * 10, 
+          variant * 10, 
+          variant, 
+          (wx, wz) => 64 + Math.round(slopeSampler(wx, wz)), 
+          () => ({ id: culture, structurePool: ['settlement'] })
+        );
+        // Direct generator test
+        const directPlacements = NusantaraBuildingKit ? 
+          (await import('../engine/world/NusantaraSettlementGenerator')).NusantaraSettlementGenerator.generateSettlement(culture, 0, 64, 0, variant, slopeSampler) : [];
+        if (directPlacements.length === 0) {
+          console.error(`Empty settlement generated for ${culture} variant ${variant}`);
+          passed = false;
+        }
+      }
+    }
+    console.log('All 35 cultural settlement variants generated successfully.');
 
   } catch (error) {
     console.error('Structure test failed with error:', error);

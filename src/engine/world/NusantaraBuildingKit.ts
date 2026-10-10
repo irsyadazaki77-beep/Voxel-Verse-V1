@@ -217,9 +217,10 @@ export class NusantaraBuildingKit {
   }
 
   /**
-   * Rangkiang (Lumbung Minang) - Elevated granary on 4 round pest-guarded disc pillars, high gonjong roof
+   * Rangkiang (Lumbung Minang) - Elevated granary on 4-6 round pest-guarded disc pillars, high gonjong roof
+   * Supports 4 traditional types: si_bayau_bayau (family wealth), sitinjau_lauik (guest/ceremony), kaciak (daily meals), si_tanggung_lapuk (communal reserve)
    */
-  public static generateRangkiang(type: 'si_bayau_bayau' | 'sitinjau_lauik' = 'si_bayau_bayau'): VoxelBlockPlacement[] {
+  public static generateRangkiang(type: 'si_bayau_bayau' | 'sitinjau_lauik' | 'kaciak' | 'si_tanggung_lapuk' = 'si_bayau_bayau'): VoxelBlockPlacement[] {
     const blocks: VoxelBlockPlacement[] = [];
 
     // 4 disc-guarded stilts
@@ -248,16 +249,28 @@ export class NusantaraBuildingKit {
     blocks.push({ dx: 0, dy: 4, dz: 0, block: BlockType.RICE_STORAGE_CHEST });
 
     // Steep gonjong roof
-    for (let x = -3; x <= 3; x++) {
-      const dist = Math.abs(x);
-      const sweep = dist >= 2 ? dist : 0;
-      for (let z = -2; z <= 2; z++) {
-        const y = 6 + sweep + (2 - Math.abs(z));
-        blocks.push({ dx: x, dy: y, dz: z, block: BlockType.IJUK_THATCH_ROOF });
+    if (type === 'kaciak') {
+      for (let x = -2; x <= 2; x++) {
+        for (let z = -2; z <= 2; z++) {
+          blocks.push({ dx: x, dy: 5, dz: z, block: BlockType.IJUK_THATCH_ROOF });
+        }
       }
+      blocks.push({ dx: -2, dy: 6, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: 2, dy: 6, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: 0, dy: 6, dz: 0, block: BlockType.AETHER_LANTERN });
+    } else {
+      for (let x = -3; x <= 3; x++) {
+        const dist = Math.abs(x);
+        const sweep = dist >= 2 ? dist : 0;
+        for (let z = -2; z <= 2; z++) {
+          const y = 6 + sweep + (2 - Math.abs(z));
+          blocks.push({ dx: x, dy: y, dz: z, block: BlockType.IJUK_THATCH_ROOF });
+        }
+      }
+      blocks.push({ dx: -3, dy: 9, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: 3, dy: 9, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+      blocks.push({ dx: 0, dy: 8, dz: 0, block: BlockType.AETHER_LANTERN });
     }
-    blocks.push({ dx: -3, dy: 9, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
-    blocks.push({ dx: 3, dy: 9, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
 
     return blocks;
   }
@@ -1511,4 +1524,391 @@ export class NusantaraBuildingKit {
 
     return blocks;
   }
+
+  // ==========================================
+  // 9. NUSANTARA PROPS, ACCENTS & LIVING DETAILS
+  // ==========================================
+
+  /**
+   * Traditional Village Water Well (Sumur Desa Tradisional)
+   * Stone rim, interior water pool, teak support posts, thatched rooflet, and hanging lantern
+   */
+  public static generateVillageWell(material: 'stone' | 'andesite' | 'bamboo' = 'andesite'): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const rimBlock = material === 'andesite' ? BlockType.CARVED_ANDESITE_STONE : BlockType.COBBLESTONE;
+    const postBlock = material === 'bamboo' ? BlockType.BAMBOO_FENCE : BlockType.TEAK_WOOD_LOG;
+    const roofBlock = material === 'andesite' ? BlockType.TERRACOTTA_ROOF_TILE : BlockType.IJUK_THATCH_ROOF;
+
+    // Underground water basin
+    for (let x = -1; x <= 1; x++) {
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: -2, dz: z, block: rimBlock });
+        blocks.push({ dx: x, dy: -1, dz: z, block: (x === 0 && z === 0) ? BlockType.WATER : rimBlock });
+      }
+    }
+
+    // Above-ground well wall (ring)
+    for (let x = -1; x <= 1; x++) {
+      for (let z = -1; z <= 1; z++) {
+        if (x === 0 && z === 0) {
+          blocks.push({ dx: 0, dy: 0, dz: 0, block: BlockType.WATER });
+        } else {
+          blocks.push({ dx: x, dy: 0, dz: z, block: rimBlock });
+          blocks.push({ dx: x, dy: 1, dz: z, block: rimBlock });
+        }
+      }
+    }
+
+    // Support posts
+    blocks.push({ dx: -1, dy: 2, dz: 0, block: postBlock });
+    blocks.push({ dx: -1, dy: 3, dz: 0, block: postBlock });
+    blocks.push({ dx: 1, dy: 2, dz: 0, block: postBlock });
+    blocks.push({ dx: 1, dy: 3, dz: 0, block: postBlock });
+
+    // Cross beam
+    blocks.push({ dx: 0, dy: 3, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+    blocks.push({ dx: 0, dy: 2, dz: 0, block: BlockType.LANTERN });
+
+    // Rooflet
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: 4, dz: z, block: roofBlock });
+      }
+    }
+    blocks.push({ dx: 0, dy: 5, dz: 0, block: roofBlock });
+
+    return blocks;
+  }
+
+  /**
+   * Traditional Grain / Fish / Spice Drying Rack (Tempat Jemuran Gabah / Ikan)
+   */
+  public static generateDryingRack(type: 'grain' | 'fish' | 'spices' = 'grain'): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+
+    // Bamboo legs
+    blocks.push({ dx: -2, dy: 0, dz: -1, block: BlockType.BAMBOO_FENCE });
+    blocks.push({ dx: 2, dy: 0, dz: -1, block: BlockType.BAMBOO_FENCE });
+    blocks.push({ dx: -2, dy: 0, dz: 1, block: BlockType.BAMBOO_FENCE });
+    blocks.push({ dx: 2, dy: 0, dz: 1, block: BlockType.BAMBOO_FENCE });
+
+    // Woven bamboo bed / slat surface
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.WOVEN_BAMBOO_GEDEK });
+      }
+    }
+
+    // Items on rack
+    if (type === 'grain') {
+      blocks.push({ dx: -1, dy: 2, dz: 0, block: BlockType.CROP_WHEAT_3 });
+      blocks.push({ dx: 0, dy: 2, dz: 0, block: BlockType.CROP_WHEAT_3 });
+      blocks.push({ dx: 1, dy: 2, dz: 0, block: BlockType.CROP_WHEAT_3 });
+    } else if (type === 'spices') {
+      blocks.push({ dx: -1, dy: 2, dz: 0, block: BlockType.CROP_HERB });
+      blocks.push({ dx: 1, dy: 2, dz: 0, block: BlockType.CROP_CARROT });
+    }
+
+    return blocks;
+  }
+
+  /**
+   * Firewood Stack (Tumpukan Kayu Bakar Desa)
+   */
+  public static generateFirewoodStack(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Lower layer of logs
+    blocks.push({ dx: -1, dy: 0, dz: 0, block: BlockType.OAK_LOG });
+    blocks.push({ dx: 0, dy: 0, dz: 0, block: BlockType.OAK_LOG });
+    blocks.push({ dx: 1, dy: 0, dz: 0, block: BlockType.OAK_LOG });
+    blocks.push({ dx: -1, dy: 0, dz: 1, block: BlockType.OAK_LOG });
+    blocks.push({ dx: 0, dy: 0, dz: 1, block: BlockType.OAK_LOG });
+    blocks.push({ dx: 1, dy: 0, dz: 1, block: BlockType.OAK_LOG });
+
+    // Upper layer of timber slabs
+    blocks.push({ dx: 0, dy: 1, dz: 0, block: BlockType.WOOD_SLAB });
+    blocks.push({ dx: 0, dy: 1, dz: 1, block: BlockType.WOOD_SLAB });
+    blocks.push({ dx: -1, dy: 1, dz: 0, block: BlockType.WOOD_SLAB });
+    blocks.push({ dx: 1, dy: 1, dz: 1, block: BlockType.WOOD_SLAB });
+
+    return blocks;
+  }
+
+  /**
+   * Traditional Village Resting Bench (Bale-Bale / Kursi Panjang Bambu)
+   */
+  public static generateVillageBench(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    blocks.push({ dx: -1, dy: 0, dz: 0, block: BlockType.BAMBOO_FENCE });
+    blocks.push({ dx: 1, dy: 0, dz: 0, block: BlockType.BAMBOO_FENCE });
+    blocks.push({ dx: -1, dy: 1, dz: 0, block: BlockType.WOOD_SLAB });
+    blocks.push({ dx: 0, dy: 1, dz: 0, block: BlockType.WOOD_SLAB });
+    blocks.push({ dx: 1, dy: 1, dz: 0, block: BlockType.WOOD_SLAB });
+    return blocks;
+  }
+
+  /**
+   * Ornamental Flower Planter & Offerings (Pot Tanaman Hias Tradisional)
+   */
+  public static generateFlowerPlanter(type: 'orchid' | 'red' | 'blue' | 'herb' = 'orchid'): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    blocks.push({ dx: 0, dy: 0, dz: 0, block: BlockType.CARVED_ANDESITE_STONE });
+    let plant = BlockType.SUN_ORCHID;
+    if (type === 'red') plant = BlockType.RED_FLOWER;
+    else if (type === 'blue') plant = BlockType.BLUE_FLOWER;
+    else if (type === 'herb') plant = BlockType.CROP_HERB;
+    blocks.push({ dx: 0, dy: 1, dz: 0, block: plant });
+    return blocks;
+  }
+
+  /**
+   * Traditional Village Entrance Bamboo Gate (Gapura Bambu Dusun)
+   */
+  public static generateBambooGate(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    // Left & Right posts
+    for (let y = 0; y <= 3; y++) {
+      blocks.push({ dx: -2, dy: y, dz: 0, block: BlockType.BAMBOO_STALK_BLOCK });
+      blocks.push({ dx: 2, dy: y, dz: 0, block: BlockType.BAMBOO_STALK_BLOCK });
+    }
+    // Overhead lintel beam
+    for (let x = -2; x <= 2; x++) {
+      blocks.push({ dx: x, dy: 4, dz: 0, block: BlockType.CARVED_WOOD_BEAM });
+    }
+    // Thatch roof crest
+    for (let x = -3; x <= 3; x++) {
+      blocks.push({ dx: x, dy: 5, dz: 0, block: BlockType.IJUK_THATCH_ROOF });
+    }
+    // Hanging lantern
+    blocks.push({ dx: 0, dy: 3, dz: 0, block: BlockType.LANTERN });
+
+    return blocks;
+  }
+
+  /**
+   * Traditional Blacksmith & Pottery Forge (Pandai Besi & Tungku Desa)
+   */
+  public static generateTraditionalForge(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+
+    // Stone foundation floor
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.COBBLESTONE });
+      }
+    }
+
+    // Furnace and Anvil
+    blocks.push({ dx: -1, dy: 1, dz: -1, block: BlockType.FURNACE });
+    blocks.push({ dx: 1, dy: 1, dz: -1, block: BlockType.ANVIL_SMITHING });
+    blocks.push({ dx: 0, dy: 1, dz: 1, block: BlockType.CRAFTING_BENCH });
+    blocks.push({ dx: 1, dy: 1, dz: 1, block: BlockType.CHEST });
+
+    // Water cooling trough
+    blocks.push({ dx: -1, dy: 1, dz: 1, block: BlockType.TERRACE_WATERWAY });
+    blocks.push({ dx: -1, dy: 1, dz: 1, block: BlockType.WATER });
+
+    // Posts and Open Roof
+    blocks.push({ dx: -2, dy: 1, dz: -2, block: BlockType.STONE_PILLAR });
+    blocks.push({ dx: 2, dy: 1, dz: -2, block: BlockType.STONE_PILLAR });
+    blocks.push({ dx: -2, dy: 1, dz: 2, block: BlockType.STONE_PILLAR });
+    blocks.push({ dx: 2, dy: 1, dz: 2, block: BlockType.STONE_PILLAR });
+
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.TERRACOTTA_ROOF_TILE });
+      }
+    }
+    blocks.push({ dx: 0, dy: 2, dz: 0, block: BlockType.LANTERN });
+
+    return blocks;
+  }
+
+  /**
+   * Livestock Shelter & Feed Pen (Kandang Ternak Tradisional)
+   */
+  public static generateLivestockShelter(width: number = 4, length: number = 5): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const halfW = Math.floor(width / 2);
+    const halfL = Math.floor(length / 2);
+
+    // Fenced enclosure
+    for (let x = -halfW; x <= halfW; x++) {
+      for (let z = -halfL; z <= halfL; z++) {
+        const isBorder = (Math.abs(x) === halfW || Math.abs(z) === halfL);
+        if (isBorder) {
+          if (!(x === 0 && z === halfL)) { // Entry gate opening
+            blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.BAMBOO_FENCE });
+          }
+        }
+      }
+    }
+
+    // Thatched shelter at the back
+    for (let x = -halfW; x <= halfW; x++) {
+      for (let z = -halfL; z <= -halfL + 2; z++) {
+        blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.ALANG_ALANG_THATCH });
+      }
+    }
+    // Feed trough
+    blocks.push({ dx: -1, dy: 0, dz: -halfL + 1, block: BlockType.WOOD_SLAB });
+    blocks.push({ dx: 0, dy: 0, dz: -halfL + 1, block: BlockType.WOOD_PLANKS });
+    blocks.push({ dx: 1, dy: 0, dz: -halfL + 1, block: BlockType.WOOD_SLAB });
+    blocks.push({ dx: 0, dy: 1, dz: -halfL + 1, block: BlockType.CROP_WHEAT_3 });
+
+    return blocks;
+  }
+
+  /**
+   * Guard Post & Watchtower (Gardu Ronda / Pos Kamling)
+   */
+  public static generateVillageWatchpost(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+
+    // 4 Corner stilts
+    for (let y = 0; y <= 3; y++) {
+      blocks.push({ dx: -1, dy: y, dz: -1, block: BlockType.TEAK_WOOD_LOG });
+      blocks.push({ dx: 1, dy: y, dz: -1, block: BlockType.TEAK_WOOD_LOG });
+      blocks.push({ dx: -1, dy: y, dz: 1, block: BlockType.TEAK_WOOD_LOG });
+      blocks.push({ dx: 1, dy: y, dz: 1, block: BlockType.TEAK_WOOD_LOG });
+    }
+
+    // Platform
+    for (let x = -1; x <= 1; x++) {
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: 4, dz: z, block: BlockType.TEAK_WOOD_PLANKS });
+      }
+    }
+
+    // Railings & Kentongan (Wooden drum)
+    blocks.push({ dx: -1, dy: 5, dz: 0, block: BlockType.BAMBOO_FENCE });
+    blocks.push({ dx: 1, dy: 5, dz: 0, block: BlockType.BAMBOO_FENCE });
+    blocks.push({ dx: 0, dy: 5, dz: -1, block: BlockType.BAMBOO_FENCE });
+    blocks.push({ dx: 0, dy: 5, dz: 0, block: BlockType.CARVED_WOOD_BEAM }); // Kentongan
+    blocks.push({ dx: 0, dy: 6, dz: 0, block: BlockType.TORCH });
+
+    // Roof
+    for (let x = -2; x <= 2; x++) {
+      for (let z = -2; z <= 2; z++) {
+        blocks.push({ dx: x, dy: 7, dz: z, block: BlockType.IJUK_THATCH_ROOF });
+      }
+    }
+
+    return blocks;
+  }
+
+  /**
+   * Stepped Sawah / Subak Agricultural Plot
+   */
+  public static generateSubakTerracePlot(width: number = 6, length: number = 6): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const halfW = Math.floor(width / 2);
+    const halfL = Math.floor(length / 2);
+
+    // Terraced waterway canal along the top border
+    for (let x = -halfW; x <= halfW; x++) {
+      blocks.push({ dx: x, dy: 0, dz: -halfL, block: BlockType.TERRACE_WATERWAY });
+      blocks.push({ dx: x, dy: 0, dz: -halfL, block: BlockType.WATER });
+    }
+
+    // Farmland soil and rice / wheat crops
+    for (let x = -halfW; x <= halfW; x++) {
+      for (let z = -halfL + 1; z <= halfL; z++) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.FARMLAND });
+        blocks.push({ dx: x, dy: 1, dz: z, block: (x + z) % 2 === 0 ? BlockType.CROP_WHEAT_3 : BlockType.CROP_WHEAT_2 });
+      }
+    }
+
+    return blocks;
+  }
+
+  /**
+   * Ebeai Family Dormitory (Papuan Highlands) - Oblong thatched communal hut
+   */
+  public static generateEbeai(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const len = 3;
+    const width = 2;
+
+    for (let x = -len; x <= len; x++) {
+      for (let z = -width; z <= width; z++) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.DIRT });
+        if (Math.abs(x) === len || Math.abs(z) === width) {
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.WOOD_PLANKS });
+          blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.WOOD_PLANKS });
+        }
+      }
+    }
+    // Door opening
+    blocks.push({ dx: 0, dy: 1, dz: width, block: BlockType.AIR });
+    blocks.push({ dx: 0, dy: 2, dz: width, block: BlockType.AIR });
+
+    // Hearth & Sleeping mats
+    blocks.push({ dx: 0, dy: 0, dz: 0, block: BlockType.COBBLESTONE });
+    blocks.push({ dx: 0, dy: 1, dz: 0, block: BlockType.TORCH });
+    blocks.push({ dx: -len + 1, dy: 1, dz: 0, block: BlockType.BED_FOOT });
+    blocks.push({ dx: -len + 1, dy: 1, dz: -1, block: BlockType.BED_HEAD });
+
+    // Domed thatched roof
+    for (let x = -len; x <= len; x++) {
+      for (let z = -width; z <= width; z++) {
+        blocks.push({ dx: x, dy: 3, dz: z, block: BlockType.ALANG_ALANG_THATCH });
+        if (Math.abs(x) < len && Math.abs(z) < width) {
+          blocks.push({ dx: x, dy: 4, dz: z, block: BlockType.ALANG_ALANG_THATCH });
+        }
+      }
+    }
+    return blocks;
+  }
+
+  /**
+   * Bale Tani Sasak Residential House (Eastern Isles)
+   */
+  public static generateSasakBaleTani(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const len = 4;
+    const width = 3;
+
+    // Clay/earthen plinth foundation
+    for (let x = -len; x <= len; x++) {
+      for (let z = -width; z <= width; z++) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: BlockType.CLAY });
+        blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.WOOD_PLANKS });
+      }
+    }
+
+    // Woven bamboo gedek walls
+    for (let y = 2; y <= 4; y++) {
+      for (let x = -len; x <= len; x++) {
+        blocks.push({ dx: x, dy: y, dz: -width, block: BlockType.WOVEN_BAMBOO_GEDEK });
+        if (x === 0 && y <= 3) {
+          blocks.push({ dx: x, dy: y, dz: width, block: BlockType.AIR });
+        } else {
+          blocks.push({ dx: x, dy: y, dz: width, block: BlockType.WOVEN_BAMBOO_GEDEK });
+        }
+      }
+      for (let z = -width; z <= width; z++) {
+        blocks.push({ dx: -len, dy: y, dz: z, block: BlockType.WOVEN_BAMBOO_GEDEK });
+        blocks.push({ dx: len, dy: y, dz: z, block: BlockType.WOVEN_BAMBOO_GEDEK });
+      }
+    }
+
+    // Bonnet arch thatch roof
+    for (let y = 0; y <= 3; y++) {
+      const rx = len + 1 - y;
+      const rz = width + 1 - y;
+      for (let x = -rx; x <= rx; x++) {
+        for (let z = -rz; z <= rz; z++) {
+          if (Math.abs(x) === rx || Math.abs(z) === rz || y === 3) {
+            blocks.push({ dx: x, dy: 5 + y, dz: z, block: BlockType.ALANG_ALANG_THATCH });
+          }
+        }
+      }
+    }
+    blocks.push({ dx: 0, dy: 3, dz: 0, block: BlockType.LANTERN });
+    blocks.push({ dx: len - 1, dy: 2, dz: -width + 1, block: BlockType.CHEST });
+
+    return blocks;
+  }
 }
+
