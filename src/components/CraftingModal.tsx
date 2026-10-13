@@ -4,6 +4,7 @@ import { CraftingRecipe, ItemStack } from '../types';
 import { CRAFTING_RECIPES, CraftingSystem } from '../engine/items/CraftingSystem';
 import { ITEM_DEFS } from '../engine/items/ItemRegistry';
 import { ItemTooltip } from './ItemTooltip';
+import { NetworkSession } from '../engine/network/NetworkSession';
 
 interface CraftingModalProps {
   inventory: (ItemStack | null)[];
@@ -39,11 +40,21 @@ export const CraftingModal: React.FC<CraftingModalProps> = ({
   });
 
   const handleCraft = (recipe: CraftingRecipe) => {
-    const newInv = [...inventory];
-    const success = CraftingSystem.craft(recipe, newInv, craftQuantity);
-    if (success) {
-      setInventory(newInv);
-      if (onCraftSuccess) onCraftSuccess(recipe);
+    const netSession = NetworkSession.getInstance();
+    if (netSession.isMultiplayerActive && netSession.isConnected()) {
+      // Optimistic local craft evaluation: verify client-side prerequisites first
+      if (CraftingSystem.canCraft(recipe, inventory, craftQuantity)) {
+        netSession.sendCraftRequest(recipe.id, craftQuantity, activeStation);
+        if (onCraftSuccess) onCraftSuccess(recipe);
+      }
+    } else {
+      // Singleplayer local authoritative execution
+      const newInv = [...inventory];
+      const success = CraftingSystem.craft(recipe, newInv, craftQuantity);
+      if (success) {
+        setInventory(newInv);
+        if (onCraftSuccess) onCraftSuccess(recipe);
+      }
     }
   };
 

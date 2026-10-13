@@ -10,6 +10,7 @@ import { SafeSpawnResolver } from './SafeSpawnResolver';
 
 export type StartupStage =
   | 'validate'
+  | 'load_save'
   | 'resolve_spawn'
   | 'hydrate_state'
   | 'generate_spawn_area'
@@ -85,6 +86,7 @@ export class WorldStartupPipeline {
     const stageTimeout = options.stageTimeoutMs || this.DEFAULT_STAGE_TIMEOUT_MS;
     const stageDurations: Record<StartupStage, number> = {
       validate: 0,
+      load_save: 0,
       resolve_spawn: 0,
       hydrate_state: 0,
       generate_spawn_area: 0,
@@ -122,14 +124,17 @@ export class WorldStartupPipeline {
 
     try {
       // ==========================================
-      // STAGE 1: VALIDATE (0% - 15%)
+      // STAGE 1: VALIDATE & LOAD SAVE (0% - 15%)
       // ==========================================
       const stage1Start = performance.now();
       report('validate', 'Validating World & Save Data...', 5, `World: ${options.worldName}`);
-      Logger.info('WorldStartupPipeline', `[Stage 1/6: Validate] Validating worldId "${options.worldId}", seed ${options.seed}...`);
+      Logger.info('WorldStartupPipeline', `[Stage 1: Validate] Validating worldId "${options.worldId}", seed ${options.seed}...`);
 
       checkCancelled();
-      if (!existingSave) {
+      const isExistingWorld = SaveManager.hasWorld(options.worldId);
+
+      if (!existingSave && isExistingWorld) {
+        report('load_save', 'Retrieving Saved State...', 10);
         try {
           const timeoutPromise = new Promise<null>((_, reject) =>
             setTimeout(() => reject(new Error('Save data load timeout')), stageTimeout)
@@ -140,8 +145,18 @@ export class WorldStartupPipeline {
           ]);
         } catch (saveErr) {
           if (isCancelled()) throw saveErr;
-          Logger.warn('WorldStartupPipeline', `[Validate] Non-fatal save loading error, starting fresh:`, { error: saveErr });
-          existingSave = null;
+          Logger.error('WorldStartupPipeline', `[Validate] Save loading error for existing world:`, { error: saveErr });
+        }
+
+        // Integrity Protection: Never silently overwrite an existing saved world with fresh generation
+        if (!existingSave) {
+          const snapshot = await SaveManager.getAvailableRecoverySnapshot(options.worldId);
+          if (snapshot) {
+            Logger.warn('WorldStartupPipeline', `Primary save unreadable; recovered snapshot available from ${snapshot.layer}`);
+            existingSave = snapshot.data;
+          } else {
+            throw new Error(`CorruptedWorldSaveError: Unable to load saved world '${options.worldName}' (${options.worldId}). Save verification failed across primary and backup storage layers. Halting startup to prevent accidental world overwrite.`);
+          }
         }
       }
 
@@ -166,8 +181,13 @@ export class WorldStartupPipeline {
         }
       }
 
+      // Preserve original world preset, seed, and game mode from save file
+      const effectivePreset: WorldPreset = (existingSave?.preset || options.preset || 'standard') as WorldPreset;
+      const effectiveSeed: number = typeof existingSave?.seed === 'number' ? existingSave.seed : options.seed;
+      const effectiveGameMode: GameMode = existingSave?.gameMode || options.gameMode || 'survival';
+
       stageDurations.validate = performance.now() - stage1Start;
-      report('validate', 'World Validated', 15);
+      report('validate', 'World Validated', 15, `Preset: ${effectivePreset}`);
       await this.yieldFrame();
       checkCancelled();
 
@@ -176,15 +196,15 @@ export class WorldStartupPipeline {
       // ==========================================
       const stage2Start = performance.now();
       report('resolve_spawn', 'Resolving Safe Spawn Point...', 20);
-      Logger.info('WorldStartupPipeline', `[Stage 2/6: Resolve Spawn] Calculating safe spawn position...`);
+      Logger.info('WorldStartupPipeline', `[Stage 2: Resolve Spawn] Calculating safe spawn position for preset ${effectivePreset}...`);
 
       const savedHealth = typeof existingSave?.player?.health === 'number' ? existingSave.player.health : 100;
       if (existingSave?.player?.position && existingSave.player.position[1] >= 5 && savedHealth > 0) {
         spawnPosition = existingSave.player.position;
         Logger.info('WorldStartupPipeline', `[Resolve Spawn] Restored player position from save: [${spawnPosition.map(n => n.toFixed(1)).join(', ')}]`);
       } else {
-        // Pure lightweight terrain height calculation (zero VoxelWorld instantiation, no worker pool overhead)
-        spawnPosition = SafeSpawnResolver.resolve(options.seed, options.preset || 'standard', 'overworld');
+        // Pure lightweight terrain height calculation using effective seed and preset
+        spawnPosition = SafeSpawnResolver.resolve(effectiveSeed, effectivePreset, 'overworld');
         Logger.info('WorldStartupPipeline', `[Resolve Spawn] Deterministically resolved safe spawn: [${spawnPosition.map(n => n.toFixed(1)).join(', ')}]`);
       }
 
@@ -198,9 +218,9 @@ export class WorldStartupPipeline {
       // ==========================================
       const stage3Start = performance.now();
       report('hydrate_state', 'Hydrating World State...', 35);
-      Logger.info('WorldStartupPipeline', `[Stage 3/6: Hydrate State] Instantiating primary VoxelWorld and hydrating modifications...`);
+      Logger.info('WorldStartupPipeline', `[Stage 3: Hydrate State] Instantiating primary VoxelWorld with preset "${effectivePreset}"...`);
 
-      createdWorld = new VoxelWorld(options.seed, options.preset || 'standard');
+      createdWorld = new VoxelWorld(effectiveSeed, effectivePreset);
 
       if (existingSave) {
         // Hydrate modified blocks & states purely in memory WITHOUT generating chunks
@@ -217,7 +237,7 @@ export class WorldStartupPipeline {
       // ==========================================
       const stage4Start = performance.now();
       report('generate_spawn_area', 'Generating Minimum Spawn Area...', 50);
-      Logger.info('WorldStartupPipeline', `[Stage 4/6: Generate Spawn Area] Pre-generating minimum playable area around [${spawnPosition[0].toFixed(1)}, ${spawnPosition[2].toFixed(1)}]...`);
+      Logger.info('WorldStartupPipeline', `[Stage 4: Generate Spawn Area] Pre-generating minimum playable area around [${spawnPosition[0].toFixed(1)}, ${spawnPosition[2].toFixed(1)}]...`);
 
       const spawnCX = Math.floor(spawnPosition[0] / 16);
       const spawnCZ = Math.floor(spawnPosition[2] / 16);
@@ -281,17 +301,17 @@ export class WorldStartupPipeline {
       // ==========================================
       const stage5Start = performance.now();
       report('init_systems', 'Initializing Critical Systems...', 85);
-      Logger.info('WorldStartupPipeline', `[Stage 5/6: Init Systems] Instantiating GameRuntime & Gameplay Systems...`);
+      Logger.info('WorldStartupPipeline', `[Stage 5: Init Systems] Instantiating GameRuntime & Gameplay Systems...`);
 
       checkCancelled();
       createdRuntime = new GameRuntime(
         options.container,
         options.worldId,
         options.worldName,
-        options.seed,
-        options.gameMode,
+        effectiveSeed,
+        effectiveGameMode,
         options.settings || SettingsManager.get(),
-        options.preset || 'standard',
+        effectivePreset,
         existingSave,
         createdWorld, // Pass pre-warmed world to avoid redundant sync generation
         spawnPosition
@@ -303,7 +323,7 @@ export class WorldStartupPipeline {
       checkCancelled();
 
       // ==========================================
-      // STAGE 6: READY & BACKGROUND STREAMING (95% - 100%)
+      // STAGE 6: READY (95% - 100%)
       // ==========================================
       const stage6Start = performance.now();
       report('ready', 'Entering World...', 100);
@@ -316,7 +336,7 @@ export class WorldStartupPipeline {
         spawnPosition,
         generatedChunksCount,
         isWarmLoad,
-        seed: options.seed,
+        seed: effectiveSeed,
         worldId: options.worldId,
       };
 

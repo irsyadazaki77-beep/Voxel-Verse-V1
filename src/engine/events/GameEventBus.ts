@@ -17,6 +17,8 @@ export type GameEventType =
   | 'QUEST_ACCEPTED'
   | 'QUEST_COMPLETED'
   | 'DUNGEON_CLEARED'
+  | 'DUNGEON_ROOM_CLEARED'
+  | 'DUNGEON_BOSS_TRIGGERED'
   | 'EXPEDITION_STARTED'
   | 'WORLD_EVENT_TRIGGERED'
   | 'SETTLEMENT_VISITED'
@@ -58,6 +60,8 @@ export interface GameEventPayloads {
   QUEST_ACCEPTED: { questId: string };
   QUEST_COMPLETED: { questId: string; xpReward: number; rewards?: any };
   DUNGEON_CLEARED: { dungeonId?: string; theme?: string; expedition?: any };
+  DUNGEON_ROOM_CLEARED: { dungeonId?: string; roomsCleared: number; totalRooms: number };
+  DUNGEON_BOSS_TRIGGERED: { dungeonId?: string; modifier?: any };
   EXPEDITION_STARTED: { dungeonId?: string; theme?: string; expedition?: any };
   EXPEDITION_FAILED: { dungeonId?: string; theme?: string; expedition?: any };
   REPUTATION_GAINED: { settlementId: string; amount: number };

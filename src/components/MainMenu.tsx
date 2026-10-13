@@ -271,7 +271,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
   const handleContinue = () => {
     if (worlds.length > 0) {
       const target = worlds[0];
-      onStartGame(target.id, target.seed, target.gameMode, target.name);
+      onStartGame(target.id, target.seed, target.gameMode, target.name, (target.preset as WorldPreset) || 'standard');
     } else {
       setViewState('create');
     }
@@ -281,7 +281,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
     if (!selectedWorldId) return;
     const target = worlds.find((w) => w.id === selectedWorldId);
     if (target) {
-      onStartGame(target.id, target.seed, target.gameMode, target.name);
+      onStartGame(target.id, target.seed, target.gameMode, target.name, (target.preset as WorldPreset) || 'standard');
     }
   };
 
@@ -366,7 +366,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
       crashRecoveryData.id,
       crashRecoveryData.seed,
       crashRecoveryData.gameMode,
-      `${crashRecoveryData.name} (Recovered)`
+      `${crashRecoveryData.name} (Recovered)`,
+      (crashRecoveryData.preset as WorldPreset) || 'standard'
     );
     SaveManager.clearCrashRecoveryState();
     setCrashRecoveryData(null);

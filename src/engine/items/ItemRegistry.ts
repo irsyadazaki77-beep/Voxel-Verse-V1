@@ -287,6 +287,16 @@ export const ITEM_DEFS: Record<string, ItemDef> = {
     description: 'Conductive precious ingot for enchantments, crowns, and relics.',
     baseValue: 35,
   },
+  gold_coin: {
+    id: 'gold_coin',
+    name: 'Kepeng Emas Kuno',
+    category: 'material',
+    rarity: 'uncommon',
+    maxStack: 64,
+    iconColor: '#ffd700',
+    description: 'Mata uang koin emas kuno untuk transaksi perdagangan nusantara.',
+    baseValue: 10,
+  },
   raw_mythril: {
     id: 'raw_mythril',
     name: 'Raw Mythril Ore',
@@ -784,7 +794,34 @@ export const ITEM_DEFS: Record<string, ItemDef> = {
     baseValue: 7,
   },
 
-  // Copper / Bronze Set (Tier 1)
+  // Alternate / Reinforced Leather Armor Pieces
+  leather_chestplate: {
+    id: 'leather_chestplate',
+    name: 'Tanned Leather Vest',
+    category: 'armor',
+    armorSlot: 'chest',
+    rarity: 'common',
+    maxStack: 1,
+    iconColor: '#a67c52',
+    description: 'Tough hide chest armor providing warmth and light defense.',
+    armorValue: 8,
+    durability: 140,
+    baseValue: 20,
+  },
+  leather_greaves: {
+    id: 'leather_greaves',
+    name: 'Tanned Leather Trousers',
+    category: 'armor',
+    armorSlot: 'legs',
+    rarity: 'common',
+    maxStack: 1,
+    iconColor: '#a67c52',
+    description: 'Flexible leather pants protecting legs from frost and scratches.',
+    armorValue: 6,
+    durability: 120,
+    baseValue: 15,
+  },
+
   copper_helmet: {
     id: 'copper_helmet',
     name: 'Bronze Hoplite Sallet',

@@ -15,7 +15,7 @@ import { CloudSystem } from '../environment/CloudSystem';
 import { ParticleManager } from '../environment/ParticleManager';
 import { SoundSynthesizer } from '../audio/SoundSynthesizer';
 import { SaveManager } from '../storage/SaveManager';
-import { GameMode, GameSettings, WorldSaveData, ItemStack, BlockType, PlayerEquipment, BossCombatState } from '../../types';
+import { GameMode, Difficulty, GameSettings, WorldSaveData, ItemStack, BlockType, PlayerEquipment, BossCombatState } from '../../types';
 import { DiscoverySystem } from '../progression/DiscoverySystem';
 import { QuestManager, QUEST_REGISTRY } from '../progression/QuestManager';
 import { SettlementManager } from '../settlement/SettlementManager';
@@ -87,10 +87,14 @@ export class GameRuntime {
 
   public settings: GameSettings;
   public gameMode: GameMode;
+  public difficulty: Difficulty = 'normal';
+  public preset: WorldPreset = 'standard';
   public worldId: string;
   public globalModifiedBlocks: Record<string, Record<string, number>> = {};
+  public globalModifiedBlockStates: Record<string, Record<string, any>> = {};
   public worldName: string;
   public seed: number;
+  public isRunning: boolean = false;
 
   public inventory: (ItemStack | null)[] = [];
   public equipment: PlayerEquipment;
@@ -121,6 +125,9 @@ export class GameRuntime {
 
   private settingsUnsubscribe: (() => void) | null = null;
   private networkBlockUnsubscribe: (() => void) | null = null;
+  private networkInventoryUnsubscribe: (() => void) | null = null;
+  private networkBootstrapUnsubscribe: (() => void) | null = null;
+  private networkDamageUnsubscribe: (() => void) | null = null;
   private questCompletedUnsubscribe: (() => void) | null = null;
   private playerCorrectedUnsubscribe: (() => void) | null = null;
   private callbacks: GameRuntimeCallbacks = {};
@@ -147,6 +154,9 @@ export class GameRuntime {
     this.seed = seed;
     this.gameMode = gameMode;
     this.settings = settings;
+    this.preset = preset || (worldData?.preset as WorldPreset) || 'standard';
+    this.difficulty = (worldData?.difficulty as Difficulty) || 'normal';
+    this.globalModifiedBlockStates = worldData?.modifiedBlockStates || {};
 
     // Listen/Sync to SettingsManager for dynamically changing settings
     this.settingsUnsubscribe = SettingsManager.subscribe((newSettings) => {
@@ -515,6 +525,51 @@ export class GameRuntime {
         this.world.setBlock(event.x, event.y, event.z, event.newBlock, true);
       }
     });
+
+    // Authoritative Server Inventory Synchronization
+    this.networkInventoryUnsubscribe = NetworkSession.getInstance().onInventory((serverInv, serverEq) => {
+      this.inventory = InventoryManager.sanitizeInventory(serverInv, 36);
+      if (serverEq) {
+        this.equipment = {
+          head: serverEq.head ? InventoryManager.createStack(serverEq.head, 1) : null,
+          chest: serverEq.chest ? InventoryManager.createStack(serverEq.chest, 1) : null,
+          legs: serverEq.legs ? InventoryManager.createStack(serverEq.legs, 1) : null,
+          feet: serverEq.feet ? InventoryManager.createStack(serverEq.feet, 1) : null,
+          accessory: serverEq.accessory ? InventoryManager.createStack(serverEq.accessory, 1) : null,
+        };
+      }
+      this.emitInventoryUpdated();
+      if (this.callbacks.onEquipmentUpdated) {
+        this.callbacks.onEquipmentUpdated({ ...this.equipment });
+      }
+    });
+
+    // Authoritative Server Bootstrap Synchronization
+    this.networkBootstrapUnsubscribe = NetworkSession.getInstance().onBootstrap((bootstrap) => {
+      if (bootstrap.stats) {
+        this.stats.health = bootstrap.stats.health;
+        this.stats.maxHealth = bootstrap.stats.maxHealth;
+        this.stats.level = bootstrap.stats.level;
+        this.stats.xp = bootstrap.stats.exp;
+      }
+      if (bootstrap.position) {
+        this.player.position.set(bootstrap.position[0], bootstrap.position[1], bootstrap.position[2]);
+      }
+    });
+
+    // Authoritative Server Damage & Combat Synchronization
+    this.networkDamageUnsubscribe = NetworkSession.getInstance().onDamage((dmgEvent) => {
+      if (dmgEvent.targetId === NetworkSession.getInstance().localSessionId) {
+        this.stats.takeDamage(dmgEvent.damageAmount);
+        this.audio.playPlayerHit();
+        this.player.applyScreenShake(0.3);
+        if (dmgEvent.isFatal || this.stats.health <= 0) {
+          if (this.callbacks.onPlayerDeath) {
+            this.callbacks.onPlayerDeath();
+          }
+        }
+      }
+    });
   }
 
   public registerCallbacks(callbacks: GameRuntimeCallbacks): void {
@@ -591,9 +646,11 @@ export class GameRuntime {
   }
 
   public start(): void {
+    if (this.isRunning || this.isDisposed) return;
+    this.isRunning = true;
     this.lastTime = performance.now();
     this.lastFpsTime = performance.now();
-    this.animate(this.lastTime);
+    this.reqId = requestAnimationFrame(this.animate);
   }
 
   private isDisposed: boolean = false;
@@ -601,9 +658,11 @@ export class GameRuntime {
   public stop(): void {
     if (this.isDisposed) return;
     this.isDisposed = true;
+    this.isRunning = false;
 
-    if (typeof cancelAnimationFrame !== 'undefined') {
+    if (this.reqId && typeof cancelAnimationFrame !== 'undefined') {
       cancelAnimationFrame(this.reqId);
+      this.reqId = 0;
     }
 
     // Unsubscribe from SettingsManager, NetworkSession, and GameEventBus
@@ -614,6 +673,18 @@ export class GameRuntime {
     if (this.networkBlockUnsubscribe) {
       this.networkBlockUnsubscribe();
       this.networkBlockUnsubscribe = null;
+    }
+    if (this.networkInventoryUnsubscribe) {
+      this.networkInventoryUnsubscribe();
+      this.networkInventoryUnsubscribe = null;
+    }
+    if (this.networkBootstrapUnsubscribe) {
+      this.networkBootstrapUnsubscribe();
+      this.networkBootstrapUnsubscribe = null;
+    }
+    if (this.networkDamageUnsubscribe) {
+      this.networkDamageUnsubscribe();
+      this.networkDamageUnsubscribe = null;
     }
     if (this.questCompletedUnsubscribe) {
       this.questCompletedUnsubscribe();
@@ -641,6 +712,13 @@ export class GameRuntime {
       this.viewmodel.dispose();
     }
 
+    if (this.player) {
+      this.player.dispose();
+    }
+    if (this.audio) {
+      this.audio.dispose();
+    }
+
     this.inputManager.dispose();
     this.world.dispose();
     this.sky.dispose();
@@ -654,6 +732,10 @@ export class GameRuntime {
     }
     this.renderer.dispose();
 
+    if (this.renderer?.domElement?.parentElement) {
+      this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
+    }
+
     this.simulationSystem.dispose();
     this.interactionSystem.dispose();
     this.combatSystem.dispose();
@@ -665,6 +747,7 @@ export class GameRuntime {
   }
 
   private animate = (now: number): void => {
+    if (this.isDisposed || !this.isRunning) return;
     this.reqId = requestAnimationFrame(this.animate);
 
     const deltaTime = Math.min((now - this.lastTime) / 1000, 0.1);
@@ -695,9 +778,11 @@ export class GameRuntime {
     // 2. Sync current world modifications to global state
     const currentSerialized = SaveManager.serializeModifiedBlocks(this.world);
     this.globalModifiedBlocks = { ...this.globalModifiedBlocks, ...currentSerialized };
+    const currentStatesSerialized = SaveManager.serializeModifiedBlockStates(this.world);
+    this.globalModifiedBlockStates = { ...this.globalModifiedBlockStates, ...currentStatesSerialized };
 
     // 3. Teardown / Dispose Old World instance
-    const oldPreset = this.world ? this.world.preset : 'standard';
+    const oldPreset = this.world ? this.world.preset : (this.preset || 'standard');
     this.scene.remove(this.world.worldGroup);
     this.world.dispose();
 
@@ -715,6 +800,19 @@ export class GameRuntime {
         this.world.modifiedBlocks.set(chunkKey, localMap);
       }
     });
+
+    if (this.world.modifiedBlockStates) {
+      Object.entries(this.globalModifiedBlockStates).forEach(([chunkKey, states]) => {
+        const parsed = parseDimensionChunkKey(chunkKey);
+        if (parsed.dimensionId === dimensionId) {
+          const localMap = new Map<string, any>();
+          Object.entries(states).forEach(([localKey, state]) => {
+            localMap.set(localKey, state);
+          });
+          this.world.modifiedBlockStates.set(chunkKey, localMap);
+        }
+      });
+    }
 
     this.scene.add(this.world.worldGroup);
     

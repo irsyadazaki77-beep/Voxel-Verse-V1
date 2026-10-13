@@ -124,7 +124,7 @@ if (typeof self !== 'undefined') {
       const meshData = VoxelMesher.buildChunkMeshData(getBlock, 16, 128, 16);
       
       const response: MeshTaskResult = { type: 'mesh', taskId: input.taskId, cx, cz, sourceRevision, meshData };
-      const transfers: ArrayBuffer[] = [
+      const rawBuffers: ArrayBuffer[] = [
         meshData.solidPositions.buffer,
         meshData.solidNormals.buffer,
         meshData.solidColors.buffer,
@@ -147,6 +147,7 @@ if (typeof self !== 'undefined') {
         meshData.waterIndices.buffer,
         meshData.waterMaterials.buffer
       ];
+      const transfers = rawBuffers.filter(buf => buf && buf.byteLength > 0);
       
       (self as unknown as { postMessage: (msg: any, transfer: any[]) => void }).postMessage(response, transfers);
     }

@@ -2,12 +2,14 @@
 import React, { useState } from 'react';
 import { SettingsModal } from './SettingsModal';
 import { VoxelVerseLogo } from './VoxelVerseLogo';
+import { Loader2 } from 'lucide-react';
 
 interface PauseMenuProps {
   onResume: () => void;
   onSaveAndQuit: () => void;
   onOpenMultiplayerLobby?: () => void;
   isMultiplayer?: boolean;
+  isSaving?: boolean;
 }
 
 export const PauseMenu: React.FC<PauseMenuProps> = ({
@@ -15,6 +17,7 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
   onSaveAndQuit,
   onOpenMultiplayerLobby,
   isMultiplayer = false,
+  isSaving = false,
 }) => {
   const [showSettings, setShowSettings] = useState(false);
 
@@ -34,14 +37,16 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
           <button
             id="btn-resume-game"
             onClick={onResume}
-            className="w-full py-3 bg-sky-500 hover:bg-sky-400 active:scale-98 text-white rounded-2xl font-bold text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
+            disabled={isSaving}
+            className="w-full py-3 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed active:scale-98 text-white rounded-2xl font-bold text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
           >
             ▶ Resume Journey
           </button>
 
           <button
             onClick={() => setShowSettings(true)}
-            className="w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/90 rounded-2xl font-bold text-xs transition-all cursor-pointer"
+            disabled={isSaving}
+            className="w-full py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 text-white/90 rounded-2xl font-bold text-xs transition-all cursor-pointer"
           >
             ⚙ Settings & Accessibility
           </button>
@@ -49,7 +54,8 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
           {onOpenMultiplayerLobby && (
             <button
               onClick={onOpenMultiplayerLobby}
-              className="w-full py-2.5 bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/30 text-emerald-300 rounded-2xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+              disabled={isSaving}
+              className="w-full py-2.5 bg-emerald-950/40 hover:bg-emerald-900/60 disabled:opacity-50 disabled:cursor-not-allowed border border-emerald-500/30 text-emerald-300 rounded-2xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
             >
               <span>🌐 Multiplayer Test Harness</span>
             </button>
@@ -58,9 +64,17 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
           <button
             id="btn-save-quit"
             onClick={onSaveAndQuit}
-            className="w-full py-2.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 rounded-2xl font-bold text-xs transition-all cursor-pointer"
+            disabled={isSaving}
+            className="w-full py-2.5 bg-rose-500/20 hover:bg-rose-500/30 disabled:bg-rose-500/10 disabled:opacity-60 disabled:cursor-wait border border-rose-500/30 text-rose-300 rounded-2xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
           >
-            Save & Exit to Main Menu
+            {isSaving ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-300" />
+                <span>Saving World to Disk...</span>
+              </>
+            ) : (
+              <span>Save & Exit to Main Menu</span>
+            )}
           </button>
         </div>
 

@@ -16,6 +16,8 @@ export interface NetworkTransport {
   disconnect(): void;
   send(message: NetworkMessagePayload): void;
   onMessage(callback: (msg: NetworkMessagePayload) => void): () => void;
+  onClose?(callback: () => void): () => void;
+  onError?(callback: (err: any) => void): () => void;
   isConnected(): boolean;
   getStats(): TransportStats;
   setSimulationParams(latencyMs: number, jitterMs: number, packetLossRate: number): void;
@@ -24,6 +26,7 @@ export interface NetworkTransport {
 export class LocalLoopbackTransport implements NetworkTransport {
   private connected = false;
   private messageListeners: Set<(msg: NetworkMessagePayload) => void> = new Set();
+  private closeListeners: Set<() => void> = new Set();
   private stats: TransportStats = {
     bytesSent: 0,
     bytesReceived: 0,
@@ -43,6 +46,12 @@ export class LocalLoopbackTransport implements NetworkTransport {
   public disconnect(): void {
     console.log('[LocalLoopbackTransport] Disconnected');
     this.connected = false;
+    this.closeListeners.forEach(cb => cb());
+  }
+
+  public onClose(callback: () => void): () => void {
+    this.closeListeners.add(callback);
+    return () => this.closeListeners.delete(callback);
   }
 
   public send(message: NetworkMessagePayload): void {

@@ -6,6 +6,11 @@ import crypto from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { CRAFTING_RECIPES } from './src/engine/items/CraftingSystem';
+import { InventoryManager } from './src/engine/items/InventoryManager';
+import { ServerAuthority } from './src/engine/network/ServerAuthority';
+import { ITEM_DEFS } from './src/engine/items/ItemRegistry';
+import { MiningEngine } from './src/engine/world/MiningEngine';
+import { WORLD_MIN_Y, WORLD_MAX_Y, MAX_INTERACTION_REACH } from './src/engine/world/WorldConfig';
 
 const PORT = 3000;
 const PROTOCOL_VERSION = '1.0.0-phase9';
@@ -83,6 +88,7 @@ export interface ServerPlayer {
   isHost: boolean;
   ws: WebSocket | null;
   chatMsgCount: number; // For chat rate limiting
+  processedTransactions: Set<string>; // Deduplication cache
 }
 
 export interface ActiveSession {
@@ -642,6 +648,7 @@ async function startServer() {
             const player = cached.player;
             player.ws = ws;
             player.lastActive = Date.now();
+            if (!player.processedTransactions) player.processedTransactions = new Set<string>();
             players.set(activeSessionId, player);
 
             console.log(`[Server Multiplayer] Resumed session for player: ${player.playerName} (${activeSessionId})`);
@@ -708,6 +715,7 @@ async function startServer() {
             isHost: msg.isHost || false,
             ws,
             chatMsgCount: 0,
+            processedTransactions: new Set<string>(),
           };
 
           players.set(activeSessionId, player);
@@ -847,64 +855,119 @@ async function startServer() {
           break;
         }
 
+        case 'RECONNECT_REQUEST': {
+          const player = players.get(activeSessionId);
+          if (!player) return;
+
+          player.lastActive = Date.now();
+          const savedPlayer = db.getPlayer(activeSessionId);
+          if (!savedPlayer) return;
+
+          const lastRev = typeof msg.lastKnownBlockRevision === 'number' ? msg.lastKnownBlockRevision : 0;
+          const deltaBlocks: Array<{ x: number; y: number; z: number; blockType: number; revision: number }> = [];
+
+          Object.entries(realm.worldBlocks).forEach(([coords, blockType]) => {
+            const revision = realm.worldBlockRevisions?.[coords] || 1;
+            if (revision > lastRev) {
+              const [x, y, z] = coords.split(',').map(Number);
+              deltaBlocks.push({ x, y, z, blockType, revision });
+            }
+          });
+
+          // Send missed block deltas if any, or full bootstrap if large
+          if (deltaBlocks.length > 0 && deltaBlocks.length <= 150) {
+            ws.send(
+              JSON.stringify({
+                type: 'BLOCK_CHUNK_DELTA',
+                chunkX: 0,
+                chunkZ: 0,
+                blocks: deltaBlocks,
+                timestamp: Date.now(),
+                protocolVersion: PROTOCOL_VERSION,
+              })
+            );
+          } else if (deltaBlocks.length > 150 || lastRev === 0) {
+            // Send fresh bootstrap
+            ws.send(
+              JSON.stringify({
+                type: 'PLAYER_BOOTSTRAP',
+                protocolVersion: PROTOCOL_VERSION,
+                playerId: activeSessionId,
+                playerName: session.playerName,
+                position: player.position,
+                inventory: savedPlayer.inventory,
+                equipment: savedPlayer.equipment,
+                stats: savedPlayer.stats,
+                questProgress: savedPlayer.questProgress,
+                reputation: savedPlayer.reputation,
+                worldSeed: realm.worldSeed,
+                worldPreset: realm.worldPreset,
+                blocks: Object.entries(realm.worldBlocks).map(([coords, blockType]) => {
+                  const [x, y, z] = coords.split(',').map(Number);
+                  const revision = realm.worldBlockRevisions?.[coords] || 1;
+                  return { x, y, z, blockType, revision };
+                }),
+                onlinePlayers: Array.from(players.values())
+                  .filter((p) => sessions.get(p.token)?.realmId === session.realmId)
+                  .map((p) => ({
+                    sessionId: p.sessionId,
+                    playerName: p.playerName,
+                    position: p.position,
+                    rotation: p.rotation,
+                    animState: p.animState,
+                  })),
+                timestamp: Date.now(),
+              })
+            );
+          }
+
+          // Always synchronize latest authoritative inventory
+          ws.send(
+            JSON.stringify({
+              type: 'INVENTORY_SNAPSHOT',
+              inventory: savedPlayer.inventory,
+              equipment: savedPlayer.equipment,
+              timestamp: Date.now(),
+              protocolVersion: PROTOCOL_VERSION,
+              success: true,
+            })
+          );
+          break;
+        }
+
         case 'BLOCK_CHANGE': {
           const player = players.get(activeSessionId);
           if (!player) return;
 
           player.lastActive = Date.now();
 
+          // Transaction deduplication check
+          const txId = msg.transactionId;
+          if (txId && player.processedTransactions.has(txId)) {
+            console.log(`[Server Security] Duplicate block transaction ${txId} skipped`);
+            return;
+          }
+
           const bx = Number(msg.x);
           const by = Number(msg.y);
           const bz = Number(msg.z);
 
-          // 1. Strict integer check
-          if (!Number.isInteger(bx) || !Number.isInteger(by) || !Number.isInteger(bz)) {
-            console.warn(`[Server Security] Non-integer block coordinates rejected: (${bx}, ${by}, ${bz})`);
-            return;
-          }
-
-          // 2. Strict world height bounds check
-          if (by < 0 || by >= 256) {
-            console.warn(`[Server Security] Out of bounds block coordinate rejected: y=${by}`);
-            return;
-          }
-
-          // 3. Server-Authoritative Reach Validation (Euclidean block center)
-          const dx = (bx + 0.5) - player.position[0];
-          const dy = (by + 0.5) - player.position[1];
-          const dz = (bz + 0.5) - player.position[2];
-          const reachDistanceSq = dx * dx + dy * dy + dz * dz;
-
-          const MAX_REACH = 8.0;
-          if (reachDistanceSq > MAX_REACH * MAX_REACH) {
-            console.warn(`[Server Security] Block action rejected: Out of reach by ${player.playerName}`);
-            ws.send(
-              JSON.stringify({
-                type: 'BLOCK_CHANGE',
-                x: bx,
-                y: by,
-                z: bz,
-                oldBlockType: msg.oldBlockType,
-                newBlockType: msg.oldBlockType, // Revert block back
-                playerSessionId: activeSessionId,
-                timestamp: Date.now(),
-                protocolVersion: PROTOCOL_VERSION,
-              })
-            );
-            return;
-          }
-
-          if (typeof msg.newBlockType !== 'number' || msg.newBlockType < 0 || msg.newBlockType > 255) {
-            console.warn(`[Server Security] Invalid block type requested: ${msg.newBlockType}`);
-            return;
-          }
-
           const coordKey = `${bx},${by},${bz}`;
           const currentServerBlock = realm.worldBlocks[coordKey];
+          const pState = db.getPlayer(player.playerId);
+          const currentInv = pState?.inventory || [];
 
-          // 4. Old block state desync check
-          if (currentServerBlock !== undefined && msg.oldBlockType !== undefined && currentServerBlock !== msg.oldBlockType) {
-            console.warn(`[Server Security] Old block state desync rejected for ${player.playerName} at (${bx},${by},${bz}). Server: ${currentServerBlock}, Client: ${msg.oldBlockType}`);
+          // Comprehensive authoritative validation via ServerAuthority
+          const valRes = ServerAuthority.validateBlockChange(
+            msg,
+            player.position,
+            currentInv,
+            currentServerBlock
+          );
+
+          if (!valRes.valid) {
+            console.warn(`[Server Security] Block action rejected for ${player.playerName}: ${valRes.reason}`);
+            // Rollback client to authoritative server state
             ws.send(
               JSON.stringify({
                 type: 'BLOCK_CHANGE',
@@ -912,38 +975,28 @@ async function startServer() {
                 y: by,
                 z: bz,
                 oldBlockType: msg.oldBlockType,
-                newBlockType: currentServerBlock,
+                newBlockType: currentServerBlock !== undefined ? currentServerBlock : msg.oldBlockType,
                 playerSessionId: activeSessionId,
+                transactionId: txId,
                 timestamp: Date.now(),
                 protocolVersion: PROTOCOL_VERSION,
               })
             );
-            return;
-          }
 
-          // 5. Solid block placement inventory validation
-          if (msg.newBlockType !== 0) {
-            const pState = db.getPlayer(player.playerId);
-            if (pState && pState.inventory) {
-              const hasInventoryItem = pState.inventory.some((slot) => slot && slot.count > 0);
-              if (!hasInventoryItem) {
-                console.warn(`[Server Security] Block placement without inventory item rejected for ${player.playerName}`);
-                ws.send(
-                  JSON.stringify({
-                    type: 'BLOCK_CHANGE',
-                    x: bx,
-                    y: by,
-                    z: bz,
-                    oldBlockType: msg.oldBlockType,
-                    newBlockType: msg.oldBlockType,
-                    playerSessionId: activeSessionId,
-                    timestamp: Date.now(),
-                    protocolVersion: PROTOCOL_VERSION,
-                  })
-                );
-                return;
-              }
+            // Re-sync authoritative inventory if rejected
+            if (pState) {
+              ws.send(
+                JSON.stringify({
+                  type: 'INVENTORY_SNAPSHOT',
+                  inventory: pState.inventory,
+                  equipment: pState.equipment,
+                  transactionId: txId,
+                  timestamp: Date.now(),
+                  protocolVersion: PROTOCOL_VERSION,
+                })
+              );
             }
+            return;
           }
 
           // Solid block placement collision check (prevent trapping player inside block)
@@ -967,26 +1020,87 @@ async function startServer() {
               bz < playerBoxMaxZ
             ) {
               console.warn(`[Server Security] Block placement inside player bounding box denied.`);
+              ws.send(
+                JSON.stringify({
+                  type: 'BLOCK_CHANGE',
+                  x: bx,
+                  y: by,
+                  z: bz,
+                  oldBlockType: msg.oldBlockType,
+                  newBlockType: currentServerBlock !== undefined ? currentServerBlock : 0,
+                  playerSessionId: activeSessionId,
+                  transactionId: txId,
+                  timestamp: Date.now(),
+                  protocolVersion: PROTOCOL_VERSION,
+                })
+              );
               return;
             }
           }
 
-          // Block Revisioning & AIR Tombstone persistence
+          // Revision check to prevent rollback/replay
           if (!realm.worldBlockRevisions) realm.worldBlockRevisions = {};
-
           const currentRev = realm.worldBlockRevisions[coordKey] || 0;
           if (msg.revision !== undefined && typeof msg.revision === 'number' && msg.revision < currentRev) {
             console.warn(`[Server Security] Stale block update rejected (Client rev: ${msg.revision}, Server rev: ${currentRev})`);
             return;
           }
 
+          // Atomic material consumption for placement OR drop generation for breaking
+          let inventoryModified = false;
+          if (msg.newBlockType !== 0) {
+            // Block Placement: consume the exact matching material
+            const materialId = valRes.consumedMaterialId;
+            if (materialId && pState) {
+              const remRes = InventoryManager.removeItem(pState.inventory, materialId, 1);
+              if (remRes.success) {
+                inventoryModified = true;
+              } else {
+                console.warn(`[Server Security] Failed to consume material ${materialId} for block placement`);
+                return;
+              }
+            }
+          } else if (msg.newBlockType === 0 && currentServerBlock !== undefined && currentServerBlock !== 0) {
+            // Block Destruction: Authoritative drops calculation
+            const drops = MiningEngine.getBlockDrops(currentServerBlock, null, 'survival');
+            if (drops.length > 0 && pState) {
+              for (const drop of drops) {
+                InventoryManager.addItem(pState.inventory, drop.itemId, drop.count);
+              }
+              inventoryModified = true;
+            }
+          }
+
+          // Update revision & world state atomically
           const nextRev = currentRev + 1;
           realm.worldBlockRevisions[coordKey] = nextRev;
-
-          // AIR Tombstone Fix: explicitly set 0 instead of deleting from map
-          realm.worldBlocks[coordKey] = msg.newBlockType;
+          realm.worldBlocks[coordKey] = msg.newBlockType; // 0 is tombstone AIR
           realm.lastPlayed = Date.now();
           db.setRealm(session.realmId, realm); // Marks DB dirty
+
+          if (inventoryModified && pState) {
+            db.setPlayer(activeSessionId, pState);
+            // Send authoritative inventory update
+            ws.send(
+              JSON.stringify({
+                type: 'INVENTORY_SNAPSHOT',
+                inventory: pState.inventory,
+                equipment: pState.equipment,
+                transactionId: txId,
+                timestamp: Date.now(),
+                protocolVersion: PROTOCOL_VERSION,
+              })
+            );
+          }
+
+          // Mark transaction as processed
+          if (txId) {
+            player.processedTransactions.add(txId);
+            if (player.processedTransactions.size > 200) {
+              const first = player.processedTransactions.values().next().value;
+              if (first) player.processedTransactions.delete(first);
+            }
+          }
 
           // Propagate validated block change to everyone in the realm with revision tag
           broadcastToRealm(session.realmId, {
@@ -998,6 +1112,7 @@ async function startServer() {
             newBlockType: msg.newBlockType,
             playerSessionId: activeSessionId,
             revision: nextRev,
+            transactionId: txId,
             timestamp: Date.now(),
             protocolVersion: PROTOCOL_VERSION,
           });
@@ -1009,39 +1124,45 @@ async function startServer() {
           if (!player) return;
 
           player.lastActive = Date.now();
+          const txId = msg.transactionId;
 
-          const recipeId = msg.recipeId;
-          const recipe = CRAFTING_RECIPES.find((r) => r.id === recipeId);
-          if (!recipe) {
-            console.warn(`[Server Security] Crafting request for non-existent recipe: ${recipeId}`);
+          // Transaction deduplication check
+          if (txId && player.processedTransactions.has(txId)) {
+            console.log(`[Server Security] Duplicate crafting transaction ${txId} skipped`);
             return;
           }
 
+          const recipeId = msg.recipeId;
+          const quantity = typeof msg.quantity === 'number' && msg.quantity > 0 ? Math.floor(msg.quantity) : 1;
           const pState = db.getPlayer(activeSessionId);
           if (!pState) return;
 
-          // Verify player inventory has all required input ingredients
-          let canCraft = true;
-          for (const input of recipe.inputs) {
-            let totalFound = 0;
-            pState.inventory.forEach((slot) => {
-              if (slot && slot.itemId === input.itemId) {
-                totalFound += slot.count;
-              }
-            });
-            if (totalFound < input.count) {
-              canCraft = false;
-              break;
-            }
-          }
+          // Server-side authoritative craft validation via ServerAuthority
+          const valRes = ServerAuthority.validateCraftRequest(
+            recipeId,
+            quantity,
+            pState.inventory,
+            msg.stationContext
+          );
 
-          if (!canCraft) {
-            console.warn(`[Server Security] Crafting rejected: Insufficient ingredients for recipe ${recipeId}`);
+          if (!valRes.valid) {
+            console.warn(`[Server Security] Crafting rejected for ${player.playerName}: ${valRes.reason}`);
+            ws.send(
+              JSON.stringify({
+                type: 'TRANSACTION_REJECT',
+                transactionId: txId || '',
+                reason: valRes.reason || 'CRAFT_VALIDATION_FAILED',
+                timestamp: Date.now(),
+                protocolVersion: PROTOCOL_VERSION,
+              })
+            );
             ws.send(
               JSON.stringify({
                 type: 'INVENTORY_SNAPSHOT',
                 inventory: pState.inventory,
                 equipment: pState.equipment,
+                transactionId: txId,
+                success: false,
                 timestamp: Date.now(),
                 protocolVersion: PROTOCOL_VERSION,
               })
@@ -1049,50 +1170,32 @@ async function startServer() {
             return;
           }
 
-          // Consume input ingredients atomically
+          const recipe = CRAFTING_RECIPES.find((r) => r.id === recipeId)!;
+
+          // Atomic Transaction: Consume ingredients
           for (const input of recipe.inputs) {
-            let remaining = input.count;
-            for (let i = 0; i < pState.inventory.length; i++) {
-              const slot = pState.inventory[i];
-              if (slot && slot.itemId === input.itemId) {
-                if (slot.count > remaining) {
-                  slot.count -= remaining;
-                  remaining = 0;
-                  break;
-                } else {
-                  remaining -= slot.count;
-                  pState.inventory[i] = null;
-                }
-              }
-              if (remaining <= 0) break;
+            const countToConsume = input.count * quantity;
+            const remRes = InventoryManager.removeItem(pState.inventory, input.itemId, countToConsume);
+            if (!remRes.success) {
+              console.error(`[Server Security] Critical crafting anomaly: failed to remove ${input.itemId}`);
+              return;
             }
           }
 
-          // Add crafted output stack to inventory
-          const out = recipe.output;
-          let added = false;
-          // Try stacking into existing item slot first
-          for (let i = 0; i < pState.inventory.length; i++) {
-            const slot = pState.inventory[i];
-            if (slot && slot.itemId === out.itemId) {
-              slot.count += out.count;
-              added = true;
-              break;
-            }
-          }
-          if (!added) {
-            // Place into first empty slot
-            for (let i = 0; i < pState.inventory.length; i++) {
-              if (pState.inventory[i] === null) {
-                pState.inventory[i] = { itemId: out.itemId, count: out.count };
-                added = true;
-                break;
-              }
-            }
-          }
+          // Atomic Transaction: Allocate output stack
+          const totalOutput = recipe.output.count * quantity;
+          InventoryManager.addItem(pState.inventory, recipe.output.itemId, totalOutput);
 
           db.setPlayer(activeSessionId, pState);
-          console.log(`[Authoritative Crafting] ${player.playerName} crafted ${out.itemId} x${out.count}`);
+          console.log(`[Authoritative Crafting] ${player.playerName} crafted ${recipe.output.itemId} x${totalOutput}`);
+
+          if (txId) {
+            player.processedTransactions.add(txId);
+            if (player.processedTransactions.size > 200) {
+              const first = player.processedTransactions.values().next().value;
+              if (first) player.processedTransactions.delete(first);
+            }
+          }
 
           // Broadcast authoritative inventory snapshot to client
           ws.send(
@@ -1100,6 +1203,8 @@ async function startServer() {
               type: 'INVENTORY_SNAPSHOT',
               inventory: pState.inventory,
               equipment: pState.equipment,
+              transactionId: txId,
+              success: true,
               timestamp: Date.now(),
               protocolVersion: PROTOCOL_VERSION,
             })
@@ -1112,13 +1217,32 @@ async function startServer() {
           if (!player) return;
 
           player.lastActive = Date.now();
+          const txId = msg.transactionId;
+
+          // Transaction deduplication check
+          if (txId && player.processedTransactions.has(txId)) {
+            console.log(`[Server Security] Duplicate inventory transaction ${txId} skipped`);
+            return;
+          }
 
           const { actionType, fromSlot, toSlot, itemId, count } = msg;
           const pState = db.getPlayer(activeSessionId);
           if (!pState) return;
 
-          if (fromSlot < 0 || fromSlot >= 36 || toSlot < 0 || toSlot >= 36) {
-            console.warn('[Server Security] Inventory slot out of bounds');
+          const valRes = ServerAuthority.validateInventoryAction(msg, pState.inventory);
+          if (!valRes.valid) {
+            console.warn(`[Server Security] Inventory action rejected for ${player.playerName}: ${valRes.reason}`);
+            ws.send(
+              JSON.stringify({
+                type: 'INVENTORY_SNAPSHOT',
+                inventory: pState.inventory,
+                equipment: pState.equipment,
+                transactionId: txId,
+                success: false,
+                timestamp: Date.now(),
+                protocolVersion: PROTOCOL_VERSION,
+              })
+            );
             return;
           }
 
@@ -1126,17 +1250,46 @@ async function startServer() {
             const itemFrom = pState.inventory[fromSlot];
             const itemTo = pState.inventory[toSlot];
 
-            pState.inventory[fromSlot] = itemTo;
-            pState.inventory[toSlot] = itemFrom;
+            // If merging into existing stack with matching item ID
+            if (itemFrom && itemTo && itemFrom.itemId === itemTo.itemId) {
+              const def = ITEM_DEFS[itemFrom.itemId];
+              const maxStack = def ? def.maxStack : 64;
+              const space = maxStack - itemTo.count;
+              if (space > 0) {
+                const transfer = Math.min(space, itemFrom.count);
+                itemTo.count += transfer;
+                itemFrom.count -= transfer;
+                if (itemFrom.count <= 0) {
+                  pState.inventory[fromSlot] = null;
+                }
+              } else {
+                // Regular swap
+                pState.inventory[fromSlot] = itemTo;
+                pState.inventory[toSlot] = itemFrom;
+              }
+            } else {
+              // Standard swap
+              pState.inventory[fromSlot] = itemTo;
+              pState.inventory[toSlot] = itemFrom;
+            }
             db.setPlayer(activeSessionId, pState);
-          } else if (actionType === 'drop') {
+          } else if (actionType === 'drop' || actionType === 'consume') {
             const sourceItem = pState.inventory[fromSlot];
-            if (sourceItem && sourceItem.itemId === itemId && sourceItem.count >= count && count > 0) {
-              sourceItem.count -= count;
+            const amount = Math.min(sourceItem?.count || 0, count || 1);
+            if (sourceItem && amount > 0) {
+              sourceItem.count -= amount;
               if (sourceItem.count <= 0) {
                 pState.inventory[fromSlot] = null;
               }
               db.setPlayer(activeSessionId, pState);
+            }
+          }
+
+          if (txId) {
+            player.processedTransactions.add(txId);
+            if (player.processedTransactions.size > 200) {
+              const first = player.processedTransactions.values().next().value;
+              if (first) player.processedTransactions.delete(first);
             }
           }
 
@@ -1146,6 +1299,8 @@ async function startServer() {
               type: 'INVENTORY_SNAPSHOT',
               inventory: pState.inventory,
               equipment: pState.equipment,
+              transactionId: txId,
+              success: true,
               timestamp: Date.now(),
               protocolVersion: PROTOCOL_VERSION,
             })
@@ -1200,22 +1355,41 @@ async function startServer() {
             return;
           }
 
-          // Authoritative Server Damage Calculation (Ignore client damageAmount!)
+          // Authoritative Server Damage Calculation (Ignore client-provided damageAmount!)
           const pState = db.getPlayer(attackerId);
           const equippedWeapon = pState?.equipment?.mainHand;
-          let calculatedDamage = 12; // Base bare-hand damage
-          if (equippedWeapon === 'diamond_sword') calculatedDamage = 35;
-          else if (equippedWeapon === 'iron_sword') calculatedDamage = 24;
-          else if (equippedWeapon === 'wooden_pickaxe') calculatedDamage = 16;
+          let calculatedDamage = 10; // Base bare-hand damage
+          if (equippedWeapon && ITEM_DEFS[equippedWeapon]) {
+            const wDef = ITEM_DEFS[equippedWeapon];
+            calculatedDamage = wDef.attackDamage || 12;
+          } else if (equippedWeapon === 'diamond_sword') {
+            calculatedDamage = 35;
+          } else if (equippedWeapon === 'iron_sword') {
+            calculatedDamage = 24;
+          } else if (equippedWeapon === 'wooden_pickaxe') {
+            calculatedDamage = 16;
+          }
 
           // Check and update health in persistent database
           const targetState = db.getPlayer(targetId);
           if (targetState) {
-            targetState.stats.health = Math.max(0, targetState.stats.health - calculatedDamage);
+            // Target armor defense calculation
+            let totalArmor = 0;
+            if (targetState.equipment) {
+              Object.values(targetState.equipment).forEach((pieceId) => {
+                if (pieceId && ITEM_DEFS[pieceId]) {
+                  totalArmor += ITEM_DEFS[pieceId].armorValue || 0;
+                }
+              });
+            }
+            const defenseMultiplier = Math.max(0.2, 1.0 - (totalArmor * 0.04));
+            const finalDamage = Math.max(1, Math.round(calculatedDamage * defenseMultiplier));
+
+            targetState.stats.health = Math.max(0, targetState.stats.health - finalDamage);
             db.setPlayer(targetId, targetState);
 
             console.log(
-              `[Authoritative Combat] Player ${attacker.playerName} dealt ${calculatedDamage} damage to ${target.playerName}. Target health: ${targetState.stats.health}`
+              `[Authoritative Combat] Player ${attacker.playerName} dealt ${finalDamage} damage (base: ${calculatedDamage}, armor: ${totalArmor}) to ${target.playerName}. Target health: ${targetState.stats.health}`
             );
 
             // Propagate verified damage event to everyone in the SAME realm
@@ -1223,8 +1397,9 @@ async function startServer() {
               type: 'DAMAGE_EVENT',
               attackerId,
               targetId,
-              damageAmount: calculatedDamage,
+              damageAmount: finalDamage,
               damageType: msg.damageType || 'physical',
+              isFatal: targetState.stats.health <= 0,
               timestamp: Date.now(),
               protocolVersion: PROTOCOL_VERSION,
             });

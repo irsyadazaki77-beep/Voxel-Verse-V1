@@ -26,13 +26,22 @@ export interface WorldSummary {
 }
 
 export class SaveManager {
+  private static saveMutexMap: Map<string, Promise<boolean>> = new Map();
+
   public static getWorlds(): WorldSummary[] {
     try {
       const raw = localStorage.getItem(WORLDS_INDEX_KEY);
       if (!raw) return [];
       const list = JSON.parse(raw);
       if (!Array.isArray(list)) return [];
-      return list.filter((w) => w && typeof w.id === 'string' && typeof w.name === 'string');
+      return list
+        .filter((w) => w && typeof w.id === 'string' && typeof w.name === 'string')
+        .map((w) => ({
+          ...w,
+          preset: w.preset || 'standard',
+          difficulty: w.difficulty || 'normal',
+          seed: typeof w.seed === 'number' ? w.seed : 42819,
+        }));
     } catch (e) {
       Logger.warn('SaveManager', 'Failed to parse worlds index', { error: (e as Error).message });
       return [];
@@ -329,8 +338,43 @@ export class SaveManager {
     return false;
   }
 
-  // Durable Asynchronous Save Strategy (Awaits persistent commit before confirming)
+  public static async hasWorldAsync(worldId: string): Promise<boolean> {
+    if (this.hasWorld(worldId)) return true;
+    try {
+      const keys = await IndexedDBStorage.getAllKeys(STORE_WORLDS);
+      return keys.includes(worldId) || keys.includes(`${worldId}_backup`);
+    } catch {
+      return false;
+    }
+  }
+
+  // Durable Asynchronous Save Strategy with active mutex coordination (Queues concurrent requests)
   public static async saveWorldAsync(data: WorldSaveData): Promise<boolean> {
+    const worldId = data.id || 'world';
+    const previousSavePromise = this.saveMutexMap.get(worldId) || Promise.resolve(true);
+
+    const queuedOperation = (async () => {
+      try {
+        await previousSavePromise;
+      } catch {
+        // Continue even if previous save failed so new save isn't permanently blocked
+      }
+      return this.executeSaveWorldAsync(data);
+    })();
+
+    this.saveMutexMap.set(worldId, queuedOperation);
+
+    try {
+      return await queuedOperation;
+    } finally {
+      if (this.saveMutexMap.get(worldId) === queuedOperation) {
+        this.saveMutexMap.delete(worldId);
+      }
+    }
+  }
+
+  // Internal execution of atomic persistent commit with historical backup rotation
+  private static async executeSaveWorldAsync(data: WorldSaveData): Promise<boolean> {
     try {
       const key = `voxelverse_world_${data.id}`;
       const tempKey = `${key}_temp`;
@@ -348,6 +392,8 @@ export class SaveManager {
 
       data.version = CURRENT_SAVE_VERSION;
       data.lastPlayed = Date.now();
+      data.preset = data.preset || 'standard';
+      data.difficulty = data.difficulty || 'normal';
       data.furnaces = FurnaceManager.serialize();
       data.farmingPlots = FarmingManager.serialize();
       data.containers = BlockPlacementEngine.serializeContainers();
@@ -364,27 +410,53 @@ export class SaveManager {
       let idbSuccess = false;
       let localSuccess = false;
 
-      // 1. IndexedDB primary & backup - Awaited for durable write
+      // 1. IndexedDB Safe Backup Rotation & Primary Commit
       try {
-        const [pOk, bOk] = await Promise.all([
-          IndexedDBStorage.setItem(STORE_WORLDS, { id: data.id, payload, updatedAt: Date.now() }),
-          IndexedDBStorage.setItem(STORE_WORLDS, { id: `${data.id}_backup`, payload, updatedAt: Date.now() }),
-        ]);
-        idbSuccess = Boolean(pOk || bOk);
+        // Inspect previous valid primary save in IndexedDB before overwriting
+        const existingRecord = await IndexedDBStorage.getItem<{ id: string; payload: string }>(STORE_WORLDS, data.id);
+        if (existingRecord?.payload) {
+          const verifiedExisting = this.verifyAndExtractData(existingRecord.payload);
+          if (verifiedExisting) {
+            // Rotate verified healthy prior primary to backup (historical recovery snapshot)
+            await IndexedDBStorage.setItem(STORE_WORLDS, {
+              id: `${data.id}_backup`,
+              payload: existingRecord.payload,
+              updatedAt: Date.now(),
+            });
+          } else {
+            Logger.warn('SaveManager', `Prior primary record in IndexedDB for '${data.id}' failed checksum verification. Preserving existing backup untouched.`);
+          }
+        }
+
+        // Commit new payload to primary IndexedDB slot
+        idbSuccess = await IndexedDBStorage.setItem(STORE_WORLDS, {
+          id: data.id,
+          payload,
+          updatedAt: Date.now(),
+        });
       } catch (idbErr) {
         Logger.warn('SaveManager', 'IndexedDB write failed during saveWorldAsync', { error: (idbErr as Error).message });
       }
 
-      // 2. Save to localStorage with rotating backup support (Primary, Backup 1, Backup 2)
+      // 2. LocalStorage with verified rotating backup support (Primary, Backup 1, Backup 2)
       try {
         if (typeof localStorage !== 'undefined') {
           const existingPrimary = localStorage.getItem(key);
           if (existingPrimary) {
-            const existingBackup1 = localStorage.getItem(backup1Key);
-            if (existingBackup1) {
-              localStorage.setItem(backup2Key, existingBackup1);
+            // Verify existing primary is healthy before rotating into backup_1
+            const verifiedLocalPrimary = this.verifyAndExtractData(existingPrimary);
+            if (verifiedLocalPrimary) {
+              const existingBackup1 = localStorage.getItem(backup1Key);
+              if (existingBackup1) {
+                const verifiedBackup1 = this.verifyAndExtractData(existingBackup1);
+                if (verifiedBackup1) {
+                  localStorage.setItem(backup2Key, existingBackup1);
+                }
+              }
+              localStorage.setItem(backup1Key, existingPrimary);
+            } else {
+              Logger.warn('SaveManager', `Prior localStorage primary for '${data.id}' was invalid. Healthy backups protected from corruption.`);
             }
-            localStorage.setItem(backup1Key, existingPrimary);
           }
           localStorage.setItem(tempKey, payload);
           localStorage.setItem(key, payload);
@@ -429,12 +501,51 @@ export class SaveManager {
     }
   }
 
-  // Atomic Synchronous Save Strategy: delegates to background durable persist
-  public static saveWorld(data: WorldSaveData): boolean {
-    this.saveWorldAsync(data).catch((e) => {
-      Logger.error('SaveManager', 'Background saveWorldAsync failed', { error: (e as Error).message });
-    });
-    return true;
+  // Awaitable Save Strategy: returns promise confirming persistent write
+  public static saveWorld(data: WorldSaveData): Promise<boolean> {
+    return this.saveWorldAsync(data);
+  }
+
+  // Inspect Available Recovery Snapshot for a world (IDB backup, LocalStorage backups, or crash recovery)
+  public static async getAvailableRecoverySnapshot(worldId: string): Promise<{ layer: string; data: WorldSaveData; timestamp?: number } | null> {
+    // 1. IndexedDB Backup
+    try {
+      const backupRecord = await IndexedDBStorage.getItem<{ id: string; payload: string; updatedAt?: number }>(STORE_WORLDS, `${worldId}_backup`);
+      if (backupRecord?.payload) {
+        const verified = this.verifyAndExtractData(backupRecord.payload);
+        if (verified) {
+          return { layer: 'IndexedDB Historical Backup', data: verified, timestamp: backupRecord.updatedAt };
+        }
+      }
+    } catch {}
+
+    // 2. LocalStorage Backup 1
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const b1 = localStorage.getItem(`voxelverse_world_${worldId}_backup_1`);
+        if (b1) {
+          const verified = this.verifyAndExtractData(b1);
+          if (verified) {
+            return { layer: 'LocalStorage Backup (Snapshot 1)', data: verified, timestamp: verified.lastPlayed };
+          }
+        }
+        const b2 = localStorage.getItem(`voxelverse_world_${worldId}_backup_2`);
+        if (b2) {
+          const verified = this.verifyAndExtractData(b2);
+          if (verified) {
+            return { layer: 'LocalStorage Backup (Snapshot 2)', data: verified, timestamp: verified.lastPlayed };
+          }
+        }
+      }
+    } catch {}
+
+    // 3. Crash Recovery
+    const crash = this.getCrashRecoveryState();
+    if (crash && (crash.id === worldId || crash.id === 'recovery')) {
+      return { layer: 'Session Crash Recovery Buffer', data: crash, timestamp: crash.lastPlayed };
+    }
+
+    return null;
   }
 
   // Load World with Strict Multi-Layer Fallback Sequence:
@@ -468,7 +579,7 @@ export class SaveManager {
           if (backupRecord?.payload) {
             const verified = this.verifyAndExtractData(backupRecord.payload);
             if (verified) {
-              Logger.info('SaveManager', `[Layer 2 - IndexedDB Backup] Successfully loaded world '${worldId}'`);
+              Logger.warn('SaveManager', `[Layer 2 - IndexedDB Backup] Recovered world '${worldId}' from historical backup snapshot`);
               return verified;
             }
           }
@@ -482,9 +593,9 @@ export class SaveManager {
 
       const timeoutFallback = new Promise<WorldSaveData | null>((resolve) => {
         setTimeout(() => {
-          Logger.info('SaveManager', `Async load timed out after 1000ms, falling back directly to localStorage for world '${worldId}'`);
+          Logger.info('SaveManager', `Async load timed out after 3000ms, falling back directly to localStorage for world '${worldId}'`);
           resolve(this.loadWorld(worldId));
-        }, 1000);
+        }, 3000);
       });
 
       return await Promise.race([asyncLoadPromise, timeoutFallback]);
@@ -637,12 +748,83 @@ export class SaveManager {
     }
   }
 
+  public static saveWorldSync(data: WorldSaveData): boolean {
+    try {
+      const key = `voxelverse_world_${data.id}`;
+      const tempKey = `${key}_temp`;
+      const backup1Key = `${key}_backup_1`;
+      const backup2Key = `${key}_backup_2`;
+
+      const existingWorlds = this.getWorlds();
+      const existingEntry = existingWorlds.find((w) => w.id === data.id);
+      if (existingEntry && existingEntry.createdAt) {
+        data.createdAt = existingEntry.createdAt;
+      } else if (!data.createdAt) {
+        data.createdAt = Date.now();
+      }
+
+      data.version = CURRENT_SAVE_VERSION;
+      data.lastPlayed = Date.now();
+      data.preset = data.preset || 'standard';
+      data.difficulty = data.difficulty || 'normal';
+
+      const serialized = JSON.stringify(data);
+      const checksum = this.calculateChecksum(serialized);
+      const payload = JSON.stringify({ 
+        version: CURRENT_SAVE_VERSION,
+        checksumVersion: CURRENT_CHECKSUM_VERSION,
+        checksum, 
+        data 
+      });
+
+      if (typeof localStorage !== 'undefined') {
+        const existingPrimary = localStorage.getItem(key);
+        if (existingPrimary) {
+          const verifiedLocalPrimary = this.verifyAndExtractData(existingPrimary);
+          if (verifiedLocalPrimary) {
+            const existingBackup1 = localStorage.getItem(backup1Key);
+            if (existingBackup1) {
+              const verifiedBackup1 = this.verifyAndExtractData(existingBackup1);
+              if (verifiedBackup1) {
+                localStorage.setItem(backup2Key, existingBackup1);
+              }
+            }
+            localStorage.setItem(backup1Key, existingPrimary);
+          }
+        }
+        localStorage.setItem(tempKey, payload);
+        localStorage.setItem(key, payload);
+        localStorage.removeItem(tempKey);
+      }
+
+      this.saveWorldAsync(data).catch(() => {});
+
+      const worlds = existingWorlds.filter((w) => w.id !== data.id);
+      worlds.unshift({
+        id: data.id,
+        name: data.name,
+        seed: data.seed,
+        gameMode: data.gameMode,
+        difficulty: data.difficulty || 'normal',
+        preset: data.preset || 'standard',
+        lastPlayed: data.lastPlayed,
+        createdAt: data.createdAt,
+      });
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(WORLDS_INDEX_KEY, JSON.stringify(worlds));
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   public static renameWorld(worldId: string, newName: string): boolean {
     try {
       const data = this.loadWorld(worldId);
       if (!data) return false;
       data.name = newName.trim() || 'Renamed Realm';
-      return this.saveWorld(data);
+      return this.saveWorldSync(data);
     } catch (e) {
       Logger.error('SaveManager', 'Failed to rename world', { error: (e as Error).message });
       return false;
@@ -660,7 +842,7 @@ export class SaveManager {
       data.createdAt = Date.now();
       data.lastPlayed = Date.now();
 
-      if (this.saveWorld(data)) {
+      if (this.saveWorldSync(data)) {
         return {
           id: data.id,
           name: data.name,

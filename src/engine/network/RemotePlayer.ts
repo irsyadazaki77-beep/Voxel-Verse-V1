@@ -15,6 +15,14 @@ export class RemotePlayer {
   private bodyMesh: THREE.Mesh;
   private nameplateMesh: THREE.Sprite;
 
+  public get sessionId(): string {
+    return this.id;
+  }
+
+  public get playerName(): string {
+    return this.name;
+  }
+
   private buffer: TransformBufferEntry[] = [];
   private currentPos: THREE.Vector3 = new THREE.Vector3();
   private currentYaw = 0;

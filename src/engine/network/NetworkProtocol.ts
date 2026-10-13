@@ -1,6 +1,15 @@
 // Typed Network Protocol Schema & Serialization Layer
 export const PROTOCOL_VERSION = '1.0.0-phase9';
 
+export type ConnectionState =
+  | 'DISCONNECTED'
+  | 'CONNECTING'
+  | 'AUTHENTICATING'
+  | 'SYNCHRONIZING'
+  | 'READY'
+  | 'RECONNECTING'
+  | 'FAILED';
+
 export type NetworkMessageType =
   | 'PLAYER_JOIN'
   | 'PLAYER_LEAVE'
@@ -15,7 +24,10 @@ export type NetworkMessageType =
   | 'ENTITY_SNAPSHOT'
   | 'SERVER_STATE_SNAPSHOT'
   | 'PLAYER_BOOTSTRAP'
-  | 'INVENTORY_SNAPSHOT';
+  | 'INVENTORY_SNAPSHOT'
+  | 'TRANSACTION_REJECT'
+  | 'BLOCK_CHUNK_DELTA'
+  | 'RECONNECT_REQUEST';
 
 export interface BaseNetworkMessage {
   protocolVersion: string;
@@ -50,6 +62,7 @@ export interface InputCommandMessage extends BaseNetworkMessage {
 export interface TransformSnapshotMessage extends BaseNetworkMessage {
   type: 'TRANSFORM_SNAPSHOT';
   sessionId: string;
+  sequence?: number;
   position: [number, number, number];
   rotation: [number, number, number];
   velocity: [number, number, number];
@@ -66,22 +79,27 @@ export interface BlockChangeMessage extends BaseNetworkMessage {
   state?: any;
   playerSessionId: string;
   revision?: number;
+  transactionId?: string;
+  consumedMaterial?: string;
 }
 
 export interface InventoryActionMessage extends BaseNetworkMessage {
   type: 'INVENTORY_ACTION';
   sessionId: string;
-  actionType: 'move' | 'swap' | 'craft' | 'drop';
+  actionType: 'move' | 'swap' | 'craft' | 'drop' | 'consume';
   fromSlot: number;
   toSlot: number;
   itemId?: string;
   count: number;
+  transactionId?: string;
 }
 
 export interface CraftRequestMessage extends BaseNetworkMessage {
   type: 'CRAFT_REQUEST';
   recipeId: string;
+  quantity?: number;
   stationContext?: string;
+  transactionId?: string;
 }
 
 export interface AttackIntentMessage extends BaseNetworkMessage {
@@ -89,12 +107,37 @@ export interface AttackIntentMessage extends BaseNetworkMessage {
   targetId: string;
   weaponSlot?: number;
   sequence?: number;
+  transactionId?: string;
 }
 
 export interface InventorySnapshotMessage extends BaseNetworkMessage {
   type: 'INVENTORY_SNAPSHOT';
-  inventory: Array<{ itemId: string; count: number } | null>;
+  inventory: Array<{ itemId: string; count: number; instanceId?: string } | null>;
   equipment: Record<string, string | null>;
+  transactionId?: string;
+  success?: boolean;
+}
+
+export interface TransactionRejectMessage extends BaseNetworkMessage {
+  type: 'TRANSACTION_REJECT';
+  transactionId: string;
+  reason: string;
+  rollbackState?: any;
+}
+
+export interface BlockChunkDeltaMessage extends BaseNetworkMessage {
+  type: 'BLOCK_CHUNK_DELTA';
+  chunkX: number;
+  chunkZ: number;
+  blocks: Array<{ x: number; y: number; z: number; blockType: number; revision: number }>;
+}
+
+export interface ReconnectRequestMessage extends BaseNetworkMessage {
+  type: 'RECONNECT_REQUEST';
+  sessionId: string;
+  sessionToken: string;
+  lastKnownBlockRevision?: number;
+  clientSequence?: number;
 }
 
 export interface PlayerBootstrapMessage extends BaseNetworkMessage {
@@ -102,7 +145,7 @@ export interface PlayerBootstrapMessage extends BaseNetworkMessage {
   playerId: string;
   playerName: string;
   position: [number, number, number];
-  inventory: Array<{ itemId: string; count: number } | null>;
+  inventory: Array<{ itemId: string; count: number; instanceId?: string } | null>;
   equipment: Record<string, string | null>;
   stats: {
     health: number;
@@ -119,9 +162,15 @@ export interface PlayerBootstrapMessage extends BaseNetworkMessage {
     sessionId: string;
     playerName: string;
     position: [number, number, number];
-    rotation: [number, number, number];
-    animState: string;
+    rotation?: [number, number, number];
+    animState?: string;
   }>;
+}
+
+export interface ServerStateSnapshotMessage extends BaseNetworkMessage {
+  type: 'SERVER_STATE_SNAPSHOT';
+  players?: Array<{ sessionId: string; playerName: string; position?: [number, number, number] }>;
+  blocks?: Array<{ x: number; y: number; z: number; blockType: number }>;
 }
 
 export interface DamageEventMessage extends BaseNetworkMessage {
@@ -130,11 +179,12 @@ export interface DamageEventMessage extends BaseNetworkMessage {
   targetId: string;
   damageAmount: number;
   damageType: 'physical' | 'fire' | 'frost' | 'magic';
+  isFatal?: boolean;
 }
 
 export interface ChatMessageMessage extends BaseNetworkMessage {
   type: 'CHAT_MESSAGE';
-  senderId: string;
+  senderId?: string;
   senderName: string;
   text: string;
 }
@@ -160,10 +210,14 @@ export type NetworkMessagePayload =
   | CraftRequestMessage
   | AttackIntentMessage
   | InventorySnapshotMessage
+  | TransactionRejectMessage
+  | BlockChunkDeltaMessage
+  | ReconnectRequestMessage
   | PlayerBootstrapMessage
   | DamageEventMessage
   | ChatMessageMessage
-  | EntitySnapshotMessage;
+  | EntitySnapshotMessage
+  | ServerStateSnapshotMessage;
 
 export class NetworkSerializer {
   public static serialize(msg: NetworkMessagePayload): string {
@@ -183,3 +237,4 @@ export class NetworkSerializer {
     }
   }
 }
+

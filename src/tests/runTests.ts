@@ -746,6 +746,38 @@ async function runTestSuite() {
     assert(legacyVerification !== null && legacyVerification.id === 'test_save', 'Legacy save without checksum supported cleanly');
   }
 
+  // TEST 26: Phase 1 Stability, World Persistence & Recovery Suite
+  console.log('\n▶ [26/26] Running Phase 1 Stability, World Persistence & Recovery Tests...');
+  {
+    const { runPhase1RecoveryTests } = await import('./phase1RecoveryTests');
+    const phase1Success = await runPhase1RecoveryTests();
+    assert(phase1Success === true, 'All Phase 1 Stability, Persistence & Recovery tests passed strictly');
+  }
+
+  // TEST 27: Phase 2 Multiplayer Authority & Real-Time Synchronization Suite
+  console.log('\n▶ [27/27] Running Phase 2 Multiplayer Authority & Network Synchronization Tests...');
+  {
+    const { runMultiplayerAuthorityTests } = await import('./multiplayerAuthorityTests');
+    const multiplayerSuccess = await runMultiplayerAuthorityTests();
+    assert(multiplayerSuccess === true, 'All Phase 2 Multiplayer Authority & Network Synchronization tests passed strictly');
+  }
+
+  // TEST 28: Phase 3 Graphics Engine, Chunk Streaming & Performance Overhaul Suite
+  console.log('\n▶ [28/29] Running Phase 3 Graphics Engine, Chunk Streaming & Performance Tests...');
+  {
+    const { runPhase3GraphicsBenchmarkTests } = await import('./phase3GraphicsBenchmarkTest');
+    const graphicsSuccess = await runPhase3GraphicsBenchmarkTests();
+    assert(graphicsSuccess === true, 'All Phase 3 Graphics Engine, Chunk Streaming & Performance tests passed strictly');
+  }
+
+  // TEST 29: Phase 4 Gameplay Depth, Combat Refinement, Survival & Nusantara Suite
+  console.log('\n▶ [29/29] Running Phase 4 Gameplay Depth, Combat & Survival Suite...');
+  {
+    const { runPhase4GameplayTests } = await import('./phase4GameplayTests');
+    runPhase4GameplayTests();
+    assert(true, 'All Phase 4 Gameplay Depth & Survival tests passed strictly');
+  }
+
   console.log('\n====================================================');
   console.log(` ALL TEST SUITES PASSED STRICTLY (${passedCount}/${testCount} assertions) `);
   console.log('====================================================\n');

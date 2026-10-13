@@ -68,6 +68,8 @@ export class DungeonExpeditionManager {
 
   private static listeners: (() => void)[] = [];
 
+  private static eventUnsubscribes: (() => void)[] = [];
+
   public static initialize(savedExpedition?: ExpeditionRunState | null): void {
     this.dispose();
     if (savedExpedition) {
@@ -83,9 +85,20 @@ export class DungeonExpeditionManager {
         bossDefeated: false,
       };
     }
+
+    // Subscribe to BOSS_DEFEATED event to ensure boss defeated status is derived strictly from real combat
+    this.eventUnsubscribes.push(
+      GameEventBus.on('BOSS_DEFEATED', (data) => {
+        if (this.currentExpedition.isActive) {
+          this.recordBossDefeated(data.bossId || 'dungeon_boss');
+        }
+      })
+    );
   }
 
   public static dispose(): void {
+    this.eventUnsubscribes.forEach(un => un());
+    this.eventUnsubscribes = [];
     this.listeners = [];
     this.currentExpedition = {
       isActive: false,
@@ -141,12 +154,33 @@ export class DungeonExpeditionManager {
 
   public static clearRoom(): void {
     if (this.currentExpedition.isActive) {
-      this.currentExpedition.roomsCleared += 1;
-      if (this.currentExpedition.roomsCleared >= this.currentExpedition.totalRooms) {
-        this.currentExpedition.bossDefeated = true;
-        this.completeExpedition();
-      }
+      this.currentExpedition.roomsCleared = Math.min(
+        this.currentExpedition.totalRooms,
+        this.currentExpedition.roomsCleared + 1
+      );
       this.notify();
+
+      GameEventBus.emit('DUNGEON_ROOM_CLEARED', {
+        dungeonId: this.currentExpedition.dungeonId,
+        roomsCleared: this.currentExpedition.roomsCleared,
+        totalRooms: this.currentExpedition.totalRooms,
+      });
+
+      if (this.currentExpedition.roomsCleared >= this.currentExpedition.totalRooms && !this.currentExpedition.bossDefeated) {
+        // Rooms cleared, trigger boss encounter instead of automatically completing expedition
+        GameEventBus.emit('DUNGEON_BOSS_TRIGGERED', {
+          dungeonId: this.currentExpedition.dungeonId,
+          modifier: this.currentExpedition.modifier,
+        });
+      }
+    }
+  }
+
+  public static recordBossDefeated(bossId: string): void {
+    if (this.currentExpedition.isActive && !this.currentExpedition.bossDefeated) {
+      this.currentExpedition.bossDefeated = true;
+      this.notify();
+      this.completeExpedition();
     }
   }
 

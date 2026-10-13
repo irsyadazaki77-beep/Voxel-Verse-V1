@@ -31,6 +31,9 @@ export interface TransferableMeshData {
   waterMaterials: Float32Array;
 }
 
+const EMPTY_FLOAT32 = new Float32Array(0);
+const EMPTY_UINT32 = new Uint32Array(0);
+
 // Reusable High-Performance Typed Mesh Buffer Writer
 class DynamicMeshBuffer {
   public positions: Float32Array;
@@ -187,6 +190,17 @@ class DynamicMeshBuffer {
   } {
     const v = this.vertexCount;
     const ind = this.indexCount;
+    if (v === 0) {
+      return {
+        positions: EMPTY_FLOAT32,
+        normals: EMPTY_FLOAT32,
+        colors: EMPTY_FLOAT32,
+        uvs: EMPTY_FLOAT32,
+        tileRects: EMPTY_FLOAT32,
+        indices: EMPTY_UINT32,
+        materials: EMPTY_FLOAT32,
+      };
+    }
     return {
       positions: this.positions.slice(0, v * 3),
       normals: this.normals.slice(0, v * 3),

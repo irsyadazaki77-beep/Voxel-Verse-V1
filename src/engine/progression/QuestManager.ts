@@ -319,7 +319,13 @@ export class QuestManager {
     this.dispose();
 
     if (savedClaimedRewards && Array.isArray(savedClaimedRewards)) {
-      savedClaimedRewards.forEach(id => this.claimedRewards.add(id));
+      savedClaimedRewards.forEach(id => {
+        this.claimedRewards.add(id);
+        const qDef = QUEST_REGISTRY[id];
+        if (qDef && qDef.rewards && qDef.rewards.unlockedRecipe) {
+          CraftingSystem.unlockRecipe(qDef.rewards.unlockedRecipe);
+        }
+      });
     }
 
     // Default quests initialization

@@ -1,5 +1,7 @@
 // Nusantara Regional Settlement Economy 1.0
 // Realistic, Geography-Rooted Production Loops, Trade Commodities, Regional Price Margins & Arbitrage
+import { ItemStack } from '../../types';
+import { InventoryManager } from '../items/InventoryManager';
 
 export interface RegionalCommodityDef {
   id: string;
@@ -536,5 +538,50 @@ export class SettlementEconomy {
     }
 
     return trades;
+  }
+
+  /**
+   * Performs an atomic item trade transaction between buyer and seller inventories.
+   * Buyer receives `itemToReceive`, buyer gives `itemToGive`.
+   * Seller gives `itemToReceive`, seller receives `itemToGive`.
+   */
+  public static tradeItem(
+    buyerInventory: (ItemStack | null)[],
+    sellerInventory: (ItemStack | null)[],
+    itemToReceive: { itemId: string; count: number },
+    itemToGive: { itemId: string; count: number }
+  ): { success: boolean; message?: string } {
+    const buyerAvailable = InventoryManager.countItem(buyerInventory, itemToGive.itemId);
+    if (buyerAvailable < itemToGive.count) {
+      return { success: false, message: `Pembeli kekurangan ${itemToGive.itemId}` };
+    }
+
+    const sellerAvailable = InventoryManager.countItem(sellerInventory, itemToReceive.itemId);
+    if (sellerAvailable < itemToReceive.count) {
+      return { success: false, message: `Penjual kekurangan ${itemToReceive.itemId}` };
+    }
+
+    const testBuyer = InventoryManager.cloneInventory(buyerInventory);
+    const testSeller = InventoryManager.cloneInventory(sellerInventory);
+
+    InventoryManager.removeItem(testBuyer, itemToGive.itemId, itemToGive.count);
+    InventoryManager.removeItem(testSeller, itemToReceive.itemId, itemToReceive.count);
+
+    const buyerAdd = InventoryManager.addItem(testBuyer, itemToReceive.itemId, itemToReceive.count);
+    if (!buyerAdd.success || buyerAdd.remainingCount > 0) {
+      return { success: false, message: 'Kapasitas ransel pembeli tidak mencukupi' };
+    }
+
+    const sellerAdd = InventoryManager.addItem(testSeller, itemToGive.itemId, itemToGive.count);
+    if (!sellerAdd.success || sellerAdd.remainingCount > 0) {
+      return { success: false, message: 'Kapasitas inventaris penjual tidak mencukupi' };
+    }
+
+    InventoryManager.removeItem(buyerInventory, itemToGive.itemId, itemToGive.count);
+    InventoryManager.removeItem(sellerInventory, itemToReceive.itemId, itemToReceive.count);
+    InventoryManager.addItem(buyerInventory, itemToReceive.itemId, itemToReceive.count);
+    InventoryManager.addItem(sellerInventory, itemToGive.itemId, itemToGive.count);
+
+    return { success: true };
   }
 }

@@ -314,7 +314,7 @@ export class EntityManager {
         state.aiState = 'attack';
         state.path = [];
         state.rotation = Math.atan2(normPlayerX, normPlayerZ);
-      } else if (distToPlayer <= detectRange) {
+      } else if (distToPlayer <= detectRange && distToHomeSq <= 900) { // Max 30m leash from home
         // Transition from Alert -> Chase
         if (state.aiState === 'idle' || state.aiState === 'wander' || state.aiState === 'roam') {
           state.aiState = 'alert';
@@ -338,9 +338,14 @@ export class EntityManager {
             }
           }
         }
-      } else if (distToHomeSq > 1225) { // 35m squared = 1225
-        // Too far from spawn origin, return home
+      } else if (distToHomeSq > 100) {
+        // Target lost or exceeded leash radius. Transition to 'return' / 'retreat'
         state.aiState = 'return';
+        // Regenerate health gradually while returning
+        if (state.health < state.maxHealth) {
+          state.health = Math.min(state.maxHealth, state.health + 0.1);
+        }
+
         EntityManager._tempVecB.set(homeX, homeY, homeZ);
         const lastPf = (state as any).lastPathfindTime || 0;
         if (now - lastPf > 1500) { // Return home pathfind at most once per 1500ms

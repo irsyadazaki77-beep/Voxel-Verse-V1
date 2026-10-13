@@ -2,6 +2,7 @@
 import {
   BlockChangeMessage,
   InventoryActionMessage,
+  CraftRequestMessage,
   DamageEventMessage,
   InputCommandMessage,
 } from './NetworkProtocol';
@@ -13,10 +14,13 @@ import {
   MAX_BLOCK_TYPE_ID,
   MAX_PLAYER_SPEED,
 } from '../world/WorldConfig';
+import { ITEM_DEFS } from '../items/ItemRegistry';
+import { CRAFTING_RECIPES } from '../items/CraftingSystem';
 
 export interface ValidationResult {
   valid: boolean;
   reason?: string;
+  consumedMaterialId?: string;
 }
 
 export class ServerAuthority {
@@ -24,6 +28,14 @@ export class ServerAuthority {
   public static readonly maxCombatReach = MAX_COMBAT_REACH;
   public static readonly maxPlayerSpeed = MAX_PLAYER_SPEED;
 
+  /**
+   * Validates block placement, verifying:
+   * 1. Integer coordinates
+   * 2. Vertical world bounds [WORLD_MIN_Y, WORLD_MAX_Y)
+   * 3. Valid block type ID
+   * 4. Reach distance
+   * 5. Inventory contains the specific item corresponding to newBlockType
+   */
   public static validateBlockPlacement(
     playerPos: [number, number, number],
     x: number,
@@ -53,12 +65,24 @@ export class ServerAuthority {
     if (distSq > this.maxReachDistance * this.maxReachDistance) {
       return { valid: false, reason: 'EXCEEDS_MAX_REACH' };
     }
+
+    // Material validation: verify the player actually possesses an item that places this block
     if (inventory !== undefined && newBlockType !== 0) {
-      const hasItem = inventory.some((slot) => slot && slot.count > 0);
-      if (!hasItem) {
+      let foundMatchingItemId: string | undefined;
+      for (const slot of inventory) {
+        if (!slot || slot.count <= 0) continue;
+        const def = ITEM_DEFS[slot.itemId];
+        if (def && def.blockType === newBlockType) {
+          foundMatchingItemId = slot.itemId;
+          break;
+        }
+      }
+      if (!foundMatchingItemId) {
         return { valid: false, reason: 'ITEM_NOT_IN_INVENTORY' };
       }
+      return { valid: true, consumedMaterialId: foundMatchingItemId };
     }
+
     return { valid: true };
   }
 
@@ -89,33 +113,16 @@ export class ServerAuthority {
     return { valid: true };
   }
 
-  public static validateBlockChange(msg: BlockChangeMessage, playerPos: [number, number, number]): ValidationResult {
-    // 1. Integer coordinates check
-    if (!Number.isInteger(msg.x) || !Number.isInteger(msg.y) || !Number.isInteger(msg.z)) {
-      return { valid: false, reason: 'Block coordinates must be integers' };
+  public static validateBlockChange(
+    msg: BlockChangeMessage,
+    playerPos: [number, number, number],
+    inventory?: Array<{ itemId: string; count: number } | null>,
+    worldCurrentBlock?: number
+  ): ValidationResult {
+    if (msg.newBlockType === 0) {
+      return this.validateBlockBreak(playerPos, msg.x, msg.y, msg.z, msg.oldBlockType, worldCurrentBlock);
     }
-
-    // 2. World height boundary check
-    if (msg.y < WORLD_MIN_Y || msg.y >= WORLD_MAX_Y) {
-      return { valid: false, reason: `Block Y out of world bounds [${WORLD_MIN_Y}, ${WORLD_MAX_Y})` };
-    }
-
-    // 3. Block ID range check
-    if (typeof msg.newBlockType !== 'number' || msg.newBlockType < 0 || msg.newBlockType > MAX_BLOCK_TYPE_ID) {
-      return { valid: false, reason: 'Invalid block ID' };
-    }
-
-    // 4. Reach distance check (center of block to player eye/feet)
-    const dx = (msg.x + 0.5) - playerPos[0];
-    const dy = (msg.y + 0.5) - playerPos[1];
-    const dz = (msg.z + 0.5) - playerPos[2];
-    const distSq = dx * dx + dy * dy + dz * dz;
-
-    if (distSq > this.maxReachDistance * this.maxReachDistance) {
-      return { valid: false, reason: 'Block change exceeds reach distance' };
-    }
-
-    return { valid: true };
+    return this.validateBlockPlacement(playerPos, msg.x, msg.y, msg.z, msg.oldBlockType, msg.newBlockType, inventory, worldCurrentBlock);
   }
 
   public static validateInventoryAction(
@@ -125,10 +132,94 @@ export class ServerAuthority {
     if (msg.fromSlot < 0 || msg.fromSlot >= currentInventory.length) {
       return { valid: false, reason: 'Out of bounds source inventory slot' };
     }
+    if (msg.toSlot < 0 || msg.toSlot >= currentInventory.length) {
+      return { valid: false, reason: 'Out of bounds destination inventory slot' };
+    }
 
-    const slotItem = currentInventory[msg.fromSlot];
-    if (!slotItem || slotItem.count < msg.count) {
-      return { valid: false, reason: 'Insufficient item count for transaction' };
+    if (msg.actionType === 'drop' || msg.actionType === 'consume') {
+      const slotItem = currentInventory[msg.fromSlot];
+      if (!slotItem || slotItem.count < (msg.count || 1) || (msg.count || 1) <= 0) {
+        return { valid: false, reason: 'Insufficient item count for transaction' };
+      }
+      if (msg.itemId && slotItem.itemId !== msg.itemId) {
+        return { valid: false, reason: 'Item ID mismatch in slot' };
+      }
+    }
+
+    return { valid: true };
+  }
+
+  public static validateCraftRequest(
+    recipeId: string,
+    quantity: number,
+    inventory: Array<{ itemId: string; count: number } | null>,
+    stationContext?: string
+  ): ValidationResult {
+    if (quantity <= 0 || !Number.isInteger(quantity) || quantity > 64) {
+      return { valid: false, reason: 'INVALID_CRAFT_QUANTITY' };
+    }
+
+    const recipe = CRAFTING_RECIPES.find((r) => r.id === recipeId);
+    if (!recipe) {
+      return { valid: false, reason: 'UNKNOWN_RECIPE' };
+    }
+
+    // Verify station requirements
+    if (recipe.station && recipe.station !== 'hand') {
+      if (stationContext && stationContext !== recipe.station && stationContext !== 'creative') {
+        return { valid: false, reason: 'INCORRECT_WORKSTATION_CONTEXT' };
+      }
+    }
+
+    // Verify required ingredients exist in inventory in sufficient quantities
+    for (const input of recipe.inputs) {
+      const requiredTotal = input.count * quantity;
+      let totalFound = 0;
+      for (const slot of inventory) {
+        if (slot && slot.itemId === input.itemId) {
+          totalFound += slot.count;
+        }
+      }
+      if (totalFound < requiredTotal) {
+        return { valid: false, reason: `INSUFFICIENT_INGREDIENTS_${input.itemId}` };
+      }
+    }
+
+    // Check output capacity: will the output fit into current inventory?
+    const outputDef = ITEM_DEFS[recipe.output.itemId];
+    const maxStack = outputDef ? outputDef.maxStack : 64;
+    let unitsToAdd = recipe.output.count * quantity;
+
+    let availableSpace = 0;
+    for (const slot of inventory) {
+      if (slot === null) {
+        availableSpace += maxStack;
+      } else if (slot.itemId === recipe.output.itemId) {
+        availableSpace += Math.max(0, maxStack - slot.count);
+      }
+    }
+
+    // Even if input items are consumed, to avoid edge cases we require that the inventory has room
+    // Note that consumed inputs may free up slots, but checking total capacity prevents overflows
+    let freedSlots = 0;
+    for (const input of recipe.inputs) {
+      const required = input.count * quantity;
+      let rem = required;
+      for (const slot of inventory) {
+        if (slot && slot.itemId === input.itemId) {
+          if (slot.count <= rem) {
+            rem -= slot.count;
+            freedSlots++;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+    availableSpace += freedSlots * maxStack;
+
+    if (availableSpace < unitsToAdd) {
+      return { valid: false, reason: 'INSUFFICIENT_INVENTORY_CAPACITY' };
     }
 
     return { valid: true };
@@ -160,17 +251,23 @@ export class ServerAuthority {
     nextPos: [number, number, number],
     deltaTime: number
   ): ValidationResult {
+    if (!Array.isArray(nextPos) || nextPos.length !== 3 || nextPos.some((n) => !Number.isFinite(n))) {
+      return { valid: false, reason: 'Invalid coordinates' };
+    }
+
     const dx = nextPos[0] - lastPos[0];
     const dy = nextPos[1] - lastPos[1];
     const dz = nextPos[2] - lastPos[2];
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    const maxAllowedDist = this.maxPlayerSpeed * Math.max(0.016, deltaTime) * 1.5; // Allowance factor
+    const dt = Math.max(0.016, deltaTime);
+    const maxAllowedDist = this.maxPlayerSpeed * dt * 1.5 + 2.0; // Allowance factor
 
-    if (dist > maxAllowedDist && dist > 1.0) {
+    if (dist > maxAllowedDist && dist > 2.5) {
       return { valid: false, reason: 'Speed violation / teleportation detected' };
     }
 
     return { valid: true };
   }
 }
+

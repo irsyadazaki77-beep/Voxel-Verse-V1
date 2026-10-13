@@ -240,9 +240,22 @@ export class ChunkScheduler {
       this.zombieCount = zombiesDetected;
     }
 
-    // 1. Streaming Candidate Discovery (Budget-aware)
+    // 1. Adaptive limits based on frameBudgetMs
+    let maxNewTasksPerCall = 4;
+    let maxMeshTasksPerCall = 3;
+    let maxUploadsPerFrame = 3;
+
+    if (frameBudgetMs >= 6.0) {
+      maxNewTasksPerCall = 8;
+      maxMeshTasksPerCall = 6;
+      maxUploadsPerFrame = 6;
+    } else if (frameBudgetMs < 2.5) {
+      maxNewTasksPerCall = 2;
+      maxMeshTasksPerCall = 2;
+      maxUploadsPerFrame = 2;
+    }
+
     let tasksEnqueuedThisFrame = 0;
-    const maxNewTasksPerCall = 4;
 
     discoveryLoop:
     for (let i = 0; i < ChunkScheduler.spiralOffsets.length; i++) {
@@ -393,7 +406,6 @@ export class ChunkScheduler {
 
     // 3. Process Remesh / Dirty Queue to Worker
     let meshingTasksEnqueued = 0;
-    const maxMeshTasksPerCall = 3;
 
     const dirtyBatch = Array.from(this.dirtyQueue);
     dirtyBatch.sort((a, b) => {
@@ -499,7 +511,6 @@ export class ChunkScheduler {
       // Sort integration queue by priority (near player first)
       this.meshIntegrationQueue.sort((a, b) => b.priority - a.priority);
 
-      const maxUploadsPerFrame = 3;
       const gpuStart = performance.now();
 
       while (

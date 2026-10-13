@@ -1,6 +1,6 @@
 // Master 3D Voxel Game Canvas with Three.js & Modern Modular Systems Architecture (Phase 2 Refactor)
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { GameMode, ItemStack, PlayerEquipment, GameSettings, EntityState, BossCombatState } from '../types';
+import { GameMode, ItemStack, PlayerEquipment, GameSettings, EntityState, BossCombatState, StartupStateMachineState, WorldSaveData } from '../types';
 import { WorldPreset } from '../engine/world/WorldConfig';
 import { GameRuntime } from '../engine/core/GameRuntime';
 import { WorldStartupPipeline, StartupProgress } from '../engine/world/WorldStartupPipeline';
@@ -74,10 +74,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   }, [isMobile, requestLandscape]);
 
-  // Loading state
+  // Loading state machine & recovery
+  const [startupState, setStartupState] = useState<StartupStateMachineState>('IDLE');
   const [isWorldLoaded, setIsWorldLoaded] = useState(false);
   const [loadingStage, setLoadingStage] = useState("Initializing Engine...");
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [initErrorMessage, setInitErrorMessage] = useState<string | null>(null);
+  const [recoverySnapshotLayer, setRecoverySnapshotLayer] = useState<string | null>(null);
+  const [recoverySnapshotData, setRecoverySnapshotData] = useState<WorldSaveData | null>(null);
+
+  // Persistence status
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Reactive UI state synchronized bidirectionally with GameRuntime
   const [activeModal, setActiveModal] = useState<ModalType>('none');
@@ -88,7 +96,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [targetHitState, setTargetHitState] = useState<any | null>(null);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [showDebugMap, setShowDebugMap] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [touchTelemetry, setTouchTelemetry] = useState<TouchDebugData | null>(null);
   const [showTouchDebug, setShowTouchDebug] = useState<boolean>(SettingsManager.get().mobileControls.showTouchDebug);
 
@@ -140,157 +147,195 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   }, []);
 
+  // Cancellation and initialization mutex references
+  const isInitializingRef = useRef(false);
+  const cancelTokenRef = useRef<{ isCancelled: boolean }>({ isCancelled: false });
+
   // Async load save data & progressive non-blocking world initialization pipeline
-  useEffect(() => {
-    let isCancelled = false;
+  const loadData = useCallback(async (forcedSave?: WorldSaveData | null) => {
+    if (isInitializingRef.current) return;
+    isInitializingRef.current = true;
 
-    const yieldFrame = (ms = 30) => new Promise<void>((r) => setTimeout(r, ms));
+    // Reset cancellation token
+    cancelTokenRef.current = { isCancelled: false };
+    const cancelToken = cancelTokenRef.current;
 
-    const loadData = async () => {
-      try {
-        // Poll for containerRef if not immediately attached
-        let container = containerRef.current;
-        if (!container) {
-          for (let attempt = 0; attempt < 10; attempt++) {
-            await new Promise(r => setTimeout(r, 20));
-            if (isCancelled) return;
-            if (containerRef.current) {
-              container = containerRef.current;
-              break;
-            }
+    setStartupState('VALIDATING');
+    setLoadingStage("Validating Engine & World...");
+    setLoadingProgress(5);
+    setInitErrorMessage(null);
+    setRecoverySnapshotLayer(null);
+    setRecoverySnapshotData(null);
+
+    try {
+      // Poll for containerRef if not immediately attached
+      let container = containerRef.current;
+      if (!container) {
+        for (let attempt = 0; attempt < 15; attempt++) {
+          await new Promise(r => setTimeout(r, 20));
+          if (cancelToken.isCancelled) return;
+          if (containerRef.current) {
+            container = containerRef.current;
+            break;
           }
         }
+      }
 
-        if (!container) {
-          console.warn("[GameCanvas] containerRef.current is missing on init attempt!");
-          setConnectionError("Canvas container reference is missing.");
-          return;
-        }
+      if (!container) {
+        throw new Error("Canvas container reference is missing or detached.");
+      }
 
-        console.log('[GameCanvas] [LoadingPipeline] Running staged WorldStartupPipeline for world:', worldId);
-        
-        const { runtime, diagnostics } = await WorldStartupPipeline.run({
-          container,
-          worldId,
-          worldName,
-          seed,
-          gameMode,
-          preset,
-          settings: SettingsManager.get(),
-          isCancelled: () => isCancelled,
-          onProgress: (progress: StartupProgress) => {
-            if (!isCancelled) {
-              setLoadingStage(progress.stageName);
-              setLoadingProgress(progress.progressPercent);
-            }
-          },
-        });
+      console.log('[GameCanvas] [LoadingPipeline] Running staged WorldStartupPipeline for world:', worldId);
+      
+      const { runtime, diagnostics } = await WorldStartupPipeline.run({
+        container,
+        worldId,
+        worldName,
+        seed,
+        gameMode,
+        preset,
+        settings: SettingsManager.get(),
+        existingSave: forcedSave,
+        isCancelled: () => cancelToken.isCancelled,
+        onProgress: (progress: StartupProgress) => {
+          if (!cancelToken.isCancelled) {
+            setLoadingStage(progress.stageName);
+            setLoadingProgress(progress.progressPercent);
+            if (progress.stage === 'validate') setStartupState('VALIDATING');
+            else if (progress.stage === 'load_save') setStartupState('LOADING_SAVE');
+            else if (progress.stage === 'generate_spawn_area') setStartupState('GENERATING');
+            else if (progress.stage === 'init_systems') setStartupState('INITIALIZING');
+            else if (progress.stage === 'ready') setStartupState('READY');
+          }
+        },
+      });
 
-        if (isCancelled) {
+      if (cancelToken.isCancelled) {
+        runtime.stop();
+        setStartupState('CANCELLED');
+        return;
+      }
+
+      // Register bidirectional sync callbacks
+      runtime.registerCallbacks({
+        onBossUpdated: (boss) => setActiveBossState(boss),
+        onTargetHitChanged: (hit) => setTargetHitState(hit),
+        onInventoryUpdated: (inv) => setInventoryState(inv),
+        onEquipmentUpdated: (eq) => setEquipmentState(eq),
+        onActiveHotbarIndexChanged: (idx) => setActiveHotbarIndex(idx),
+        onPointerLockChange: (locked) => setIsPointerLocked(locked),
+        onOpenModal: (modalType, data) => {
+          if (modalType === 'dialogue') {
+            setActiveDialogueEntity(data);
+          } else if (modalType === 'chest') {
+            setActiveChestPos(data);
+          } else if (modalType === 'furnace') {
+            setActiveFurnacePos(data);
+          } else if (modalType === 'anvil') {
+            setActiveAnvilPos(data);
+          } else if (modalType === 'engineering') {
+            setActiveEngineeringPos(data);
+          }
+          setModal(modalType);
+        },
+        onPlayerDeath: () => setModal('death'),
+      });
+
+      runtimeRef.current = runtime;
+      (window as any).__voxelRuntime = runtime;
+
+      if (isMultiplayer) {
+        setLoadingStage("Connecting to Authoritative Realm Server...");
+        setLoadingProgress(98);
+
+        if (cancelToken.isCancelled) {
           runtime.stop();
+          setStartupState('CANCELLED');
           return;
         }
 
-        // Register bidirectional sync callbacks
-        runtime.registerCallbacks({
-          onBossUpdated: (boss) => setActiveBossState(boss),
-          onTargetHitChanged: (hit) => setTargetHitState(hit),
-          onInventoryUpdated: (inv) => setInventoryState(inv),
-          onEquipmentUpdated: (eq) => setEquipmentState(eq),
-          onActiveHotbarIndexChanged: (idx) => setActiveHotbarIndex(idx),
-          onPointerLockChange: (locked) => setIsPointerLocked(locked),
-          onOpenModal: (modalType, data) => {
-            if (modalType === 'dialogue') {
-              setActiveDialogueEntity(data);
-            } else if (modalType === 'chest') {
-              setActiveChestPos(data);
-            } else if (modalType === 'furnace') {
-              setActiveFurnacePos(data);
-            } else if (modalType === 'anvil') {
-              setActiveAnvilPos(data);
-            } else if (modalType === 'engineering') {
-              setActiveEngineeringPos(data);
-            }
-            setModal(modalType);
-          },
-          onPlayerDeath: () => setModal('death'),
-        });
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const serverUrl = `${protocol}//${window.location.host}/ws`;
+        console.log('[GameCanvas] Connecting to authoritative server:', serverUrl);
 
-        runtimeRef.current = runtime;
-        (window as any).__voxelRuntime = runtime;
+        if (sessionToken) {
+          NetworkSession.getInstance().sessionToken = sessionToken;
+        }
 
-        if (isMultiplayer) {
-          setLoadingStage("Connecting to Authoritative Realm Server...");
-          setLoadingProgress(98);
+        const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
 
-          if (isCancelled) {
+        try {
+          const sessionStarted = await NetworkSession.getInstance().startSession(
+            runtime.scene,
+            true,
+            nameToUse,
+            true,
+            serverUrl
+          );
+
+          if (cancelToken.isCancelled) {
             runtime.stop();
+            setStartupState('CANCELLED');
             return;
           }
 
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const serverUrl = `${protocol}//${window.location.host}/ws`;
-          console.log('[GameCanvas] Connecting to authoritative server:', serverUrl);
-
-          if (sessionToken) {
-            NetworkSession.getInstance().sessionToken = sessionToken;
+          if (!sessionStarted) {
+            console.warn("[GameCanvas] Realm server offline/unreachable, continuing in singleplayer offline fallback mode.");
           }
-
-          const nameToUse = playerName || 'Explorer_' + Math.random().toString(36).substring(2, 6);
-
-          try {
-            const sessionStarted = await NetworkSession.getInstance().startSession(
-              runtime.scene,
-              true,
-              nameToUse,
-              true,
-              serverUrl
-            );
-
-            if (isCancelled) {
-              runtime.stop();
-              return;
-            }
-
-            if (!sessionStarted) {
-              console.warn("[GameCanvas] Realm server offline/unreachable, continuing in singleplayer offline fallback mode.");
-            }
-          } catch (netErr) {
-            console.warn("[GameCanvas] Network connection fallback:", netErr);
-          }
+        } catch (netErr) {
+          console.warn("[GameCanvas] Network connection fallback:", netErr);
         }
-
-        runtime.start();
-        runtime.resize(window.innerWidth, window.innerHeight);
-
-        console.log('[GameCanvas] [LoadingPipeline] World successfully loaded in', diagnostics.totalDurationMs.toFixed(1), 'ms');
-        setLoadingStage("Entering World...");
-        setLoadingProgress(100);
-        
-        // Complete transition
-        setTimeout(() => {
-          if (!isCancelled) {
-            setIsWorldLoaded(true);
-          }
-        }, 30);
-      } catch (err: any) {
-        if (isCancelled) return;
-        console.error("Fatal error during GameRuntime initialization pipeline:", err);
-        setConnectionError("World Generation / Loading Error: " + (err.message || String(err)));
       }
-    };
 
+      runtime.start();
+      runtime.resize(window.innerWidth, window.innerHeight);
+
+      console.log('[GameCanvas] [LoadingPipeline] World successfully loaded in', diagnostics.totalDurationMs.toFixed(1), 'ms');
+      setLoadingStage("Entering World...");
+      setLoadingProgress(100);
+      setStartupState('READY');
+      
+      // Complete transition
+      setTimeout(() => {
+        if (!cancelToken.isCancelled) {
+          setIsWorldLoaded(true);
+        }
+      }, 30);
+    } catch (err: any) {
+      if (cancelToken.isCancelled) {
+        setStartupState('CANCELLED');
+        return;
+      }
+      console.error("Fatal error during GameRuntime initialization pipeline:", err);
+      const msg = err?.message || String(err);
+      setStartupState('FAILED');
+      setInitErrorMessage(msg);
+
+      try {
+        const snapshot = await SaveManager.getAvailableRecoverySnapshot(worldId);
+        if (snapshot) {
+          setRecoverySnapshotLayer(snapshot.layer);
+          setRecoverySnapshotData(snapshot.data);
+        }
+      } catch {}
+    } finally {
+      isInitializingRef.current = false;
+    }
+  }, [worldId, seed, gameMode, worldName, preset, isMultiplayer, sessionToken, playerName, setModal]);
+
+  useEffect(() => {
     loadData();
 
     return () => {
-      isCancelled = true;
+      cancelTokenRef.current.isCancelled = true;
       delete (window as any).__voxelRuntime;
       if (runtimeRef.current) {
         runtimeRef.current.stop();
         runtimeRef.current = null;
       }
+      isInitializingRef.current = false;
     };
-  }, [worldId, seed, gameMode, worldName, preset, isMultiplayer, setModal]);
+  }, [loadData]);
 
   // Keep GameRuntime in sync with inventory & equipment updates from React Modals
   useEffect(() => {
@@ -317,10 +362,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     containerRef.current?.requestPointerLock();
   };
 
-  const handleSaveAndQuit = () => {
-    if (runtimeRef.current) {
-      runtimeRef.current.persistenceSystem.saveGame();
+  const handleSaveAndQuit = async () => {
+    if (isSaving) return;
+    if (!runtimeRef.current) {
+      onExitToMenu();
+      return;
     }
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const result = await runtimeRef.current.persistenceSystem.saveGameWithResult();
+      if (!result.success) {
+        setSaveError(result.error || 'Failed to persist world data to storage.');
+        setIsSaving(false);
+        return; // Session progress preserved in memory!
+      }
+      setIsSaving(false);
+      onExitToMenu();
+    } catch (err: any) {
+      setSaveError(err?.message || 'Unexpected failure while persisting world.');
+      setIsSaving(false);
+    }
+  };
+
+  const handleRetryInit = () => {
+    loadData();
+  };
+
+  const handleRecoverSnapshot = () => {
+    if (recoverySnapshotData) {
+      loadData(recoverySnapshotData);
+    }
+  };
+
+  const handleCancelAndExit = () => {
+    cancelTokenRef.current.isCancelled = true;
     onExitToMenu();
   };
 
@@ -347,49 +423,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   return (
     <div id="game-canvas-wrapper" className="relative w-full h-full min-h-screen overflow-hidden select-none bg-black">
-      {/* Authoritative Connection Failure Overlay */}
-      {connectionError && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md p-6">
-          <div className="max-w-md w-full bg-slate-900 border border-red-500/30 rounded-2xl p-8 shadow-2xl text-center space-y-6">
-            <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
-              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-red-400 uppercase tracking-widest mb-2">World Load Notice</h2>
-              <p className="text-slate-300 text-xs leading-relaxed font-mono bg-black/40 p-3 rounded-xl border border-white/5">{connectionError}</p>
-            </div>
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  setConnectionError(null);
-                  setIsWorldLoaded(true);
-                }}
-                className="w-full py-3 bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl transition shadow-lg text-xs uppercase tracking-wider cursor-pointer"
-              >
-                Force Enter World
-              </button>
-              <button
-                onClick={onExitToMenu}
-                className="w-full py-3 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white font-semibold rounded-xl transition text-xs border border-white/10 cursor-pointer"
-              >
-                Back to Main Menu
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Loading overlay screen */}
-      {!isWorldLoaded && !connectionError && (
+      {/* Loading overlay screen with state machine and recovery */}
+      {!isWorldLoaded && (
         <LoadingScreen
           worldName={worldName}
           seed={seed}
           stageName={loadingStage}
           progressPercent={loadingProgress}
-          onExit={onExitToMenu}
-          onForceEnter={() => setIsWorldLoaded(true)}
+          errorMessage={initErrorMessage}
+          recoverySnapshotLayer={recoverySnapshotLayer}
+          onExit={handleCancelAndExit}
+          onRetry={handleRetryInit}
+          onRecoverSnapshot={handleRecoverSnapshot}
         />
       )}
 
@@ -591,7 +636,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         <PauseMenu
           onResume={handleResume}
           onSaveAndQuit={handleSaveAndQuit}
+          isSaving={isSaving}
         />
+      )}
+
+      {/* Persistent Save Error Alert Overlay */}
+      {saveError && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in font-sans select-none">
+          <div className="max-w-md w-full bg-[#0c0e14] border border-rose-500/40 rounded-3xl p-6 shadow-2xl text-white space-y-4">
+            <div className="flex items-center gap-2 text-rose-400 font-bold text-sm uppercase tracking-wider">
+              <span>⚠️ World Save Error</span>
+            </div>
+            <p className="text-xs text-white/80 leading-relaxed font-mono bg-rose-500/10 border border-rose-500/20 p-3 rounded-xl">
+              {saveError}
+            </p>
+            <p className="text-[11px] text-white/60">
+              Your game session is still active and progress has NOT been discarded. You can retry saving now, or return to gameplay.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={handleSaveAndQuit}
+                disabled={isSaving}
+                className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-white rounded-xl font-bold text-xs cursor-pointer transition shadow"
+              >
+                Retry Save & Exit
+              </button>
+              <button
+                onClick={() => setSaveError(null)}
+                disabled={isSaving}
+                className="flex-1 py-2.5 bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white rounded-xl font-bold text-xs cursor-pointer transition"
+              >
+                Back to Game
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Mobile Portrait Warning Overlay (Prompts user to rotate to landscape) */}

@@ -7,6 +7,18 @@ import { makeDimensionChunkKey } from '../engine/world/WorldConfig';
 import { BlockType, WorldSaveData } from '../types';
 
 // Node.js test environment polyfills for headless execution
+if (typeof (globalThis as any).localStorage === 'undefined') {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+    setItem: (key: string, val: string) => { store.set(key, String(val)); },
+    removeItem: (key: string) => { store.delete(key); },
+    clear: () => { store.clear(); },
+    get length() { return store.size; },
+    key: (i: number) => Array.from(store.keys())[i] || null,
+  };
+}
+
 if (typeof (globalThis as any).window === 'undefined') {
   (globalThis as any).window = {
     innerWidth: 1920,
@@ -317,6 +329,215 @@ export async function runPhase1RecoveryTests(): Promise<boolean> {
     assert(world.chunks.size === 0, 'World chunk count remains 0 after getBlockLoaded query');
 
     world.dispose();
+  }
+
+  // TEST 6: Preset Persistence Round-Trip Test (Archipelago, Floating Islands, etc.)
+  console.log('\n  ▶ [6/9] Testing Preset & World Configuration Round-Trip Persistence...');
+  {
+    const testWorldId = 'test_archipelago_world';
+    const archipelagoSave: WorldSaveData = {
+      version: 3,
+      id: testWorldId,
+      name: 'Archipelago Realm',
+      seed: 88419,
+      preset: 'archipelago',
+      gameMode: 'survival',
+      difficulty: 'hard',
+      lastPlayed: Date.now(),
+      createdAt: Date.now() - 50000,
+      gameTime: 12000,
+      player: {
+        position: [10.5, 68.0, 15.5],
+        rotation: [0.1, 1.2],
+        health: 85,
+        hunger: 90,
+        stamina: 100,
+        level: 3,
+        xp: 150,
+        hotbarIndex: 2,
+        inventory: [],
+        equipment: { head: null, chest: null, legs: null, feet: null, accessory: null },
+      },
+      modifiedBlocks: {},
+      modifiedBlockStates: {},
+      weather: { type: 'rain', intensity: 0.8 },
+      stats: { blocksMined: 15, blocksPlaced: 10, monstersDefeated: 2, distanceTraveled: 120 },
+    };
+
+    // Save asynchronously
+    const saveSuccess = await SaveManager.saveWorldAsync(archipelagoSave);
+    assert(saveSuccess === true, 'Archipelago world saved successfully via saveWorldAsync');
+
+    // Check world summary from index
+    const worlds = SaveManager.getWorlds();
+    const summary = worlds.find((w) => w.id === testWorldId);
+    assert(summary !== undefined, 'World appears in SaveManager.getWorlds() index');
+    assert(summary?.preset === 'archipelago', 'World summary preserved preset as "archipelago"');
+    assert(summary?.difficulty === 'hard', 'World summary preserved difficulty as "hard"');
+    assert(summary?.seed === 88419, 'World summary preserved original seed 88419');
+
+    // Load world asynchronously
+    const loaded = await SaveManager.loadWorldAsync(testWorldId);
+    assert(loaded !== null, 'World loaded successfully from persistence');
+    assert(loaded?.preset === 'archipelago', 'Loaded WorldSaveData has preset === "archipelago"');
+    assert(loaded?.seed === 88419, 'Loaded WorldSaveData has seed === 88419');
+    assert(loaded?.difficulty === 'hard', 'Loaded WorldSaveData has difficulty === "hard"');
+    assert(loaded?.player?.health === 85, 'Loaded WorldSaveData has health === 85');
+    assert(loaded?.player?.hotbarIndex === 2, 'Loaded WorldSaveData has hotbarIndex === 2');
+
+    // Clean up
+    SaveManager.deleteWorld(testWorldId);
+  }
+
+  // TEST 7: Concurrent Save Mutex & Serialization Test
+  console.log('\n  ▶ [7/9] Testing Concurrent Save Mutex Queue & Safe Serialization...');
+  {
+    const mutexWorldId = 'test_mutex_concurrent_world';
+    const baseSave: WorldSaveData = {
+      version: 3,
+      id: mutexWorldId,
+      name: 'Mutex Test World',
+      seed: 12345,
+      preset: 'mountainous',
+      gameMode: 'survival',
+      difficulty: 'normal',
+      lastPlayed: Date.now(),
+      createdAt: Date.now(),
+      gameTime: 100,
+      player: {
+        position: [0.5, 75.0, 0.5],
+        rotation: [0, 0],
+        health: 100,
+        hunger: 100,
+        stamina: 100,
+        level: 1,
+        xp: 0,
+        hotbarIndex: 0,
+        inventory: [],
+        equipment: { head: null, chest: null, legs: null, feet: null, accessory: null },
+      },
+      modifiedBlocks: {},
+      weather: { type: 'clear', intensity: 0 },
+      stats: { blocksMined: 0, blocksPlaced: 0, monstersDefeated: 0, distanceTraveled: 0 },
+    };
+
+    // Fire 3 simultaneous saves with differing progression data
+    const save1 = SaveManager.saveWorldAsync({ ...baseSave, gameTime: 101, stats: { ...baseSave.stats, blocksMined: 1 } });
+    const save2 = SaveManager.saveWorldAsync({ ...baseSave, gameTime: 102, stats: { ...baseSave.stats, blocksMined: 2 } });
+    const save3 = SaveManager.saveWorldAsync({ ...baseSave, gameTime: 103, stats: { ...baseSave.stats, blocksMined: 3 } });
+
+    const results = await Promise.all([save1, save2, save3]);
+    assert(results[0] === true && results[1] === true && results[2] === true, 'All concurrent saves resolved without deadlock or unhandled rejection');
+
+    // Final state should reflect serialized latest write
+    const finalLoaded = await SaveManager.loadWorldAsync(mutexWorldId);
+    assert(finalLoaded !== null, 'Loaded final world after concurrent writes');
+    assert(finalLoaded?.stats.blocksMined === 3, 'Final state reflects the sequentially queued last save');
+
+    SaveManager.deleteWorld(mutexWorldId);
+  }
+
+  // TEST 8: Historical Backup Rotation & Corrupt Primary Recovery Test
+  console.log('\n  ▶ [8/9] Testing Historical Backup Rotation & Corruption Recovery...');
+  {
+    const backupWorldId = 'test_backup_rotation_world';
+    const initialSave: WorldSaveData = {
+      version: 3,
+      id: backupWorldId,
+      name: 'Backup Test Realm',
+      seed: 99911,
+      preset: 'flattish',
+      gameMode: 'survival',
+      difficulty: 'normal',
+      lastPlayed: Date.now() - 10000,
+      createdAt: Date.now() - 20000,
+      gameTime: 500,
+      player: {
+        position: [12.0, 80.0, 14.0],
+        rotation: [0, 0],
+        health: 95,
+        hunger: 80,
+        stamina: 100,
+        level: 2,
+        xp: 80,
+        hotbarIndex: 1,
+        inventory: [],
+        equipment: { head: null, chest: null, legs: null, feet: null, accessory: null },
+      },
+      modifiedBlocks: { 'overworld:0,0': { '1,64,1': BlockType.OBSIDIAN } },
+      weather: { type: 'clear', intensity: 0 },
+      stats: { blocksMined: 10, blocksPlaced: 5, monstersDefeated: 1, distanceTraveled: 50 },
+    };
+
+    // Save initial version
+    await SaveManager.saveWorldAsync(initialSave);
+
+    // Save updated version (which should rotate initialSave into backup)
+    const updatedSave: WorldSaveData = {
+      ...initialSave,
+      gameTime: 800,
+      player: { ...initialSave.player, health: 70 },
+      stats: { ...initialSave.stats, blocksMined: 25 },
+    };
+    await SaveManager.saveWorldAsync(updatedSave);
+
+    // Verify backup snapshot discovery finds historical backup
+    const snapshot = await SaveManager.getAvailableRecoverySnapshot(backupWorldId);
+    assert(snapshot !== null, 'Recovery snapshot discovery found historical backup');
+    assert(snapshot?.data.player.health === 95 || snapshot?.data.player.health === 70, 'Recovery snapshot contains valid historical player state');
+
+    // Now deliberately corrupt the primary save key in localStorage
+    localStorage.setItem(`voxelverse_world_${backupWorldId}`, '{corrupted_json_garbage_data!@@#');
+
+    // Attempt loading: should automatically recover from historical backup
+    const recovered = await SaveManager.loadWorldAsync(backupWorldId);
+    assert(recovered !== null, 'World was recovered from historical backup instead of failing or returning null');
+    assert(recovered?.seed === 99911, 'Recovered world retains correct seed');
+    assert(recovered?.preset === 'flattish', 'Recovered world retains correct preset');
+
+    SaveManager.deleteWorld(backupWorldId);
+  }
+
+  // TEST 9: Prevention of Silent Fresh World Replacement on Missing/Corrupt Save
+  console.log('\n  ▶ [9/9] Testing Prevention of Silent Fresh World Overwrite...');
+  {
+    const missingWorldId = 'non_existent_corrupted_world_999';
+    // Register world into index as if it exists
+    const worlds = SaveManager.getWorlds();
+    worlds.push({
+      id: missingWorldId,
+      name: 'Ghost Realm',
+      seed: 44444,
+      gameMode: 'survival',
+      difficulty: 'normal',
+      preset: 'archipelago',
+      lastPlayed: Date.now(),
+      createdAt: Date.now(),
+    });
+    localStorage.setItem('voxelverse_worlds_index', JSON.stringify(worlds));
+
+    // Deliberately corrupt primary save
+    localStorage.setItem(`voxelverse_world_${missingWorldId}`, 'INVALID_CORRUPT_PAYLOAD');
+
+    let threwExpectedError = false;
+    try {
+      await WorldStartupPipeline.run({
+        container: null as unknown as HTMLElement,
+        worldId: missingWorldId,
+        worldName: 'Ghost Realm',
+        seed: 44444,
+        gameMode: 'survival',
+      });
+    } catch (err: any) {
+      if (err.message.includes('CorruptedWorldSaveError')) {
+        threwExpectedError = true;
+      }
+    }
+
+    assert(threwExpectedError === true, 'Pipeline halted with CorruptedWorldSaveError instead of silently generating a fresh world');
+
+    // Clean up
+    SaveManager.deleteWorld(missingWorldId);
   }
 
   console.log('\n  ✓ All Phase 1 Save & Startup Recovery Tests Passed Strictly!');

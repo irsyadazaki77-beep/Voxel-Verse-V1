@@ -6,6 +6,8 @@ export class WebSocketTransport implements NetworkTransport {
   private socket: WebSocket | null = null;
   private connected: boolean = false;
   private messageListeners: Set<(msg: NetworkMessagePayload) => void> = new Set();
+  private closeListeners: Set<() => void> = new Set();
+  private errorListeners: Set<(err: any) => void> = new Set();
   private pingIntervalTimer: any = null;
   private lastPingSent: number = 0;
   private serverUrl: string = '';
@@ -56,15 +58,18 @@ export class WebSocketTransport implements NetworkTransport {
         };
 
         this.socket.onerror = (err) => {
-          console.warn('[WebSocketTransport] Connection warning / fallback to loopback mode:', err);
-          this.connected = false;
-          resolve(false);
+          console.warn('[WebSocketTransport] Connection warning / error:', err);
+          this.errorListeners.forEach((cb) => cb(err));
+          if (!this.connected) {
+            resolve(false);
+          }
         };
 
         this.socket.onclose = () => {
           console.log('[WebSocketTransport] Connection closed');
           this.connected = false;
           this.stopHeartbeat();
+          this.closeListeners.forEach((cb) => cb());
         };
       } catch (err) {
         console.error('[WebSocketTransport] Fatal connection exception:', err);
@@ -72,6 +77,16 @@ export class WebSocketTransport implements NetworkTransport {
         resolve(false);
       }
     });
+  }
+
+  public onClose(callback: () => void): () => void {
+    this.closeListeners.add(callback);
+    return () => this.closeListeners.delete(callback);
+  }
+
+  public onError(callback: (err: any) => void): () => void {
+    this.errorListeners.add(callback);
+    return () => this.errorListeners.delete(callback);
   }
 
   public disconnect(): void {

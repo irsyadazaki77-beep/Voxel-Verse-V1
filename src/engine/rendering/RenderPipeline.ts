@@ -225,7 +225,10 @@ export class RenderPipeline {
       this.initPipeline();
     }
 
-    if (!this.composer) return;
+    if (!this.composer) {
+      this.isPostProcessingActive = false;
+      return;
+    }
 
     this.composer.setSize(width, height);
 

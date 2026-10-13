@@ -910,4 +910,21 @@ export class PlayerController {
     this._cachedAABB.max.set(this.position.x + hw, this.position.y + this.currentHeight, this.position.z + hw);
     return this._cachedAABB;
   }
+
+  public dispose(): void {
+    if (this.avatarMesh) {
+      this.avatarMesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          if (child.geometry) child.geometry.dispose();
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => m.dispose());
+          } else if (child.material) {
+            child.material.dispose();
+          }
+        }
+      });
+      this.playerGroup.remove(this.avatarMesh);
+    }
+    this.playerGroup.clear();
+  }
 }

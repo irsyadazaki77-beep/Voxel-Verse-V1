@@ -354,7 +354,8 @@ export class InteractionSystem implements GameSystem {
               placeEval.placePos[2],
               BlockType.AIR,
               placeEval.blockTypeToPlace,
-              placeEval.state
+              placeEval.state,
+              activeItem.itemId
             );
 
             GameEventBus.emit('BLOCK_PLACED', {

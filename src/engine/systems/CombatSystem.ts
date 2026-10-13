@@ -8,6 +8,7 @@ import { BossCombatState } from '../../types';
 import { PoiseSystem } from '../combat/PoiseSystem';
 import { ArtifactSynergyManager } from '../artifacts/ArtifactSynergyManager';
 import { BalanceTelemetry } from '../telemetry/BalanceTelemetry';
+import { NetworkSession } from '../network/NetworkSession';
 
 export class CombatSystem implements GameSystem {
   public readonly name = 'CombatSystem';
@@ -131,11 +132,23 @@ export class CombatSystem implements GameSystem {
     const { player, entities, stats, audio, gameMode } = this.runtime;
     if (!player || !entities) return false;
 
+    // Check stamina cost for survival mode
+    if (stats && gameMode !== 'creative') {
+      if (stats.stamina < 8) return false; // Insufficient stamina
+      stats.stamina = Math.max(0, stats.stamina - 8);
+    }
+
     const activeItem = this.runtime.getActiveHotbarItem();
     const canSwing = this.combatMachine.triggerMeleeAttack(activeItem);
     if (!canSwing) return false;
 
     player.triggerSwing();
+
+    // If in multiplayer, notify authoritative server of attack intent
+    const netSession = NetworkSession.getInstance();
+    if (netSession.isMultiplayerActive && netSession.isConnected()) {
+      netSession.sendAttackIntent(targetEntityId, this.runtime.activeHotbarIndex);
+    }
 
     const isAirborneOrFalling = !player.isGrounded && player.velocity.y < 0;
     const isTargetStaggered = PoiseSystem.isEntityStaggered(targetEntityId);

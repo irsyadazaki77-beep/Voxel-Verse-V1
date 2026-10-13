@@ -444,6 +444,24 @@ export interface PlayerEquipment {
   accessory?: ItemStack | null;
 }
 
+export type StartupStateMachineState =
+  | 'IDLE'
+  | 'VALIDATING'
+  | 'LOADING_SAVE'
+  | 'GENERATING'
+  | 'INITIALIZING'
+  | 'READY'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'RECOVERABLE_ERROR';
+
+export interface SaveOperationResult {
+  success: boolean;
+  error?: string;
+  targetId?: string;
+  isBackupAvailable?: boolean;
+}
+
 export interface WorldSaveData {
   version: number;
   id: string;

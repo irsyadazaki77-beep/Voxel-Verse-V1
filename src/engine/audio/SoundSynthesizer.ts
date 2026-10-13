@@ -494,4 +494,11 @@ export class SoundSynthesizer {
     osc.start(t);
     osc.stop(t + dur);
   }
+
+  public dispose(): void {
+    if (this.ctx && this.ctx.state !== 'closed') {
+      this.ctx.close().catch(() => {});
+      this.ctx = null;
+    }
+  }
 }

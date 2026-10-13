@@ -1318,8 +1318,8 @@ export class CraftingSystem {
   }
 
   // Check if player can craft
-  public static canCraft(recipe: CraftingRecipe, inventory: (ItemStack | null)[]): boolean {
-    return this.calculateCraftability(recipe, inventory, 1).canCraft;
+  public static canCraft(recipe: CraftingRecipe, inventory: (ItemStack | null)[], multiplier: number = 1): boolean {
+    return this.calculateCraftability(recipe, inventory, multiplier).canCraft;
   }
 
   // Atomic craft execution with multi-craft support
