@@ -23,10 +23,106 @@ export interface ValidationResult {
   consumedMaterialId?: string;
 }
 
+export type Vector3Like = [number, number, number] | { x: number; y: number; z: number };
+
+export function isValidVector3(v: unknown): v is Vector3Like {
+  if (Array.isArray(v)) {
+    return (
+      v.length === 3 &&
+      typeof v[0] === 'number' && Number.isFinite(v[0]) &&
+      typeof v[1] === 'number' && Number.isFinite(v[1]) &&
+      typeof v[2] === 'number' && Number.isFinite(v[2])
+    );
+  }
+  if (typeof v === 'object' && v !== null && 'x' in v && 'y' in v && 'z' in v) {
+    const obj = v as { x: unknown; y: unknown; z: unknown };
+    return (
+      typeof obj.x === 'number' && Number.isFinite(obj.x) &&
+      typeof obj.y === 'number' && Number.isFinite(obj.y) &&
+      typeof obj.z === 'number' && Number.isFinite(obj.z)
+    );
+  }
+  return false;
+}
+
+export function toVector3Tuple(v: unknown): [number, number, number] | null {
+  if (!isValidVector3(v)) return null;
+  if (Array.isArray(v)) {
+    return [v[0], v[1], v[2]];
+  }
+  return [v.x, v.y, v.z];
+}
+
 export class ServerAuthority {
   public static readonly maxReachDistance = MAX_INTERACTION_REACH;
   public static readonly maxCombatReach = MAX_COMBAT_REACH;
   public static readonly maxPlayerSpeed = MAX_PLAYER_SPEED;
+
+  public static isValidVector3(v: unknown): v is Vector3Like {
+    return isValidVector3(v);
+  }
+
+  public static toVector3Tuple(v: unknown): [number, number, number] | null {
+    return toVector3Tuple(v);
+  }
+
+  /**
+   * Validates mining actions with anti-exploit coordinate, NaN/Infinity, and reach checks
+   */
+  public static validateMining(
+    playerPos: unknown,
+    blockPos: unknown,
+    blockType?: number,
+    worldCurrentBlock?: number
+  ): ValidationResult {
+    if (!isValidVector3(playerPos) || !isValidVector3(blockPos)) {
+      return { valid: false, reason: 'INVALID_COORDINATES' };
+    }
+
+    const pPos = toVector3Tuple(playerPos)!;
+    const bPos = toVector3Tuple(blockPos)!;
+
+    const bx = bPos[0];
+    const by = bPos[1];
+    const bz = bPos[2];
+
+    if (!Number.isInteger(bx) || !Number.isInteger(by) || !Number.isInteger(bz)) {
+      return { valid: false, reason: 'COORDINATES_MUST_BE_INTEGERS' };
+    }
+
+    if (by < WORLD_MIN_Y || by >= WORLD_MAX_Y) {
+      return { valid: false, reason: 'OUT_OF_WORLD_HEIGHT_BOUNDS' };
+    }
+
+    if (worldCurrentBlock !== undefined && blockType !== undefined && worldCurrentBlock !== blockType) {
+      return { valid: false, reason: 'OLD_BLOCK_STATE_DESYNC' };
+    }
+
+    const dx = (bx + 0.5) - pPos[0];
+    const dy = (by + 0.5) - pPos[1];
+    const dz = (bz + 0.5) - pPos[2];
+    const distanceSq = dx * dx + dy * dy + dz * dz;
+
+    // Maximum 6 blocks interaction reach (distanceSq <= 36)
+    const MAX_MINING_DISTANCE_SQ = 36;
+    if (distanceSq > MAX_MINING_DISTANCE_SQ) {
+      return { valid: false, reason: 'EXCEEDS_MAX_REACH' };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Strongly typed crafting validator without any type
+   */
+  public static validateCrafting(
+    recipeId: string,
+    quantity: number,
+    inventory: Array<{ itemId: string; count: number } | null>,
+    stationContext?: string
+  ): ValidationResult {
+    return this.validateCraftRequest(recipeId, quantity, inventory, stationContext);
+  }
 
   /**
    * Validates block placement, verifying:
@@ -247,17 +343,20 @@ export class ServerAuthority {
   }
 
   public static validateMovement(
-    lastPos: [number, number, number],
-    nextPos: [number, number, number],
+    lastPos: unknown,
+    nextPos: unknown,
     deltaTime: number
   ): ValidationResult {
-    if (!Array.isArray(nextPos) || nextPos.length !== 3 || nextPos.some((n) => !Number.isFinite(n))) {
+    if (!isValidVector3(lastPos) || !isValidVector3(nextPos)) {
       return { valid: false, reason: 'Invalid coordinates' };
     }
 
-    const dx = nextPos[0] - lastPos[0];
-    const dy = nextPos[1] - lastPos[1];
-    const dz = nextPos[2] - lastPos[2];
+    const p1 = toVector3Tuple(lastPos)!;
+    const p2 = toVector3Tuple(nextPos)!;
+
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    const dz = p2[2] - p1[2];
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
     const dt = Math.max(0.016, deltaTime);

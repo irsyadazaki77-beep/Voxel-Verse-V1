@@ -181,6 +181,30 @@ export const ARTIFACT_SYNERGIES: ArtifactSynergy[] = [
       lootDropMultiplier: 1.35,
     },
   },
+  {
+    id: 'synergy_naga_wrath',
+    name: 'Murka Hyang Antaboga (Naga × Ancient)',
+    description: 'Resonansi naga pelindung bumi purba: +75% ketahanan poise, kekebalan stun, dan setiap combo finisher ke-3 meledakkan gelombang gempa aether.',
+    requiredTags: ['naga', 'ancient'],
+    bonus: {
+      poiseDamageBonus: 2.0,
+      parryShockwave: true,
+      defenseBonus: 1.4,
+      damageMultiplier: 1.2,
+    },
+  },
+  {
+    id: 'synergy_cakra_surya',
+    name: 'Kemuliaan Surya Precursor (Solar × Ancient)',
+    description: 'Penyatuan cakra surya dan pusaka purba: Serangan berputar menebas area 360 derajat dengan kobaran api matahari dan +25% attack speed.',
+    requiredTags: ['solar', 'ancient'],
+    bonus: {
+      damageMultiplier: 1.35,
+      critChanceBonus: 0.25,
+      critDamageMultiplier: 1.5,
+      moveSpeedBonus: 1.25,
+    },
+  },
 ];
 
 export class ArtifactSynergyManager {

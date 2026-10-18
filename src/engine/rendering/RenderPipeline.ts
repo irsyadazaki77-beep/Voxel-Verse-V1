@@ -373,6 +373,12 @@ export class RenderPipeline {
   public dispose(): void {
     if (this.composer) {
       this.composer.passes.forEach((pass) => pass.dispose && pass.dispose());
+      if (this.composer.renderTarget1) {
+        this.composer.renderTarget1.dispose();
+      }
+      if (this.composer.renderTarget2) {
+        this.composer.renderTarget2.dispose();
+      }
       this.composer = null;
     }
   }

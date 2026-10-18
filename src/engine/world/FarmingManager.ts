@@ -132,6 +132,10 @@ export class FarmingManager {
         const seedCount = 1 + Math.floor(Math.random() * 3); // 1-3 seeds
         drops.push(InventoryManager.createStack('crop_wheat', wheatCount)!);
         drops.push(InventoryManager.createStack('seeds_wheat', seedCount)!);
+        // Subak terrace sacred rice bonus
+        if (this.checkSubakNearby(x, y, z, world)) {
+          drops.push(InventoryManager.createStack('beras_wangi', 1)!);
+        }
       } else {
         drops.push(InventoryManager.createStack('seeds_wheat', 1)!);
       }
@@ -173,14 +177,15 @@ export class FarmingManager {
         return;
       }
 
-      // Check hydration every few seconds
+      // Check hydration and subak terrace irrigation
       plot.isHydrated = this.checkWaterNearby(x, y, z, world);
+      const isSubak = this.checkSubakNearby(x, y, z, world);
 
       if (plot.cropType) {
         // Crop is growing!
         if (plot.growthStage < plot.maxGrowthStage) {
-          // Growth speed: Hydrated plots grow 2.5x faster
-          const speedMultiplier = plot.isHydrated ? 2.5 : 1.0;
+          // Growth speed: Hydrated plots grow 2.5x, Subak resonance grows 3.8x faster!
+          const speedMultiplier = isSubak ? 3.8 : plot.isHydrated ? 2.5 : 1.0;
           const stageDuration = 25; // seconds per growth stage
           plot.growthProgress += (deltaTime * speedMultiplier) / stageDuration;
 
@@ -225,7 +230,22 @@ export class FarmingManager {
       for (let dz = -4; dz <= 4; dz++) {
         for (let dy = -1; dy <= 1; dy++) {
           const b = world.getBlock(px + dx, py + dy, pz + dz);
-          if (b === BlockType.WATER) {
+          if (b === BlockType.WATER || b === BlockType.TERRACE_WATERWAY) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  // Check if Subak terrace canal or bamboo aqueduct is directly nourishing this plot
+  public static checkSubakNearby(px: number, py: number, pz: number, world: VoxelWorld): boolean {
+    for (let dx = -3; dx <= 3; dx++) {
+      for (let dz = -3; dz <= 3; dz++) {
+        for (let dy = -1; dy <= 2; dy++) {
+          const b = world.getBlock(px + dx, py + dy, pz + dz);
+          if (b === BlockType.TERRACE_WATERWAY) {
             return true;
           }
         }

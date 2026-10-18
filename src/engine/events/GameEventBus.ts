@@ -10,6 +10,7 @@ export type GameEventType =
   | 'ITEM_COLLECTED'
   | 'BOSS_SPAWNED'
   | 'BOSS_DEFEATED'
+  | 'RELIC_DISCOVERED'
   | 'ARTIFACT_ACQUIRED'
   | 'ARTIFACT_UNLOCKED'
   | 'ARTIFACT_DISCOVERED'
@@ -40,7 +41,16 @@ export type GameEventType =
   | 'STABILITY_CHANGED'
   | 'MONOLITH_ACTIVATED'
   | 'NEXUS_PILLAR_ACTIVATED'
-  | 'NEXUS_COMPLETED';
+  | 'NEXUS_COMPLETED'
+  | 'TELEGRAPH_SPAWNED'
+  | 'TELEGRAPH_TRIGGERED'
+  | 'BOSS_ATTACK_TELEGRAPH'
+  | 'PERFECT_PARRY'
+  | 'WEAPON_SKILL_USED'
+  | 'PLAYER_DIED'
+  | 'INVENTORY_OPENED'
+  | 'MAP_OPENED'
+  | 'NOTIFICATION_SHOW';
 
 export interface GameEventPayloads {
   BLOCK_MINED: { blockType: number; pos: [number, number, number]; toolUsed?: string };
@@ -52,7 +62,8 @@ export interface GameEventPayloads {
   ITEM_CRAFTED: { itemId: string; count: number; station: string };
   ITEM_COLLECTED: { itemId: string; count: number };
   BOSS_SPAWNED: { bossId: string; type: string; pos: [number, number, number] };
-  BOSS_DEFEATED: { bossId: string; bossName: string; pos: [number, number, number] };
+  BOSS_DEFEATED: { bossId: string; bossName?: string; pos?: [number, number, number]; relicReward?: string };
+  RELIC_DISCOVERED: { relicId: string; bossName?: string };
   ARTIFACT_ACQUIRED: { artifactId: string; name?: string; source?: string };
   ARTIFACT_UNLOCKED: { artifactId: string; name: string };
   ARTIFACT_DISCOVERED: { artifactId: string };
@@ -84,6 +95,15 @@ export interface GameEventPayloads {
   MONOLITH_ACTIVATED: { monolithId?: string; blessing?: string; monolith?: any; name?: string; pos?: [number, number, number] };
   NEXUS_PILLAR_ACTIVATED: { pillarId: string; totalActive: number };
   NEXUS_COMPLETED: { timestamp: number };
+  TELEGRAPH_SPAWNED: { id: string; position: [number, number, number]; radius: number; duration: number };
+  TELEGRAPH_TRIGGERED: { id: string; position: [number, number, number]; radius: number; damage?: number };
+  BOSS_ATTACK_TELEGRAPH: { bossId: string; bossName?: string; position: [number, number, number]; damage?: number; radius?: number; duration?: number };
+  PERFECT_PARRY: { bossId: string };
+  WEAPON_SKILL_USED: { skillId: string; weaponId?: string };
+  PLAYER_DIED: { pos?: [number, number, number]; source?: string };
+  INVENTORY_OPENED: Record<string, unknown>;
+  MAP_OPENED: Record<string, unknown>;
+  NOTIFICATION_SHOW: { title: string; message: string; type?: 'info' | 'warning' | 'danger' | 'success'; durationMs?: number };
 }
 
 type EventCallback<T extends GameEventType> = (payload: GameEventPayloads[T]) => void;

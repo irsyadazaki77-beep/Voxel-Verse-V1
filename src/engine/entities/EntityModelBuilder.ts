@@ -2516,6 +2516,11 @@ export class EntityModelBuilder {
       case 'raksasa_ulin':
         return this.buildRaksasaUlin();
 
+      case 'batara_kala_colossus':
+      case 'batara_kala':
+      case 'boss_batara_kala':
+        return this.buildBataraKalaColossus(variant);
+
       case 'hyang_batara_bhumi':
       case 'batara_bhumi':
       case 'boss_batara_bhumi':
@@ -3444,6 +3449,147 @@ export class EntityModelBuilder {
     rig.torso.position.y = 3.2;
     root.add(rig.torso);
     root.add(CreatureMaterialFactory.getContactShadowMesh(3.5));
+    root.userData.rig = rig;
+    return root;
+  }
+
+  // =========================================================================
+  // SUBTERRANEAN ANCIENT COLOSSUS: BATARA KALA (4-Armed Primordial Titan)
+  // =========================================================================
+  public static buildBataraKalaColossus(variant: number = 0): THREE.Group {
+    const root = new THREE.Group();
+    const palette = CreatureMaterialFactory.getPalette('batara_kala_colossus', variant);
+    const rig: CreatureRig = {
+      modelType: 'batara_kala_colossus',
+      locomotion: 'boss_colossus',
+      root,
+      torso: new THREE.Group(),
+      head: new THREE.Group(),
+      armL: new THREE.Group(),
+      armR: new THREE.Group(),
+      armLowerL: new THREE.Group(),
+      armLowerR: new THREE.Group(),
+      legFL: new THREE.Group(),
+      legFR: new THREE.Group(),
+      shadowBaseScale: 4.2,
+      animPhase: 0,
+      variantIndex: variant,
+      originalMaterials: new Map(),
+    };
+
+    // 1. Massive Andesite & Prada Torso with Aether Furnace Heart
+    const torsoGeo = EntityModelCache.getPartGeometry('kala_torso', () =>
+      this.buildPartGeometry([
+        // Main Broad Stone Chest & Abdomen
+        { size: [3.2, 3.8, 2.2], pos: [0, 0, 0], matIndex: 0 },
+        // Carved Shoulder Pauldrons / Stone Mantle
+        { size: [3.8, 0.9, 2.4], pos: [0, 1.45, 0], matIndex: 0 },
+        // Golden Prada Relief Inlay Across Chest
+        { size: [2.6, 0.45, 0.4], pos: [0, 0.95, 1.05], matIndex: 1 },
+        { size: [2.2, 0.35, 0.4], pos: [0, -0.85, 1.05], matIndex: 1 },
+        // Central Aether Furnace Heart (Pulsing Glow Core)
+        { size: [1.4, 1.4, 0.65], pos: [0, 0.2, 0.95], matIndex: 2 },
+      ])
+    );
+    const torsoMesh = this.createPartMesh(torsoGeo, [palette.body, palette.accent, palette.belly!], rig);
+    rig.torso.add(torsoMesh);
+
+    // Dedicated Aether Furnace Heart Core Mesh (Pulsing and Phase Reactive)
+    const coreGeo = EntityModelCache.getPartGeometry('kala_core_heart', () =>
+      this.buildPartGeometry([
+        { size: [1.2, 1.2, 0.4], pos: [0, 0, 0], matIndex: 0 },
+      ])
+    );
+    const coreMesh = this.createPartMesh(coreGeo, palette.belly || palette.accent, rig);
+    coreMesh.position.set(0, 0.2, 1.15);
+    rig.core = coreMesh;
+    rig.torso.add(coreMesh);
+
+    // 2. Colossal Stone Head with Fierce Jaw, Fangs, Red Eyes, and Meru Crown
+    const headGeo = EntityModelCache.getPartGeometry('kala_head', () =>
+      this.buildPartGeometry([
+        // Andesite Head Base & Brow
+        { size: [1.6, 1.5, 1.6], pos: [0, 0, 0], matIndex: 0 },
+        // Pronounced Kala Jaw & Tusks
+        { size: [1.8, 0.7, 1.4], pos: [0, -0.65, 0.25], matIndex: 0 },
+        { size: [0.25, 0.5, 0.25], pos: [0.65, -0.4, 0.85], matIndex: 1 }, // Tusk L
+        { size: [0.25, 0.5, 0.25], pos: [-0.65, -0.4, 0.85], matIndex: 1 }, // Tusk R
+        // Glowing Crimson Eyes
+        { size: [0.35, 0.22, 0.15], pos: [0.45, 0.18, 0.82], matIndex: 2 }, // Eye L
+        { size: [0.35, 0.22, 0.15], pos: [-0.45, 0.18, 0.82], matIndex: 2 }, // Eye R
+        // Stepped Meru Candi Pagoda Crown
+        { size: [1.8, 0.55, 1.8], pos: [0, 0.95, 0], matIndex: 1 }, // Tier 1 Gold
+        { size: [1.3, 0.55, 1.3], pos: [0, 1.45, 0], matIndex: 0 }, // Tier 2 Stone
+        { size: [0.8, 0.65, 0.8], pos: [0, 2.0, 0], matIndex: 1 },  // Spire Pinnacle
+      ])
+    );
+    const headMesh = this.createPartMesh(headGeo, [palette.body, palette.accent, palette.eye], rig);
+    headMesh.position.set(0, 2.45, 0);
+    rig.head = headMesh;
+    rig.torso.add(rig.head);
+
+    // 3. Upper Primary Arms (Holding Great Basalt Gada Clubs)
+    const upperArmGeo = EntityModelCache.getPartGeometry('kala_upper_arm', () =>
+      this.buildPartGeometry([
+        // Bicep & Forearm
+        { size: [0.95, 2.6, 0.95], pos: [0, -1.3, 0], matIndex: 0 },
+        // Stone Hand Fist
+        { size: [1.05, 0.9, 1.05], pos: [0, -2.7, 0], matIndex: 0 },
+        // Heavy Basalt Gada Club shaft & head
+        { size: [0.35, 3.6, 0.35], pos: [0, -2.4, 0.8], matIndex: 1 },
+        { size: [1.1, 1.4, 1.1], pos: [0, -1.0, 0.8], matIndex: 1 },
+      ])
+    );
+    const aL = this.createPartMesh(upperArmGeo, [palette.body, palette.horn!], rig);
+    aL.position.set(2.2, 1.25, 0.2);
+    rig.armL = aL;
+    rig.torso.add(aL);
+
+    const aR = this.createPartMesh(upperArmGeo, [palette.body, palette.horn!], rig);
+    aR.position.set(-2.2, 1.25, 0.2);
+    rig.armR = aR;
+    rig.torso.add(aR);
+
+    // 4. Lower Secondary Arms (Mystic Ley Mudra Hands)
+    const lowerArmGeo = EntityModelCache.getPartGeometry('kala_lower_arm', () =>
+      this.buildPartGeometry([
+        { size: [0.75, 2.1, 0.75], pos: [0, -1.05, 0], matIndex: 0 },
+        { size: [0.85, 0.7, 0.85], pos: [0, -2.2, 0.25], matIndex: 1 }, // Gold-inlaid palm
+      ])
+    );
+    const aL2 = this.createPartMesh(lowerArmGeo, [palette.body, palette.accent], rig);
+    aL2.position.set(2.0, -0.35, -0.2);
+    rig.armLowerL = aL2;
+    rig.torso.add(aL2);
+
+    const aR2 = this.createPartMesh(lowerArmGeo, [palette.body, palette.accent], rig);
+    aR2.position.set(-2.0, -0.35, -0.2);
+    rig.armLowerR = aR2;
+    rig.torso.add(aR2);
+
+    // 5. Heavy Plinth Pillar Legs
+    const legGeo = EntityModelCache.getPartGeometry('kala_leg', () =>
+      this.buildPartGeometry([
+        // Upper thigh
+        { size: [1.2, 1.8, 1.2], pos: [0, -0.9, 0], matIndex: 0 },
+        // Lower shins & stone pedestal feet
+        { size: [1.3, 1.8, 1.4], pos: [0, -2.5, 0.1], matIndex: 0 },
+        { size: [1.5, 0.6, 1.8], pos: [0, -3.3, 0.2], matIndex: 1 }, // Prada base plinth
+      ])
+    );
+    const legL = this.createPartMesh(legGeo, [palette.body, palette.accent], rig);
+    legL.position.set(1.1, -1.4, 0);
+    rig.legFL = legL;
+    rig.torso.add(legL);
+
+    const legR = this.createPartMesh(legGeo, [palette.body, palette.accent], rig);
+    legR.position.set(-1.1, -1.4, 0);
+    rig.legFR = legR;
+    rig.torso.add(legR);
+
+    rig.torso.position.y = 3.6;
+    root.add(rig.torso);
+    root.add(CreatureMaterialFactory.getContactShadowMesh(4.2));
     root.userData.rig = rig;
     return root;
   }

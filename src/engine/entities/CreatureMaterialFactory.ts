@@ -697,6 +697,17 @@ export class CreatureMaterialFactory {
         };
       }
 
+      case 'batara_kala_colossus': {
+        return {
+          body: new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.88, metalness: 0.15 }), // carved andesite temple stone
+          accent: new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.25, metalness: 0.75, emissive: 0xb45309, emissiveIntensity: 0.4 }), // golden prada reliefs & crown
+          belly: new THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.1, metalness: 0.9, emissive: 0x0891b2, emissiveIntensity: 1.0 }), // glowing aether furnace heart
+          horn: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7, metalness: 0.3 }), // basalt stone clubs
+          eye: new THREE.MeshBasicMaterial({ color: 0xf43f5e }), // glowing crimson eyes
+          limb: new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.9, metalness: 0.1 }),
+        };
+      }
+
       default:
         return this.createPaletteForType('stag', variant);
     }

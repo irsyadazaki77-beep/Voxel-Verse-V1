@@ -304,6 +304,75 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
     },
     prerequisites: ['q_delve_crypt'],
   },
+
+  q_tirta_amerta_1: {
+    id: 'q_tirta_amerta_1',
+    title: 'Penyucian Tirta Amerta I: Jejak Kitab Lontar Kuno',
+    giverName: 'Begawan Mpu Barada',
+    giverSettlement: 'Nagari Lembah Harau',
+    category: 'storyline',
+    tier: 'tier2_frontier',
+    description: 'Carilah kepingan prasasti lontar kuno di reruntuhan Candi Bentar untuk mengungkap rahasia keabadian Tirta Amerta.',
+    objectives: [
+      { type: 'discover', description: 'Jelajahi Reruntuhan Candi Bentar Kuno', targetId: 'dungeon', requiredCount: 1 },
+      { type: 'collect', description: 'Kumpulkan 4 Keping Batu Bertatah Relief Candi', targetId: 'carved_andesite', requiredCount: 4 },
+    ],
+    rewards: {
+      xp: 300,
+      items: [
+        { itemId: 'kris_pusaka', count: 1 },
+        { itemId: 'aether_crystal', count: 6 },
+      ],
+      reputation: { settlementId: 'nagari_minang', amount: 40 },
+    },
+    prerequisites: ['q_first_steps'],
+  },
+
+  q_tirta_amerta_2: {
+    id: 'q_tirta_amerta_2',
+    title: 'Penyucian Tirta Amerta II: Resonansi Aliran Subak',
+    giverName: 'Pekaseh Wayan (Panglima Subak)',
+    giverSettlement: 'Puri Danau Bratan',
+    category: 'storyline',
+    tier: 'tier3_ancient',
+    description: 'Salurkan air suci pegunungan melalui talang irigasi Subak ke petak sawah berundak untuk memanen beras wangi organik.',
+    objectives: [
+      { type: 'place', description: 'Pasang 4 Blok Talang Saluran Air Subak', targetId: 'block', requiredCount: 4 },
+      { type: 'collect', description: 'Panen 6 Beras Wangi Organik dari Sawah Subak', targetId: 'beras_wangi', requiredCount: 6 },
+    ],
+    rewards: {
+      xp: 450,
+      items: [
+        { itemId: 'aether_altar_core', count: 1 },
+        { itemId: 'subak_terrace_rice', count: 16 },
+      ],
+      reputation: { settlementId: 'puri_danau_bratan', amount: 45 },
+    },
+    prerequisites: ['q_tirta_amerta_1'],
+  },
+
+  q_tirta_amerta_3: {
+    id: 'q_tirta_amerta_3',
+    title: 'Penyucian Tirta Amerta III: Penaklukan Batara Kala',
+    giverName: 'Begawan Mpu Barada',
+    giverSettlement: 'Puri Danau Bratan',
+    category: 'boss',
+    tier: 'tier4_abyss',
+    description: 'Hadapi Titan Purba Batara Kala di kedalaman sanctum. Patahkan perisai aether dan selamatkan kemurnian Tirta Amerta Nusantara.',
+    objectives: [
+      { type: 'boss', description: 'Kalahkan Batara Kala Underchamber Colossus', targetId: 'boss_batara_kala', requiredCount: 1 },
+    ],
+    rewards: {
+      xp: 1500,
+      items: [
+        { itemId: 'heart_of_colossus', count: 1 },
+        { itemId: 'diamond', count: 8 },
+        { itemId: 'aether_crystal', count: 16 },
+      ],
+      reputation: { settlementId: 'nagari_minang', amount: 80 },
+    },
+    prerequisites: ['q_tirta_amerta_2'],
+  },
 };
 
 export class QuestManager {

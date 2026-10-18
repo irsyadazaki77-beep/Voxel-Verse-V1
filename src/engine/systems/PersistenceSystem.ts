@@ -51,14 +51,33 @@ export class PersistenceSystem implements GameSystem {
     return res.success;
   }
 
+  private pendingSavePromise: Promise<SaveOperationResult> | null = null;
+
   public async saveGameWithResult(): Promise<SaveOperationResult> {
+    if (this.pendingSavePromise) {
+      Logger.info('PersistenceSystem', 'Save operation already in progress, queuing behind current save');
+      const activePromise = this.pendingSavePromise;
+      this.pendingSavePromise = (async () => {
+        try {
+          await activePromise;
+        } catch {}
+        return this.executeSaveGameWithResult();
+      })();
+      return this.pendingSavePromise;
+    }
+
+    this.pendingSavePromise = this.executeSaveGameWithResult();
+    try {
+      return await this.pendingSavePromise;
+    } finally {
+      this.pendingSavePromise = null;
+    }
+  }
+
+  private async executeSaveGameWithResult(): Promise<SaveOperationResult> {
     const { world, player, stats, gameStats, sky, weather, worldId, seed, gameMode, inventory, equipment, activeHotbarIndex } = this.runtime;
     if (!world || !player || !stats) {
       return { success: false, error: 'Runtime or player not initialized' };
-    }
-
-    if (this.isSaving) {
-      Logger.info('PersistenceSystem', 'Save operation already in progress, queuing behind current save');
     }
 
     this.isSaving = true;
@@ -149,5 +168,6 @@ export class PersistenceSystem implements GameSystem {
 
   public dispose(): void {
     this.isSaving = false;
+    this.pendingSavePromise = null;
   }
 }

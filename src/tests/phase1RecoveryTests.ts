@@ -75,6 +75,7 @@ function assert(condition: boolean, testName: string, detail?: string) {
 }
 
 export async function runPhase1RecoveryTests(): Promise<boolean> {
+  SaveManager.resetSessionState();
   console.log('----------------------------------------------------');
   console.log(' PHASE 1: SAVE & WORLD STARTUP RECOVERY TEST SUITE');
   console.log('----------------------------------------------------\n');

@@ -131,7 +131,7 @@ export class WorldStartupPipeline {
       Logger.info('WorldStartupPipeline', `[Stage 1: Validate] Validating worldId "${options.worldId}", seed ${options.seed}...`);
 
       checkCancelled();
-      const isExistingWorld = SaveManager.hasWorld(options.worldId);
+      const isExistingWorld = await SaveManager.hasWorldAsync(options.worldId);
 
       if (!existingSave && isExistingWorld) {
         report('load_save', 'Retrieving Saved State...', 10);

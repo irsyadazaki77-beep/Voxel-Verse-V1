@@ -723,7 +723,16 @@ async function runTestSuite() {
     );
     assert(heightRes.valid === false && heightRes.reason === 'OUT_OF_WORLD_HEIGHT_BOUNDS', 'Out of bounds height placement rejected');
 
-    // 2. Block break authority checks
+    // 2. Block break & mining authority checks
+    const miningValid = ServerAuthority.validateMining(playerPos, [12, 64, 10], BlockType.OAK_LOG, BlockType.OAK_LOG);
+    assert(miningValid.valid === true, 'Valid block mining approved by ServerAuthority');
+
+    const miningNan = ServerAuthority.validateMining([NaN, 64, 10], [12, 64, 10], BlockType.OAK_LOG, BlockType.OAK_LOG);
+    assert(miningNan.valid === false && miningNan.reason === 'INVALID_COORDINATES', 'Mining with NaN rejected');
+
+    const miningExcessReach = ServerAuthority.validateMining(playerPos, [30, 64, 10], BlockType.OAK_LOG, BlockType.OAK_LOG);
+    assert(miningExcessReach.valid === false && miningExcessReach.reason === 'EXCEEDS_MAX_REACH', 'Mining beyond 6 blocks reach rejected');
+
     const breakValid = ServerAuthority.validateBlockBreak(playerPos, 12, 64, 10, BlockType.OAK_LOG, BlockType.OAK_LOG);
     assert(breakValid.valid === true, 'Valid block break approved by ServerAuthority');
 
@@ -771,11 +780,19 @@ async function runTestSuite() {
   }
 
   // TEST 29: Phase 4 Gameplay Depth, Combat Refinement, Survival & Nusantara Suite
-  console.log('\n▶ [29/29] Running Phase 4 Gameplay Depth, Combat & Survival Suite...');
+  console.log('\n▶ [29/30] Running Phase 4 Gameplay Depth, Combat & Survival Suite...');
   {
     const { runPhase4GameplayTests } = await import('./phase4GameplayTests');
     runPhase4GameplayTests();
     assert(true, 'All Phase 4 Gameplay Depth & Survival tests passed strictly');
+  }
+
+  // TEST 30: Phase 1.1 World Save & Data Integrity Overhaul Suite
+  console.log('\n▶ [30/30] Running Phase 1.1 World Save & Data Integrity Overhaul Tests...');
+  {
+    const { runWorldSaveIntegrityOverhaulTests } = await import('./worldSaveIntegrityOverhaulTest');
+    const integritySuccess = await runWorldSaveIntegrityOverhaulTests();
+    assert(integritySuccess === true, 'All Phase 1.1 World Save & Data Integrity Overhaul tests passed strictly');
   }
 
   console.log('\n====================================================');

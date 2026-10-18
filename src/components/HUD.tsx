@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ItemStack, BossCombatState } from '../types';
+import { ItemStack, BossCombatState, ArtifactDef } from '../types';
 import { BLOCK_DEFS } from '../engine/world/BlockRegistry';
 import { ITEM_DEFS } from '../engine/items/ItemRegistry';
+import { ARTIFACT_REGISTRY } from '../engine/progression/ArtifactRegistry';
 import { RaycastHit } from '../engine/world/VoxelWorld';
 import { SettingsManager, GameSettings } from '../engine/ui/SettingsManager';
 import { VoxelVerseLogo } from './VoxelVerseLogo';
@@ -28,6 +29,9 @@ import { TelemetryStore } from '../engine/ui/TelemetryStore';
 import { GameEventBus } from '../engine/events/GameEventBus';
 import { AetherAnomalyManager } from '../engine/anomaly/AetherAnomalyManager';
 import { triggerHaptic } from '../utils/haptics';
+import { MiniRadar } from './MiniRadar';
+import { TutorialDirector, TutorialStep } from '../engine/tutorial/TutorialDirector';
+import { WeaponSkillManager, WeaponSkillDef } from '../engine/combat/WeaponSkillManager';
 
 interface HUDProps {
   hotbar: (ItemStack | null)[];
@@ -560,6 +564,308 @@ const HUDVitalsBars = () => {
   );
 };
 
+const HUDMultiPhaseBossBar: React.FC<{ activeBoss: BossCombatState }> = ({ activeBoss }) => {
+  const [ghostHp, setGhostHp] = useState(activeBoss.health);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setGhostHp(activeBoss.health);
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [activeBoss.health]);
+
+  const hpPercent = Math.max(0, Math.min(100, (activeBoss.health / activeBoss.maxHealth) * 100));
+  const ghostPercent = Math.max(0, Math.min(100, (ghostHp / activeBoss.maxHealth) * 100));
+  const currentPoise = activeBoss.poise ?? 100;
+  const maxPoise = activeBoss.maxPoise ?? 240;
+  const poisePercent = Math.max(0, Math.min(100, (currentPoise / maxPoise) * 100));
+  const isStaggered = currentPoise <= 0;
+
+  return (
+    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-30 w-[94vw] max-w-[620px] pointer-events-auto select-none transition-all duration-300 animate-fade-in ${
+      activeBoss.enraged ? 'animate-pulse' : ''
+    }`}>
+      <div className={`p-3.5 rounded-xl border backdrop-blur-md shadow-2xl relative overflow-hidden transition-all duration-300 ${
+        activeBoss.enraged 
+          ? 'bg-rose-950/90 border-rose-500 shadow-[0_0_35px_rgba(244,63,94,0.45)]' 
+          : activeBoss.isShielded 
+            ? 'bg-cyan-950/90 border-cyan-500/80 shadow-[0_0_30px_rgba(6,182,212,0.35)]' 
+            : 'bg-zinc-950/90 border-amber-600/50 shadow-[0_0_25px_rgba(217,119,6,0.25)]'
+      }`}>
+        {/* Top Header: Boss Name & Phase Badge */}
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-sm sm:text-base font-black tracking-wider uppercase text-white drop-shadow-md">
+              {activeBoss.name}
+            </span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-widest font-mono border ${
+              activeBoss.enraged 
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                : activeBoss.isShielded 
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+            }`}>
+              {activeBoss.phaseSubtitle || `FASE ${activeBoss.phase}`}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Phase Progress Indicator Nodes */}
+            <div className="flex items-center gap-1.5">
+              {[1, 2, 3].map((pNum) => (
+                <div
+                  key={`boss-node-${pNum}`}
+                  className={`w-2.5 h-2.5 rounded-full border transition-all ${
+                    activeBoss.phase >= pNum 
+                      ? activeBoss.enraged ? 'bg-rose-500 border-rose-300 shadow-[0_0_8px_#f43f5e]' : 'bg-amber-400 border-amber-200 shadow-[0_0_6px_#fbbf24]' 
+                      : 'bg-zinc-800 border-zinc-700'
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="font-mono text-xs font-bold text-zinc-300 ml-1">
+              {Math.ceil(activeBoss.health)} / {activeBoss.maxHealth}
+            </span>
+          </div>
+        </div>
+
+        {/* Shield Alert Banner if Shielded */}
+        {activeBoss.isShielded && !isStaggered && (
+          <div className="mb-2 px-2.5 py-1 rounded bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-between text-[11px] text-cyan-200">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <Shield className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+              <span>PERISAI AETHER AKTIF (-55% Damage)</span>
+            </div>
+            <span className="text-[10px] text-cyan-300/80 font-mono">Pecahkan Poise untuk meruntuhkan</span>
+          </div>
+        )}
+
+        {/* Stagger Warning Banner */}
+        {isStaggered && (
+          <div className="mb-2 px-2.5 py-1 rounded bg-amber-500/20 border border-amber-400 flex items-center justify-between text-[11px] text-amber-200 animate-bounce">
+            <div className="flex items-center gap-1.5 font-bold">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
+              <span>POISE PECAH! BOSS TERTUNDUK!</span>
+            </div>
+            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest font-mono">
+              [ 100% RIPOSTE KRITIS ]
+            </span>
+          </div>
+        )}
+
+        {/* Dual-Layer HP Bar with Ghost Bar */}
+        <div className="relative h-4 bg-black/80 rounded-md border border-white/10 overflow-hidden p-[1px] mb-1.5">
+          {/* Ghost Bar */}
+          <div
+            className="absolute top-0 bottom-0 left-0 bg-amber-500/60 rounded-md transition-all duration-700 ease-out"
+            style={{ width: `${ghostPercent}%` }}
+          />
+          {/* Active HP Bar */}
+          <div
+            className={`h-full rounded-md transition-all duration-150 relative ${
+              activeBoss.enraged 
+                ? 'bg-gradient-to-r from-rose-700 via-rose-500 to-amber-500 shadow-[0_0_15px_#f43f5e]'
+                : activeBoss.isShielded 
+                  ? 'bg-gradient-to-r from-cyan-600 via-sky-500 to-indigo-500 shadow-[0_0_15px_#06b6d4]'
+                  : 'bg-gradient-to-r from-red-600 via-rose-500 to-amber-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]'
+            }`}
+            style={{ width: `${hpPercent}%` }}
+          />
+        </div>
+
+        {/* Poise / Stagger Meter Bar */}
+        <div className="flex items-center gap-2 pt-0.5 text-[10px]">
+          <span className="font-mono text-zinc-400 font-bold shrink-0">POISE STAGGER</span>
+          <div className="flex-1 h-1.5 bg-black/70 rounded-full border border-white/5 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-150 ${
+                isStaggered 
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-sky-400 shadow-[0_0_8px_#38bdf8]'
+              }`}
+              style={{ width: `${poisePercent}%` }}
+            />
+          </div>
+          <span className="font-mono text-zinc-400 text-[9px] shrink-0">
+            {Math.round(currentPoise)}/{maxPoise}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const HUDRelicDiscoveryModal: React.FC<{
+  discovery: { relic: ArtifactDef; bossName: string };
+  onClose: () => void;
+}> = ({ discovery, onClose }) => {
+  const { relic, bossName } = discovery;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 pointer-events-auto select-none animate-fade-in">
+      <div className="bg-[#121118] border-2 border-amber-500/80 rounded-2xl p-6 max-w-md w-full shadow-[0_0_50px_rgba(245,158,11,0.35)] text-center relative overflow-hidden">
+        {/* Top gold embellishment */}
+        <div className="w-20 h-1 bg-gradient-to-r from-transparent via-amber-400 to-transparent mx-auto mb-3" />
+        
+        <div className="text-[11px] font-mono uppercase tracking-widest text-amber-400 font-bold mb-1">
+          ✦ PUSAKA PURBA NUSANTARA TERUNGKAP ✦
+        </div>
+        <p className="text-xs text-zinc-400 mb-4">
+          Dihasilkan dari reruntuhan <strong className="text-zinc-200">{bossName}</strong>
+        </p>
+
+        {/* Relic Icon Box */}
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border-2 border-amber-400/60 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(245,158,11,0.4)] mb-4 animate-bounce">
+          🏆
+        </div>
+
+        <h3 className="text-xl font-black text-amber-300 uppercase tracking-wide mb-2 drop-shadow-md">
+          {relic.name}
+        </h3>
+
+        <div className="p-3 rounded-xl bg-black/50 border border-white/10 text-left mb-4 space-y-2">
+          <div className="text-[11px] text-zinc-300 italic leading-relaxed border-b border-white/5 pb-2">
+            "{relic.lore}"
+          </div>
+          <div className="text-xs font-semibold text-emerald-300 flex items-start gap-1.5 pt-0.5">
+            <span className="text-emerald-400 shrink-0 font-bold">★ Kemampuan:</span>
+            <span>{relic.passiveAbility}</span>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-zinc-950 font-black text-xs uppercase tracking-wider shadow-lg cursor-pointer transition-all active:scale-[0.98]"
+        >
+          Klaim & Simpan ke Inventaris
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const HUDTutorialCard: React.FC = () => {
+  const [tutState, setTutState] = useState<{ step: TutorialStep | null; isDismissed: boolean; isAllCompleted: boolean }>({
+    step: TutorialDirector.getCurrentStep(),
+    isDismissed: false,
+    isAllCompleted: false,
+  });
+
+  useEffect(() => {
+    TutorialDirector.initialize();
+    return TutorialDirector.subscribe(setTutState);
+  }, []);
+
+  if (tutState.isDismissed || tutState.isAllCompleted || !tutState.step) {
+    return null;
+  }
+
+  const { step } = tutState;
+
+  return (
+    <div className="voxel-panel-subtle p-3 max-w-xs border-l-2 border-l-sky-400 bg-[var(--vv-bg)]/80 backdrop-blur-md pointer-events-auto animate-fade-in relative shadow-xl">
+      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/10">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-sky-300">PANDUAN PENGELANA</span>
+        </div>
+        <button
+          onClick={() => TutorialDirector.dismissTutorial()}
+          className="text-zinc-400 hover:text-white text-xs cursor-pointer px-1 py-0.5 rounded hover:bg-white/10"
+          title="Sembunyikan Panduan"
+        >
+          ✕
+        </button>
+      </div>
+
+      <h4 className="text-xs font-bold text-white mb-1">{step.title}</h4>
+      <p className="text-[11px] text-zinc-300 leading-snug mb-2">{step.instruction}</p>
+
+      <div className="bg-black/50 border border-white/10 rounded-lg p-2 text-[10px] space-y-1">
+        <div className="text-amber-300 font-semibold flex items-center gap-1.5">
+          <span className="text-zinc-400 font-mono text-[9px] bg-white/10 px-1 py-0.5 rounded">PC</span>
+          <span>{step.keyboardHint}</span>
+        </div>
+        <div className="text-sky-300 font-semibold flex items-center gap-1.5">
+          <span className="text-zinc-400 font-mono text-[9px] bg-white/10 px-1 py-0.5 rounded">HP</span>
+          <span>{step.mobileHint}</span>
+        </div>
+      </div>
+
+      {step.targetCount > 1 && (
+        <div className="mt-2 flex items-center justify-between text-[10px] font-mono text-zinc-400">
+          <span>Target Selesai:</span>
+          <span className="font-bold text-sky-400">{step.currentCount} / {step.targetCount}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const HUDWeaponSkillWidget: React.FC = () => {
+  const [skillState, setSkillState] = useState<{
+    skill: WeaponSkillDef | null;
+    cooldownRatio: number;
+    cooldownSeconds: number;
+  }>({
+    skill: WeaponSkillManager.getSkillForWeapon(null),
+    cooldownRatio: 0,
+    cooldownSeconds: 0,
+  });
+
+  useEffect(() => {
+    return WeaponSkillManager.subscribe(setSkillState);
+  }, []);
+
+  const handleTrigger = () => {
+    const rt = (window as any).__voxelRuntime;
+    if (rt) {
+      triggerHaptic('impact');
+      rt.triggerWeaponSkill();
+    }
+  };
+
+  const skill = skillState.skill;
+  const isCooldown = skillState.cooldownSeconds > 0;
+
+  return (
+    <div className="flex items-center gap-2 pointer-events-auto shrink-0">
+      <button
+        onClick={handleTrigger}
+        title={skill ? `${skill.name} [R]` : 'Jurus Pusaka [R]'}
+        className={`relative w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer border shadow-xl ${
+          isCooldown
+            ? 'bg-zinc-900/80 border-white/10 opacity-75'
+            : 'bg-gradient-to-tr from-amber-600/90 to-orange-500/90 hover:from-amber-500 hover:to-orange-400 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] active:scale-95'
+        }`}
+      >
+        {/* Cooldown overlay */}
+        {isCooldown && (
+          <div className="absolute inset-0 bg-black/75 rounded-xl flex items-center justify-center text-xs font-mono font-black text-amber-300 z-20">
+            {skillState.cooldownSeconds}s
+          </div>
+        )}
+
+        <span className="text-base sm:text-lg relative z-10">{skill?.icon || '⚡'}</span>
+        <span className="absolute -bottom-1 -right-1 text-[8px] font-mono font-bold bg-black/80 px-1 rounded text-amber-300 border border-amber-500/30 z-10">
+          R
+        </span>
+      </button>
+
+      {skill && (
+        <div className="hidden md:flex flex-col text-left">
+          <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-amber-400 leading-tight">
+            JURUS PUSAKA
+          </span>
+          <span className="text-xs font-bold text-white leading-tight truncate max-w-[120px]">
+            {skill.name}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const HUD: React.FC<HUDProps> = ({
   hotbar,
   activeHotbarIndex,
@@ -653,6 +959,34 @@ export const HUD: React.FC<HUDProps> = ({
     };
   }, []);
 
+  const [activeRelicDiscovery, setActiveRelicDiscovery] = useState<{ relic: ArtifactDef; bossName: string } | null>(null);
+
+  useEffect(() => {
+    const unsubRelic = GameEventBus.on('RELIC_DISCOVERED', (payload: { relicId: string; bossName: string }) => {
+      const def = ARTIFACT_REGISTRY[payload.relicId];
+      if (def) {
+        setActiveRelicDiscovery({
+          relic: def,
+          bossName: payload.bossName || 'Batara Kala Underchamber Colossus',
+        });
+      }
+    });
+
+    return () => unsubRelic();
+  }, []);
+
+  const [isLockOnActive, setIsLockOnActive] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const rt = (window as any).__voxelRuntime;
+      if (rt && rt.player) {
+        setIsLockOnActive(!!rt.player.isLockOnActive);
+      }
+    }, 80);
+    return () => clearInterval(interval);
+  }, []);
+
   // Display Item Name Banner upon Hotbar Switch
   useEffect(() => {
     const currentItem = hotbar[activeHotbarIndex];
@@ -743,6 +1077,17 @@ export const HUD: React.FC<HUDProps> = ({
         <div className="absolute inset-0 pointer-events-none bg-radial from-transparent via-rose-900/30 to-rose-600/60 animate-damage-shake animate-hit-flash z-30" />
       )}
 
+      {/* Cinematic Multi-Phase Boss Bar */}
+      {activeBoss && <HUDMultiPhaseBossBar activeBoss={activeBoss} />}
+
+      {/* Ancient Relic Discovery Banner Modal */}
+      {activeRelicDiscovery && (
+        <HUDRelicDiscoveryModal
+          discovery={activeRelicDiscovery}
+          onClose={() => setActiveRelicDiscovery(null)}
+        />
+      )}
+
       {/* Top Bar (Telemetry on Left, Objective in Center, Menu Actions on Right) */}
       <div className="flex justify-between items-start w-full relative z-20">
         {/* Left: Telemetry & Quest Objective */}
@@ -798,25 +1143,8 @@ export const HUD: React.FC<HUDProps> = ({
             </div>
           ) : null}
 
-          {/* Boss Encounter Health Bar */}
-          {activeBoss && (
-            <div className="w-84 mt-2 voxel-panel p-3 border-[var(--vv-danger)]/40 shadow-[0_0_25px_rgba(239,68,68,0.3)] animate-fade-in pointer-events-auto">
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="text-sm font-black uppercase tracking-wider text-[var(--vv-danger)] drop-shadow-md">
-                  {activeBoss.name}
-                </span>
-                <span className="text-[10px] font-mono text-rose-200 font-bold">
-                  {Math.ceil(activeBoss.health)} / {activeBoss.maxHealth}
-                </span>
-              </div>
-              <div className="h-3 bg-black/80 rounded-full border border-rose-500/30 overflow-hidden relative p-[1px]">
-                <div 
-                  className="h-full bg-gradient-to-r from-rose-600 via-rose-500 to-[var(--vv-warning)] rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(239,68,68,0.8)]"
-                  style={{ width: `${Math.max(0, Math.min(100, (activeBoss.health / activeBoss.maxHealth) * 100))}%` }}
-                />
-              </div>
-            </div>
-          )}
+          {/* Interactive Beginner Tutorial Card */}
+          <HUDTutorialCard />
         </div>
 
         {/* Center: Aether Anomaly & Environmental Warning Panel */}
@@ -843,49 +1171,91 @@ export const HUD: React.FC<HUDProps> = ({
           )}
         </div>
 
-        {/* Right: Quick Action Tray */}
-        <div className="flex items-center gap-1.5 pointer-events-auto">
-          {onOpenJournal && (
+        {/* Right: Quick Action Tray & MiniRadar */}
+        <div className="flex flex-col items-end gap-2.5 pointer-events-auto">
+          <div className="flex items-center gap-1.5">
+            {onOpenJournal && (
+              <button
+                onClick={onOpenJournal}
+                title="Journal & Codex [J]"
+                className="px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold text-zinc-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span className="text-amber-400">📖</span>
+                <span className="hidden sm:inline">Journal</span>
+                <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">J</kbd>
+              </button>
+            )}
+
+            {onToggleDebugMap && (
+              <button
+                onClick={onToggleDebugMap}
+                title="World Map [M]"
+                className="px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold text-zinc-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span className="text-cyan-400">🗺️</span>
+                <span className="hidden sm:inline">Map</span>
+                <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">M</kbd>
+              </button>
+            )}
+
             <button
-              onClick={onOpenJournal}
-              title="Journal & Codex [J]"
-              className="px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold text-zinc-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+              onClick={() => {
+                const rt = (window as any).__voxelRuntime;
+                if (rt) {
+                  rt.toggleTargetLockOn();
+                }
+              }}
+              title="Kunci Target Kamera [Q]"
+              className={`px-2.5 py-1.5 voxel-panel-subtle text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                isLockOnActive
+                  ? 'border-amber-400 text-amber-200 bg-amber-500/25 shadow-[0_0_12px_rgba(245,158,11,0.6)]'
+                  : 'hover:border-amber-400/50 text-amber-300'
+              }`}
             >
-              <span className="text-amber-400">📖</span>
-              <span className="hidden sm:inline">Journal</span>
-              <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">J</kbd>
+              <span className="text-amber-400">🎯</span>
+              <span className="hidden sm:inline">Lock-On</span>
+              <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">Q</kbd>
             </button>
-          )}
 
-          {onToggleDebugMap && (
             <button
-              onClick={onToggleDebugMap}
-              title="World Map [M]"
-              className="px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold text-zinc-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+              onClick={() => {
+                const rt = (window as any).__voxelRuntime;
+                if (rt) {
+                  rt.entities.spawnBoss(
+                    'batara_kala_colossus',
+                    [rt.player.position.x + 8, rt.player.position.y, rt.player.position.z + 8],
+                    rt.world
+                  );
+                }
+              }}
+              title="Uji Coba Boss Batara Kala [Multi-Phase Colossus]"
+              className="px-2.5 py-1.5 voxel-panel-subtle hover:border-amber-400 text-xs font-bold text-amber-300 hover:text-amber-200 transition-all cursor-pointer flex items-center gap-1.5 bg-amber-950/40 border border-amber-600/40"
             >
-              <span className="text-cyan-400">🗺️</span>
-              <span className="hidden sm:inline">Map</span>
-              <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">M</kbd>
+              <span>⚔️</span>
+              <span className="hidden sm:inline">Boss Batara Kala</span>
             </button>
-          )}
 
-          <button
-            onClick={() => setShowProfiler(prev => !prev)}
-            title="Toggle Engine Telemetry & Profiler [F3]"
-            className={`px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${showProfiler ? 'border-sky-400 text-sky-300 bg-sky-500/10' : 'text-zinc-200 hover:text-white'}`}
-          >
-            <Activity className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">Stats</span>
-            <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">F3</kbd>
-          </button>
+            <button
+              onClick={() => setShowProfiler(prev => !prev)}
+              title="Toggle Engine Telemetry & Profiler [F3]"
+              className={`px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${showProfiler ? 'border-sky-400 text-sky-300 bg-sky-500/10' : 'text-zinc-200 hover:text-white'}`}
+            >
+              <Activity className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">Stats</span>
+              <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">F3</kbd>
+            </button>
 
-          <button 
-            onClick={onOpenPause}
-            className="px-3.5 py-1.5 voxel-panel hover:border-sky-400/50 text-xs font-bold text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-lg"
-          >
-            <span>Menu</span>
-            <kbd className="text-[9px] font-mono text-zinc-400 bg-white/10 px-1 rounded">ESC</kbd>
-          </button>
+            <button 
+              onClick={onOpenPause}
+              className="px-3.5 py-1.5 voxel-panel hover:border-sky-400/50 text-xs font-bold text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-lg"
+            >
+              <span>Menu</span>
+              <kbd className="text-[9px] font-mono text-zinc-400 bg-white/10 px-1 rounded">ESC</kbd>
+            </button>
+          </div>
+
+          {/* Mini-Radar Widget with Compass & Waypoint Tracker */}
+          <MiniRadar onOpenMap={onToggleDebugMap} />
         </div>
       </div>
 
@@ -904,6 +1274,19 @@ export const HUD: React.FC<HUDProps> = ({
             <div className="w-1.5 h-1.5 rounded-full bg-white/90" />
           </div>
         </div>
+
+        {/* Target Lock-On Aiming Reticle Brackets */}
+        {isLockOnActive && (
+          <div className="absolute w-20 h-20 pointer-events-none flex items-center justify-center animate-pulse">
+            <div className="absolute top-0 left-0 w-3.5 h-3.5 border-t-2 border-l-2 border-amber-400 shadow-[0_0_8px_#f59e0b]" />
+            <div className="absolute top-0 right-0 w-3.5 h-3.5 border-t-2 border-r-2 border-amber-400 shadow-[0_0_8px_#f59e0b]" />
+            <div className="absolute bottom-0 left-0 w-3.5 h-3.5 border-b-2 border-l-2 border-amber-400 shadow-[0_0_8px_#f59e0b]" />
+            <div className="absolute bottom-0 right-0 w-3.5 h-3.5 border-b-2 border-r-2 border-amber-400 shadow-[0_0_8px_#f59e0b]" />
+            <div className="text-[8px] font-mono font-extrabold tracking-widest text-amber-300 bg-black/75 px-1.5 py-0.5 rounded -bottom-6 absolute border border-amber-400/50 shadow-md">
+              LOCKED
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Interactive Crosshair */}
         <div className={`w-6 h-6 relative flex items-center justify-center transition-transform duration-100 ${targetHit ? 'scale-110' : ''}`}>
@@ -1009,8 +1392,12 @@ export const HUD: React.FC<HUDProps> = ({
 
         <HUDVitalsBars />
 
-        {/* Hotbar (1-9) */}
-        <div className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:p-2 voxel-panel shadow-2xl pointer-events-auto border-white/15 max-w-[98vw] overflow-x-auto">
+        {/* Weapon Skill Widget & Hotbar (1-9) Row */}
+        <div className="flex items-center gap-2 max-w-[98vw]">
+          <HUDWeaponSkillWidget />
+
+          {/* Hotbar (1-9) */}
+          <div className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:p-2 voxel-panel shadow-2xl pointer-events-auto border-white/15 overflow-x-auto">
           {hotbar.map((slot, idx) => {
             const isActive = idx === activeHotbarIndex;
             const itemDef = slot ? ITEM_DEFS[slot.itemId] : null;
@@ -1079,5 +1466,6 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 };

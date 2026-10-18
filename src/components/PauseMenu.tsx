@@ -10,6 +10,7 @@ interface PauseMenuProps {
   onOpenMultiplayerLobby?: () => void;
   isMultiplayer?: boolean;
   isSaving?: boolean;
+  saveError?: string | null;
 }
 
 export const PauseMenu: React.FC<PauseMenuProps> = ({
@@ -18,6 +19,7 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
   onOpenMultiplayerLobby,
   isMultiplayer = false,
   isSaving = false,
+  saveError,
 }) => {
   const [showSettings, setShowSettings] = useState(false);
 
@@ -31,6 +33,15 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
             {isMultiplayer ? 'Multiplayer Session' : 'Game Suspended'}
           </div>
         </div>
+
+        {/* Save Error Notice */}
+        {saveError && (
+          <div className="p-3 bg-rose-500/15 border border-rose-500/40 rounded-2xl text-rose-200 text-xs text-center space-y-1 animate-fade-in">
+            <p className="font-bold text-rose-300">Penyimpanan Tertunda / Error</p>
+            <p className="text-[11px] opacity-90">{saveError}</p>
+            <p className="text-[10px] text-white/60">Progres pemain tetap aman di memori sesi saat ini.</p>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="space-y-2.5">

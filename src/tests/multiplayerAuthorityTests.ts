@@ -158,40 +158,84 @@ export async function runMultiplayerAuthorityTests(): Promise<boolean> {
   }
 
   // =========================================================================
-  // TEST 3: Authoritative Block Break Validation
+  // TEST 3: Authoritative Block Break & Mining Validation
   // =========================================================================
-  console.log('  [3] Server-Authoritative Block Destruction');
+  console.log('  [3] Server-Authoritative Block Destruction & Mining Validation');
   {
     const playerPos: [number, number, number] = [10, 50, 10];
 
-    // Valid break
-    const validBreak = ServerAuthority.validateBlockBreak(
+    // 1. Valid mining at close reach
+    const validMining = ServerAuthority.validateMining(
       playerPos,
-      11, 50, 10,
+      [11, 50, 10],
       BlockType.STONE,
       BlockType.STONE
     );
-    assert(validBreak.valid === true, 'Valid block destruction approved');
+    assert(validMining.valid === true, 'Valid block mining approved by ServerAuthority');
 
-    // Break out of reach
-    const outOfReachBreak = ServerAuthority.validateBlockBreak(
-      playerPos,
-      100, 50, 10,
+    // 2. Reject mining with NaN in player position
+    const nanPlayerMining = ServerAuthority.validateMining(
+      [NaN, 50, 10],
+      [11, 50, 10],
       BlockType.STONE,
       BlockType.STONE
     );
-    assert(outOfReachBreak.valid === false, 'Out of reach block destruction rejected');
-    assert(outOfReachBreak.reason === 'EXCEEDS_MAX_REACH', 'Reason matches EXCEEDS_MAX_REACH');
+    assert(nanPlayerMining.valid === false, 'Mining with NaN in player position rejected');
+    assert(nanPlayerMining.reason === 'INVALID_COORDINATES', 'Reason matches INVALID_COORDINATES');
 
-    // Desync break (block was already broken or changed)
-    const desyncBreak = ServerAuthority.validateBlockBreak(
+    // 3. Reject mining with NaN in block position
+    const nanBlockMining = ServerAuthority.validateMining(
       playerPos,
-      11, 50, 10,
+      [11, NaN, 10],
+      BlockType.STONE,
+      BlockType.STONE
+    );
+    assert(nanBlockMining.valid === false, 'Mining with NaN in block position rejected');
+    assert(nanBlockMining.reason === 'INVALID_COORDINATES', 'Reason matches INVALID_COORDINATES for block');
+
+    // 4. Reject mining with Infinity
+    const infMining = ServerAuthority.validateMining(
+      playerPos,
+      [11, Infinity, 10],
+      BlockType.STONE,
+      BlockType.STONE
+    );
+    assert(infMining.valid === false, 'Mining with Infinity rejected');
+    assert(infMining.reason === 'INVALID_COORDINATES', 'Reason matches INVALID_COORDINATES for Infinity');
+
+    // 5. Reject mining exceeding maximum reach (distanceSq > 36 / reach > 6 blocks)
+    const excessDistanceMining = ServerAuthority.validateMining(
+      playerPos,
+      [10, 50, 20], // 10 blocks away (distanceSq ~ 100 > 36)
+      BlockType.STONE,
+      BlockType.STONE
+    );
+    assert(excessDistanceMining.valid === false, 'Mining beyond max reach (distanceSq > 36) rejected');
+    assert(excessDistanceMining.reason === 'EXCEEDS_MAX_REACH', 'Reason matches EXCEEDS_MAX_REACH');
+
+    // 6. Reject non-integer block coordinates
+    const floatMining = ServerAuthority.validateMining(
+      playerPos,
+      [11.5, 50, 10],
+      BlockType.STONE,
+      BlockType.STONE
+    );
+    assert(floatMining.valid === false, 'Mining non-integer block coordinate rejected');
+    assert(floatMining.reason === 'COORDINATES_MUST_BE_INTEGERS', 'Reason matches COORDINATES_MUST_BE_INTEGERS');
+
+    // 7. Desync break (block was already broken or changed)
+    const desyncMining = ServerAuthority.validateMining(
+      playerPos,
+      [11, 50, 10],
       BlockType.STONE,
       BlockType.AIR
     );
-    assert(desyncBreak.valid === false, 'Destruction of already-removed block rejected');
-    assert(desyncBreak.reason === 'OLD_BLOCK_STATE_DESYNC', 'Reason matches OLD_BLOCK_STATE_DESYNC');
+    assert(desyncMining.valid === false, 'Destruction of already-removed block rejected');
+    assert(desyncMining.reason === 'OLD_BLOCK_STATE_DESYNC', 'Reason matches OLD_BLOCK_STATE_DESYNC');
+
+    // 8. Legacy validateBlockBreak helper compatibility
+    const validBreak = ServerAuthority.validateBlockBreak(playerPos, 11, 50, 10, BlockType.STONE, BlockType.STONE);
+    assert(validBreak.valid === true, 'Legacy validateBlockBreak continues to work seamlessly');
   }
 
   // =========================================================================

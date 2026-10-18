@@ -3252,6 +3252,44 @@ export const ITEM_DEFS: Record<string, ItemDef> = {
     description: 'Mahkota titan primordial pemberi kekebalan elemen dan kendali leylines.',
     baseValue: 1500,
   },
+
+  // Subterranean Dungeon & Colossus Relics
+  mustika_naga_pusaka: {
+    id: 'mustika_naga_pusaka',
+    name: 'Mustika Naga Warisan Purba',
+    category: 'accessory',
+    armorSlot: 'accessory',
+    rarity: 'ancient',
+    maxStack: 1,
+    iconColor: '#10b981',
+    description: 'Relic Purba: Mustika naga Antaboga penjaga bumi. Memberikan +50% ketahanan poise dan shockwave listrik pada combo finisher.',
+    armorValue: 35,
+    baseValue: 2000,
+  },
+  cakra_surya_precursor: {
+    id: 'cakra_surya_precursor',
+    name: 'Cakra Surya Precursor',
+    category: 'accessory',
+    armorSlot: 'accessory',
+    rarity: 'ancient',
+    maxStack: 1,
+    iconColor: '#f59e0b',
+    description: 'Relic Purba: Cakram surya berputar bercahaya abadi. Memberikan +25% attack speed, daylight glow permanen, dan tebasan api solar.',
+    armorValue: 25,
+    baseValue: 2200,
+  },
+  keris_kyai_sengkelat: {
+    id: 'keris_kyai_sengkelat',
+    name: 'Pusaka Keris Kyai Sengkelat',
+    category: 'weapon',
+    rarity: 'ancient',
+    maxStack: 1,
+    iconColor: '#ef4444',
+    description: 'Senjata Pusaka Keramat luk 13 pamor beras wutah. Serangan riposte otomatis menghancurkan poise lawan dan menghasilkan 100% kritikal riposte.',
+    attackDamage: 52,
+    durability: 1200,
+    baseValue: 3000,
+  },
 };
 
 

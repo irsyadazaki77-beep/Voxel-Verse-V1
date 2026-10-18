@@ -160,6 +160,12 @@ export class NotificationManager {
       })
     );
 
+    this.unsubscribers.push(
+      GameEventBus.on('NOTIFICATION_SHOW', (p) => {
+        this.show(p.title, p.message, p.type || 'info', p.durationMs || 3000);
+      })
+    );
+
     // Cleanup loop every 500ms
     if (!this.cleanupTimer) {
       this.cleanupTimer = setInterval(() => this.cleanup(), 500);
@@ -178,6 +184,40 @@ export class NotificationManager {
     this.notifications = [];
     this.listeners.clear();
     this.initialized = false;
+  }
+
+  public static show(
+    title: string,
+    message: string,
+    type: 'info' | 'warning' | 'danger' | 'success' = 'info',
+    durationMs: number = 3000
+  ): void {
+    const priorityMap: Record<string, NotificationPriority> = {
+      info: 'MEDIUM',
+      warning: 'HIGH',
+      danger: 'CRITICAL',
+      success: 'HIGH',
+    };
+    const colorMap: Record<string, string> = {
+      info: 'sky',
+      warning: 'amber',
+      danger: 'rose',
+      success: 'emerald',
+    };
+    const iconMap: Record<string, string> = {
+      info: 'ℹ️',
+      warning: '⚠️',
+      danger: '🔥',
+      success: '✨',
+    };
+    this.push({
+      title,
+      message,
+      priority: priorityMap[type] || 'MEDIUM',
+      icon: iconMap[type] || '🔔',
+      colorTheme: colorMap[type] || 'sky',
+      durationMs,
+    });
   }
 
   public static push(notif: Omit<GameNotification, 'id' | 'timestamp'>): void {

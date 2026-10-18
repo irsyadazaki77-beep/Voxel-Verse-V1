@@ -28,7 +28,7 @@ interface ContentDebugModalProps {
   onClose: () => void;
   playerPos: [number, number, number];
   onTeleport: (x: number, y: number, z: number) => void;
-  onSpawnBoss: (type: 'ruin_sentinel' | 'boss_void_sovereign') => void;
+  onSpawnBoss: (type: 'ruin_sentinel' | 'boss_void_sovereign' | 'batara_kala_colossus') => void;
   onChangeDimension?: (dim: string) => void;
 }
 
@@ -319,6 +319,23 @@ export const ContentDebugModal: React.FC<ContentDebugModalProps> = ({
                 <div>
                   <div className="font-bold text-xs text-purple-200">Shadow Sovereign (World Boss)</div>
                   <div className="text-[11px] text-purple-400">Void teleportation & dark bolts (Tier 5)</div>
+                </div>
+              </button>
+
+              <button
+                id="btn_spawn_batara_kala"
+                onClick={() => onSpawnBoss('batara_kala_colossus')}
+                className="flex items-center gap-3 p-3 rounded-xl bg-amber-950/40 border border-amber-600 hover:border-amber-400 text-left transition-colors col-span-2"
+              >
+                <div className="p-2 rounded-lg bg-amber-800 text-amber-200">
+                  <Skull className="w-5 h-5 text-amber-300 animate-pulse" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs text-amber-300">Batara Kala Underchamber Colossus (3-Phase Boss)</span>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30">NEW UPGRADE</span>
+                  </div>
+                  <div className="text-[11px] text-amber-200/80">3 Fase Bertahap: Tebasan Purba ➔ Perisai Aether ➔ Berserk Cosmic Wrath (Drop Relic Purba)</div>
                 </div>
               </button>
             </div>

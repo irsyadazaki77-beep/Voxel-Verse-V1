@@ -379,6 +379,128 @@ export class StructureGenerator {
     return blocks;
   }
 
+  // 6b. Reruntuhan Gerbang Candi Bentar Bawah Tanah (Ancient Candi Dungeon Gate)
+  // Split Nusantara Candi Bentar towers with relief pillars and authentic subterranean descending stairs
+  public static generateAncientCandiDungeonGate(): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+
+    // 1. Broad Andesite Stone Plinth & Courtyard Foundation
+    for (let x = -5; x <= 5; x++) {
+      for (let z = -4; z <= 4; z++) {
+        const isMossy = (Math.abs(x * 3 + z * 7) % 3) === 0;
+        blocks.push({
+          dx: x,
+          dy: 0,
+          dz: z,
+          block: isMossy ? BlockType.MOSS_STONE : BlockType.STONE_BRICKS,
+        });
+      }
+    }
+
+    // 2. Twin Split Candi Bentar Wings (Left Tower: dx -5 to -2, Right Tower: dx 2 to 5)
+    const towerRanges = [
+      { minX: -5, maxX: -2, sign: -1 },
+      { minX: 2, maxX: 5, sign: 1 },
+    ];
+
+    towerRanges.forEach(({ minX, maxX, sign }) => {
+      // Base Stepped Pedestal (dy 1 to 2)
+      for (let x = minX; x <= maxX; x++) {
+        for (let z = -2; z <= 2; z++) {
+          blocks.push({ dx: x, dy: 1, dz: z, block: BlockType.STONE_BRICKS });
+          if (Math.abs(z) <= 1 && (x !== minX || sign === 1) && (x !== maxX || sign === -1)) {
+            blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.STONE_PILLAR });
+          } else {
+            blocks.push({ dx: x, dy: 2, dz: z, block: BlockType.STONE_BRICKS });
+          }
+        }
+      }
+
+      // Tower Shaft (dy 3 to 5) with Carved Relief Corners
+      for (let y = 3; y <= 5; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          for (let z = -1; z <= 1; z++) {
+            const isInnerEdge = (sign === -1 && x === maxX) || (sign === 1 && x === minX);
+            if (isInnerEdge && y <= 4) {
+              // Flat sheer inner cut characteristic of Nusantara Candi Bentar split gateways
+              blocks.push({ dx: x, dy: y, dz: z, block: BlockType.STONE_BRICKS });
+            } else {
+              const isPillar = (z === -1 || z === 1) && (x === minX || x === maxX);
+              blocks.push({
+                dx: x,
+                dy: y,
+                dz: z,
+                block: isPillar ? BlockType.STONE_PILLAR : BlockType.STONE_BRICKS,
+              });
+            }
+          }
+        }
+      }
+
+      // Stepped Pagoda Pinnacle Tiers (dy 6 to 8)
+      for (let x = minX + (sign === -1 ? 1 : 0); x <= maxX - (sign === 1 ? 1 : 0); x++) {
+        blocks.push({ dx: x, dy: 6, dz: 0, block: BlockType.STONE_BRICKS });
+        blocks.push({ dx: x, dy: 7, dz: 0, block: BlockType.STONE_SLAB });
+      }
+      blocks.push({ dx: sign === -1 ? maxX - 1 : minX + 1, dy: 8, dz: 0, block: BlockType.STONE_PILLAR });
+
+      // Guarding Dwarapala Plinths at the entrance
+      blocks.push({ dx: sign * 2, dy: 1, dz: 3, block: BlockType.STONE_PILLAR });
+      blocks.push({ dx: sign * 2, dy: 2, dz: 3, block: BlockType.STONE_SLAB });
+      blocks.push({ dx: sign * 3, dy: 3, dz: 1, block: BlockType.LANTERN });
+    });
+
+    // 3. Central Descending Subterranean Stairway (dy -1 to -14)
+    for (let depth = 1; depth <= 14; depth++) {
+      const stepZ = -3 + (depth % 6);
+      
+      // Step Tread
+      blocks.push({ dx: -1, dy: -depth, dz: stepZ, block: BlockType.STONE_BRICKS });
+      blocks.push({ dx: 0, dy: -depth, dz: stepZ, block: BlockType.STONE_BRICKS });
+      blocks.push({ dx: 1, dy: -depth, dz: stepZ, block: BlockType.STONE_BRICKS });
+
+      // Retaining Wall
+      blocks.push({ dx: -2, dy: -depth, dz: stepZ, block: BlockType.COBBLESTONE });
+      blocks.push({ dx: 2, dy: -depth, dz: stepZ, block: BlockType.COBBLESTONE });
+
+      // Air clearance above steps (3 blocks headroom)
+      for (let h = 1; h <= 3; h++) {
+        blocks.push({ dx: -1, dy: -depth + h, dz: stepZ, block: BlockType.AIR });
+        blocks.push({ dx: 0, dy: -depth + h, dz: stepZ, block: BlockType.AIR });
+        blocks.push({ dx: 1, dy: -depth + h, dz: stepZ, block: BlockType.AIR });
+      }
+
+      // Lanterns on walls every 4 steps
+      if (depth % 4 === 0) {
+        blocks.push({ dx: -2, dy: -depth + 2, dz: stepZ, block: BlockType.LANTERN });
+        blocks.push({ dx: 2, dy: -depth + 2, dz: stepZ, block: BlockType.LANTERN });
+      }
+    }
+
+    // 4. Subterranean Sanctum Vestibule Chamber at dy -14
+    for (let vx = -3; vx <= 3; vx++) {
+      for (let vz = -3; vz <= 3; vz++) {
+        blocks.push({ dx: vx, dy: -14, dz: vz, block: BlockType.STONE_BRICKS });
+        blocks.push({ dx: vx, dy: -10, dz: vz, block: BlockType.BASALT });
+        for (let vy = -13; vy <= -11; vy++) {
+          if (Math.abs(vx) === 3 || Math.abs(vz) === 3) {
+            blocks.push({ dx: vx, dy: vy, dz: vz, block: BlockType.STONE_BRICKS });
+          } else {
+            blocks.push({ dx: vx, dy: vy, dz: vz, block: BlockType.AIR });
+          }
+        }
+      }
+    }
+
+    // Vestibule Braziers
+    blocks.push({ dx: -2, dy: -13, dz: -2, block: BlockType.LANTERN });
+    blocks.push({ dx: 2, dy: -13, dz: -2, block: BlockType.LANTERN });
+    blocks.push({ dx: -2, dy: -13, dz: 2, block: BlockType.LANTERN });
+    blocks.push({ dx: 2, dy: -13, dz: 2, block: BlockType.LANTERN });
+
+    return blocks;
+  }
+
   // 7. Starfall Meteor Crater (Obsidian & Magma Rock Impact Basin)
   public static generateMeteorCrater(): VoxelBlockPlacement[] {
     const blocks: VoxelBlockPlacement[] = [];
@@ -527,6 +649,7 @@ export class StructureGenerator {
 
     // 2. DYNAMIC SPECIAL DUNGEONS (DETERMINISTIC WORLD LOCATIONS)
     const dungeons = [
+      { x: 280, z: 240, surfaceY: 68, depth: 14, theme: 'crypt', tier: 3 }, // Subterranean Ancient Candi Gate Sanctum
       { x: 200, z: 120, surfaceY: 65, depth: 14, theme: 'mine', tier: 1 },
       { x: 480, z: 420, surfaceY: 70, depth: 14, theme: 'crypt', tier: 2 },
       { x: 750, z: -320, surfaceY: 68, depth: 14, theme: 'crystal', tier: 3 },
@@ -539,7 +662,9 @@ export class StructureGenerator {
       // (a) Surface Entrance
       const distS = Math.max(Math.abs(d.x - (chunkMinX + 8)), Math.abs(d.z - (chunkMinZ + 8)));
       if (distS < 30) {
-        const bp = StructureGenerator.generateDungeonEntrance();
+        const bp = (d.theme === 'crypt' || (d as any).theme === 'sanctum')
+          ? StructureGenerator.generateAncientCandiDungeonGate()
+          : StructureGenerator.generateDungeonEntrance();
         for (const block of bp) {
           const worldX = d.x + block.dx;
           const worldY = surfaceY + block.dy;
@@ -630,9 +755,11 @@ export class StructureGenerator {
 
           const typeRand = (hash * 100) % 1;
           let blueprint: VoxelBlockPlacement[] = [];
-          if (typeRand < 0.12) {
+          if (typeRand < 0.08) {
+            blueprint = StructureGenerator.generateAncientCandiDungeonGate();
+          } else if (typeRand < 0.16) {
             blueprint = StructureGenerator.generateDungeonEntrance();
-          } else if (typeRand < 0.22) {
+          } else if (typeRand < 0.24) {
             blueprint = StructureGenerator.generateMeteorCrater();
           } else if (typeRand < 0.32) {
             blueprint = StructureGenerator.generateWatchtower();
@@ -640,13 +767,16 @@ export class StructureGenerator {
             blueprint = StructureGenerator.generateExplorerCabin();
           } else if (typeRand < 0.52) {
             blueprint = StructureGenerator.generateAncientShrine();
-          } else if (typeRand < 0.65) {
+          } else if (typeRand < 0.60) {
             // Rare Nusantara Megastructure: Ancient Temple Complex (Candi Agung)
             blueprint = NusantaraBuildingKit.generateAncientTempleComplex();
-          } else if (typeRand < 0.77) {
+          } else if (typeRand < 0.72) {
+            // Mythical Sky Sanctuary / Floating Aether Temple
+            blueprint = NusantaraBuildingKit.generateNusantaraAetherTemple();
+          } else if (typeRand < 0.82) {
             // Rare Nusantara Megastructure: Royal Hall Pagaruyung
             blueprint = NusantaraBuildingKit.generateRoyalHall();
-          } else if (typeRand < 0.88) {
+          } else if (typeRand < 0.91) {
             // Rare Nusantara Megastructure: Grand Betang Kahayan
             blueprint = NusantaraBuildingKit.generateGrandBetang();
           } else {

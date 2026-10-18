@@ -124,6 +124,40 @@ export class PlayerController {
   public pendingStaminaDeduction: number = 0;
   public wantsDodge: boolean = false;
 
+  public triggerDodge(): void {
+    this.wantsDodge = true;
+  }
+
+  // Target Lock-On Camera State
+  public isLockOnActive: boolean = false;
+  public lockOnTargetId: string | null = null;
+  public lockOnTargetPos: THREE.Vector3 = new THREE.Vector3();
+  public lockOnTargetHeight: number = 2.0;
+
+  public toggleLockOn(preferredTargetId?: string, preferredPos?: THREE.Vector3 | [number, number, number], targetHeight: number = 2.0): boolean {
+    if (this.isLockOnActive) {
+      this.isLockOnActive = false;
+      this.lockOnTargetId = null;
+      return false;
+    }
+
+    if (preferredTargetId && preferredPos) {
+      this.isLockOnActive = true;
+      this.lockOnTargetId = preferredTargetId;
+      if (Array.isArray(preferredPos)) {
+        this.lockOnTargetPos.set(preferredPos[0], preferredPos[1], preferredPos[2]);
+      } else {
+        this.lockOnTargetPos.copy(preferredPos);
+      }
+      this.lockOnTargetHeight = targetHeight;
+      return true;
+    }
+
+    this.isLockOnActive = false;
+    this.lockOnTargetId = null;
+    return false;
+  }
+
   // Static reusable vectors to eliminate per-frame GC allocations
   private static readonly _tempEyePos = new THREE.Vector3();
   private static readonly _tempDir = new THREE.Vector3();
@@ -581,6 +615,33 @@ export class PlayerController {
       this.landingDip = Math.max(0, this.landingDip - dt * 1.8);
       this.damageTilt = Math.max(0, this.damageTilt - dt * 0.8);
       this.screenShakeAmount = Math.max(0, this.screenShakeAmount - dt * 4.0);
+    }
+
+    // Smooth Target Lock-On Camera Interpolation
+    if (this.isLockOnActive && this.lockOnTargetPos) {
+      const dx = this.lockOnTargetPos.x - this.position.x;
+      const dz = this.lockOnTargetPos.z - this.position.z;
+      const distXZ = Math.hypot(dx, dz);
+      
+      // Auto-disengage if target is too far (> 45m)
+      if (distXZ > 45) {
+        this.isLockOnActive = false;
+        this.lockOnTargetId = null;
+      } else if (distXZ > 0.2) {
+        // Compute desired yaw and pitch facing target
+        const desiredYaw = Math.atan2(dx, dz);
+        const dy = (this.lockOnTargetPos.y + this.lockOnTargetHeight) - (this.position.y + this.currentEyeHeight);
+        const desiredPitch = Math.atan2(-dy, distXZ);
+
+        // Shortest angular difference for seamless rotation without 360-degree spins
+        let diffYaw = (desiredYaw - this.yaw) % (Math.PI * 2);
+        if (diffYaw > Math.PI) diffYaw -= Math.PI * 2;
+        if (diffYaw < -Math.PI) diffYaw -= Math.PI * 2;
+
+        const lerpFactor = Math.min(1.0, dt * 10.0);
+        this.yaw += diffYaw * lerpFactor;
+        this.pitch = THREE.MathUtils.lerp(this.pitch, desiredPitch, lerpFactor);
+      }
     }
 
     // Update Player Group position & Avatar yaw

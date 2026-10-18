@@ -8,20 +8,45 @@ import { SaveManager } from '../engine/storage/SaveManager';
 import { HUD } from './HUD';
 import { LoadingScreen } from './LoadingScreen';
 import { TelemetryStore } from '../engine/ui/TelemetryStore';
-import { InventoryModal } from './InventoryModal';
-import { CraftingModal } from './CraftingModal';
-import { FurnaceModal } from './FurnaceModal';
-import { ChestModal } from './ChestModal';
-import { AnvilModal } from './AnvilModal';
-import { DeathModal } from './DeathModal';
-import { DialogueModal } from './DialogueModal';
-import { PauseMenu } from './PauseMenu';
+const InventoryModal = React.lazy(() =>
+  import('./InventoryModal').then((m) => ({ default: m.InventoryModal }))
+);
+const ChestModal = React.lazy(() =>
+  import('./ChestModal').then((m) => ({ default: m.ChestModal }))
+);
+const DeathModal = React.lazy(() =>
+  import('./DeathModal').then((m) => ({ default: m.DeathModal }))
+);
+
+const CraftingModal = React.lazy(() =>
+  import('./CraftingModal').then((m) => ({ default: m.CraftingModal }))
+);
+const FurnaceModal = React.lazy(() =>
+  import('./FurnaceModal').then((m) => ({ default: m.FurnaceModal }))
+);
+const AnvilModal = React.lazy(() =>
+  import('./AnvilModal').then((m) => ({ default: m.AnvilModal }))
+);
+const DialogueModal = React.lazy(() =>
+  import('./DialogueModal').then((m) => ({ default: m.DialogueModal }))
+);
+const PauseMenu = React.lazy(() =>
+  import('./PauseMenu').then((m) => ({ default: m.PauseMenu }))
+);
+const JournalModal = React.lazy(() =>
+  import('./JournalModal').then((m) => ({ default: m.JournalModal }))
+);
+const MapModal = React.lazy(() =>
+  import('./MapModal').then((m) => ({ default: m.MapModal }))
+);
+const ContentDebugModal = React.lazy(() =>
+  import('./ContentDebugModal').then((m) => ({ default: m.ContentDebugModal }))
+);
+const EngineeringModal = React.lazy(() =>
+  import('./EngineeringModal').then((m) => ({ default: m.EngineeringModal }))
+);
 import { MobileControls } from './MobileControls';
 import { DebugMap } from './DebugMap';
-import { JournalModal } from './JournalModal';
-import { MapModal } from './MapModal';
-import { ContentDebugModal } from './ContentDebugModal';
-import { EngineeringModal } from './EngineeringModal';
 import { NetworkSession } from '../engine/network/NetworkSession';
 import { QuestManager } from '../engine/progression/QuestManager';
 import { SettingsManager } from '../engine/ui/SettingsManager';
@@ -216,13 +241,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         return;
       }
 
-      // Register bidirectional sync callbacks
+      // Register bidirectional sync callbacks with diff-guarded state updates
+      let lastBossKey = '';
+      let lastHitKey = '';
+
       runtime.registerCallbacks({
-        onBossUpdated: (boss) => setActiveBossState(boss),
-        onTargetHitChanged: (hit) => setTargetHitState(hit),
+        onBossUpdated: (boss) => {
+          const bossKey = boss ? `${boss.id}:${boss.health}:${boss.phase}:${boss.enraged}` : 'none';
+          if (bossKey !== lastBossKey) {
+            lastBossKey = bossKey;
+            setActiveBossState(boss);
+          }
+        },
+        onTargetHitChanged: (hit) => {
+          const hitKey = hit ? `${hit.blockPos[0]},${hit.blockPos[1]},${hit.blockPos[2]},${hit.blockType}` : '';
+          if (hitKey !== lastHitKey) {
+            lastHitKey = hitKey;
+            setTargetHitState(hit);
+          }
+        },
         onInventoryUpdated: (inv) => setInventoryState(inv),
         onEquipmentUpdated: (eq) => setEquipmentState(eq),
-        onActiveHotbarIndexChanged: (idx) => setActiveHotbarIndex(idx),
+        onActiveHotbarIndexChanged: (idx) => {
+          setActiveHotbarIndex((prev) => (prev !== idx ? idx : prev));
+        },
         onPointerLockChange: (locked) => setIsPointerLocked(locked),
         onOpenModal: (modalType, data) => {
           if (modalType === 'dialogue') {
@@ -329,6 +371,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     return () => {
       cancelTokenRef.current.isCancelled = true;
       delete (window as any).__voxelRuntime;
+      if (typeof document !== 'undefined' && document.pointerLockElement) {
+        try {
+          document.exitPointerLock();
+        } catch {}
+      }
+      NetworkSession.getInstance().dispose();
       if (runtimeRef.current) {
         runtimeRef.current.stop();
         runtimeRef.current = null;
@@ -511,133 +559,158 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       )}
 
       {activeModal === 'journal' && (
-        <JournalModal
-          isOpen={true}
-          onClose={() => setModal('none')}
-          playerPos={TelemetryStore.state.playerPos}
-          playerXp={TelemetryStore.state.xp}
-          playerLevel={TelemetryStore.state.level}
-        />
+        <React.Suspense fallback={null}>
+          <JournalModal
+            isOpen={true}
+            onClose={() => setModal('none')}
+            playerPos={TelemetryStore.state.playerPos}
+            playerXp={TelemetryStore.state.xp}
+            playerLevel={TelemetryStore.state.level}
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'map' && runtimeRef.current && (
-        <MapModal
-          isOpen={true}
-          onClose={() => setModal('none')}
-          world={runtimeRef.current.world}
-          playerPos={TelemetryStore.state.playerPos}
-          playerYaw={TelemetryStore.state.playerYaw}
-        />
+        <React.Suspense fallback={null}>
+          <MapModal
+            isOpen={true}
+            onClose={() => setModal('none')}
+            world={runtimeRef.current.world}
+            playerPos={TelemetryStore.state.playerPos}
+            playerYaw={TelemetryStore.state.playerYaw}
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'contentDebug' && runtimeRef.current && (
-        <ContentDebugModal
-          isOpen={true}
-          onClose={() => setModal('none')}
-          playerPos={TelemetryStore.state.playerPos}
-          onTeleport={(tx, ty, tz) => {
-            if (runtimeRef.current) {
-              runtimeRef.current.player.position.set(tx, ty, tz);
-              runtimeRef.current.player.velocity.set(0, 0, 0);
-            }
-          }}
-          onChangeDimension={(dim) => {
-            if (runtimeRef.current) {
-              runtimeRef.current.changeDimension(dim);
-            }
-          }}
-          onSpawnBoss={(type) => {
-            if (runtimeRef.current) {
-              runtimeRef.current.entities.spawnBoss(
-                type,
-                [runtimeRef.current.player.position.x + 8, runtimeRef.current.player.position.y, runtimeRef.current.player.position.z + 8],
-                runtimeRef.current.world
-              );
-            }
-          }}
-        />
+        <React.Suspense fallback={null}>
+          <ContentDebugModal
+            isOpen={true}
+            onClose={() => setModal('none')}
+            playerPos={TelemetryStore.state.playerPos}
+            onTeleport={(tx, ty, tz) => {
+              if (runtimeRef.current) {
+                runtimeRef.current.player.position.set(tx, ty, tz);
+                runtimeRef.current.player.velocity.set(0, 0, 0);
+              }
+            }}
+            onChangeDimension={(dim) => {
+              if (runtimeRef.current) {
+                runtimeRef.current.changeDimension(dim);
+              }
+            }}
+            onSpawnBoss={(type) => {
+              if (runtimeRef.current) {
+                runtimeRef.current.entities.spawnBoss(
+                  type,
+                  [runtimeRef.current.player.position.x + 8, runtimeRef.current.player.position.y, runtimeRef.current.player.position.z + 8],
+                  runtimeRef.current.world
+                );
+              }
+            }}
+          />
+        </React.Suspense>
       )}
 
       {/* Active Workstation Modals */}
       {activeModal === 'inventory' && (
-        <InventoryModal
-          inventory={inventoryState}
-          setInventory={setInventoryState}
-          equipment={equipmentState}
-          setEquipment={setEquipmentState}
-          onClose={() => setModal('none')}
-        />
+        <React.Suspense fallback={null}>
+          <InventoryModal
+            inventory={inventoryState}
+            setInventory={setInventoryState}
+            equipment={equipmentState}
+            setEquipment={setEquipmentState}
+            onClose={() => setModal('none')}
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'crafting' && (
-        <CraftingModal
-          inventory={inventoryState}
-          setInventory={setInventoryState}
-          onClose={() => setModal('none')}
-          station="crafting_bench"
-        />
+        <React.Suspense fallback={null}>
+          <CraftingModal
+            inventory={inventoryState}
+            setInventory={setInventoryState}
+            onClose={() => setModal('none')}
+            station="crafting_bench"
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'furnace' && activeFurnacePos && (
-        <FurnaceModal
-          furnacePos={activeFurnacePos}
-          playerInventory={inventoryState}
-          setPlayerInventory={setInventoryState}
-          onClose={() => setModal('none')}
-        />
+        <React.Suspense fallback={null}>
+          <FurnaceModal
+            furnacePos={activeFurnacePos}
+            playerInventory={inventoryState}
+            setPlayerInventory={setInventoryState}
+            onClose={() => setModal('none')}
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'chest' && activeChestPos && (
-        <ChestModal
-          chestPos={activeChestPos}
-          playerInventory={inventoryState}
-          setPlayerInventory={setInventoryState}
-          onClose={() => setModal('none')}
-        />
+        <React.Suspense fallback={null}>
+          <ChestModal
+            chestPos={activeChestPos}
+            playerInventory={inventoryState}
+            setPlayerInventory={setInventoryState}
+            onClose={() => setModal('none')}
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'anvil' && activeAnvilPos && (
-        <AnvilModal
-          anvilPos={activeAnvilPos}
-          playerInventory={inventoryState}
-          setPlayerInventory={setInventoryState}
-          onClose={() => setModal('none')}
-        />
+        <React.Suspense fallback={null}>
+          <AnvilModal
+            anvilPos={activeAnvilPos}
+            playerInventory={inventoryState}
+            setPlayerInventory={setInventoryState}
+            onClose={() => setModal('none')}
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'engineering' && activeEngineeringPos && (
-        <EngineeringModal
-          pos={activeEngineeringPos}
-          onClose={() => setModal('none')}
-        />
+        <React.Suspense fallback={null}>
+          <EngineeringModal
+            pos={activeEngineeringPos}
+            onClose={() => setModal('none')}
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'death' && runtimeRef.current && (
-        <DeathModal
-          score={runtimeRef.current.stats.xp}
-          level={runtimeRef.current.stats.level}
-          daysSurvived={Math.floor((runtimeRef.current.sky.timeOfDay || 8) / 24) + 1}
-          onRespawn={handleRespawn}
-          onExitToMenu={onExitToMenu}
-        />
+        <React.Suspense fallback={null}>
+          <DeathModal
+            score={runtimeRef.current.stats.xp}
+            level={runtimeRef.current.stats.level}
+            daysSurvived={Math.floor((runtimeRef.current.sky.timeOfDay || 8) / 24) + 1}
+            onRespawn={handleRespawn}
+            onExitToMenu={onExitToMenu}
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'dialogue' && activeDialogueEntity && (
-        <DialogueModal
-          entity={activeDialogueEntity}
-          inventory={inventoryState}
-          setInventory={setInventoryState}
-          timeOfDay={runtimeRef.current?.sky?.timeOfDay ?? 12.0}
-          onClose={() => setModal('none')}
-        />
+        <React.Suspense fallback={null}>
+          <DialogueModal
+            entity={activeDialogueEntity}
+            inventory={inventoryState}
+            setInventory={setInventoryState}
+            timeOfDay={runtimeRef.current?.sky?.timeOfDay ?? 12.0}
+            onClose={() => setModal('none')}
+          />
+        </React.Suspense>
       )}
 
       {activeModal === 'pause' && (
-        <PauseMenu
-          onResume={handleResume}
-          onSaveAndQuit={handleSaveAndQuit}
-          isSaving={isSaving}
-        />
+        <React.Suspense fallback={null}>
+          <PauseMenu
+            onResume={handleResume}
+            onSaveAndQuit={handleSaveAndQuit}
+            isSaving={isSaving}
+            saveError={saveError}
+          />
+        </React.Suspense>
       )}
 
       {/* Persistent Save Error Alert Overlay */}
@@ -737,6 +810,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }}
         onOpenJournal={() => {
           setModal('journal');
+        }}
+        onToggleLockOn={() => {
+          if (runtimeRef.current) {
+            runtimeRef.current.toggleTargetLockOn();
+          }
+        }}
+        isLockOnActive={runtimeRef.current?.player?.isLockOnActive ?? false}
+        onTriggerSkill={() => {
+          if (runtimeRef.current) {
+            runtimeRef.current.triggerWeaponSkill();
+          }
         }}
       />
 

@@ -20,6 +20,8 @@ export type InputAction =
   | 'ContentDebug'
   | 'Pause'
   | 'Dodge'
+  | 'LockOn'
+  | 'WeaponSkill'
   | 'Hotbar1'
   | 'Hotbar2'
   | 'Hotbar3'
@@ -66,9 +68,15 @@ export const DEFAULT_KEY_BINDINGS: Record<string, InputAction> = {
   KeyE: 'Inventory',
   e: 'Inventory',
   E: 'Inventory',
-  KeyQ: 'Drop',
-  q: 'Drop',
-  Q: 'Drop',
+  KeyQ: 'LockOn',
+  q: 'LockOn',
+  Q: 'LockOn',
+  KeyG: 'Drop',
+  g: 'Drop',
+  G: 'Drop',
+  KeyX: 'Drop',
+  x: 'Drop',
+  X: 'Drop',
   KeyJ: 'Journal',
   j: 'Journal',
   J: 'Journal',
@@ -78,9 +86,12 @@ export const DEFAULT_KEY_BINDINGS: Record<string, InputAction> = {
   F7: 'ContentDebug',
   F5: 'Perspective',
   Escape: 'Pause',
-  KeyR: 'Dodge',
-  r: 'Dodge',
-  R: 'Dodge',
+  KeyR: 'WeaponSkill',
+  r: 'WeaponSkill',
+  R: 'WeaponSkill',
+  KeyV: 'Dodge',
+  v: 'Dodge',
+  V: 'Dodge',
   Digit1: 'Hotbar1',
   Digit2: 'Hotbar2',
   Digit3: 'Hotbar3',

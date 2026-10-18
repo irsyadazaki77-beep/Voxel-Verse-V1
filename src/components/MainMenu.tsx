@@ -255,11 +255,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
   };
 
   useEffect(() => {
-    const list = SaveManager.getWorlds();
-    setWorlds(list);
-    if (list.length > 0) {
-      setSelectedWorldId(list[0].id);
-    }
+    SaveManager.getWorldsAsync().then((list) => {
+      setWorlds(list);
+      if (list.length > 0) {
+        setSelectedWorldId(list[0].id);
+      }
+    });
 
     // Check for Crash Recovery Data
     const recovery = SaveManager.getCrashRecoveryState();
@@ -293,19 +294,22 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
     onStartGame(worldId, seedNum, newGameMode, worldName, newWorldPreset);
   };
 
-  const handleRenameConfirm = () => {
+  const handleRenameConfirm = async () => {
     if (!worldToRename) return;
-    const success = SaveManager.renameWorld(worldToRename.id, renameInput);
+    const success = await SaveManager.renameWorldAsync(worldToRename.id, renameInput);
     if (success) {
-      setWorlds(SaveManager.getWorlds());
+      const updated = await SaveManager.getWorldsAsync();
+      setWorlds(updated);
+    } else {
+      alert('Gagal mengubah nama realm.');
     }
     setWorldToRename(null);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!deleteConfirmId) return;
-    SaveManager.deleteWorld(deleteConfirmId);
-    const updated = SaveManager.getWorlds();
+    await SaveManager.deleteWorldAsync(deleteConfirmId);
+    const updated = await SaveManager.getWorldsAsync();
     setWorlds(updated);
     if (selectedWorldId === deleteConfirmId) {
       setSelectedWorldId(updated.length > 0 ? updated[0].id : null);
@@ -313,20 +317,25 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
     setDeleteConfirmId(null);
   };
 
-  const handleDuplicateWorld = (worldId: string, e: React.MouseEvent) => {
+  const handleDuplicateWorld = async (worldId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const duplicated = SaveManager.duplicateWorld(worldId);
+    const duplicated = await SaveManager.duplicateWorldAsync(worldId);
     if (duplicated) {
-      const updated = SaveManager.getWorlds();
+      const updated = await SaveManager.getWorldsAsync();
       setWorlds(updated);
       setSelectedWorldId(duplicated.id);
+    } else {
+      alert('Gagal menduplikasi realm.');
     }
   };
 
-  const handleExportWorld = (worldId: string, e: React.MouseEvent) => {
+  const handleExportWorld = async (worldId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const jsonStr = SaveManager.exportWorldJSON(worldId);
-    if (!jsonStr) return;
+    const jsonStr = await SaveManager.exportWorldJSONAsync(worldId);
+    if (!jsonStr) {
+      alert('Gagal mengekspor data realm.');
+      return;
+    }
 
     const targetWorld = worlds.find((w) => w.id === worldId);
     const filename = `${(targetWorld?.name || 'voxelverse_realm').replace(/\s+/g, '_')}_backup.json`;
@@ -344,16 +353,22 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const content = event.target?.result as string;
       if (!content) return;
 
-      const imported = SaveManager.importWorldJSON(content);
-      if (imported) {
-        const updated = SaveManager.getWorlds();
-        setWorlds(updated);
-        setSelectedWorldId(imported.id);
-        setViewState('worlds');
+      try {
+        const imported = await SaveManager.importWorldJSON(content);
+        if (imported) {
+          const updated = await SaveManager.getWorldsAsync();
+          setWorlds(updated);
+          setSelectedWorldId(imported.id);
+          setViewState('worlds');
+        } else {
+          alert('Gagal mengimpor world: Berkas save rusak, tidak valid, atau gagal disimpan ke disk.');
+        }
+      } catch (err: any) {
+        alert('Gagal mengimpor world: ' + (err?.message || 'Format save tidak valid.'));
       }
     };
     reader.readAsText(file);

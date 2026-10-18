@@ -271,6 +271,25 @@ export interface ItemModifiers {
   durabilityBonus?: number;
 }
 
+export interface ItemMetadata {
+  customName?: string;
+  lore?: string[];
+  enchantments?: Record<string, number>;
+  smeltProgress?: number;
+  durability?: number;
+  maxDurability?: number;
+  quality?: 'crude' | 'common' | 'fine' | 'masterwork' | 'astral';
+  modifiers?: ItemModifiers;
+  [key: string]: unknown;
+}
+
+export interface InventoryItem {
+  id?: string;
+  type: BlockType | (string & {});
+  count: number;
+  metadata?: ItemMetadata;
+}
+
 export interface ItemStack {
   instanceId?: string;
   itemId: string;
@@ -280,6 +299,7 @@ export interface ItemStack {
   customName?: string;
   quality?: 'crude' | 'common' | 'fine' | 'masterwork' | 'astral';
   modifiers?: ItemModifiers;
+  metadata?: ItemMetadata;
 }
 
 export type StatusEffectType =
@@ -659,7 +679,7 @@ export interface ArtifactDef {
   description: string;
   lore: string;
   passiveAbility: string;
-  effectType: 'night_vision' | 'stamina_boost' | 'thermal_aegis' | 'water_breathing' | 'void_step' | 'precursor_forge';
+  effectType: 'night_vision' | 'stamina_boost' | 'thermal_aegis' | 'water_breathing' | 'void_step' | 'precursor_forge' | 'poise_mastery' | 'naga_wrath' | 'solar_cleave';
   tags?: string[];
   unlockedRecipes?: string[];
   iconColor: string;
@@ -782,6 +802,10 @@ export interface BossCombatState {
   enraged: boolean;
   position: [number, number, number];
   activeAbility?: string;
+  poise?: number;
+  maxPoise?: number;
+  isShielded?: boolean;
+  phaseSubtitle?: string;
 }
 
 export type {

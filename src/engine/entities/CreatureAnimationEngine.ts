@@ -133,6 +133,9 @@ export class CreatureAnimationEngine {
       case 'boss_sovereign':
         this.updateBossSovereign(dt, rig, entityState, entityTime, isMoving, isRunning, isNear);
         break;
+      case 'boss_colossus':
+        this.updateBossColossus(dt, rig, entityState, entityTime, isMoving, isRunning, isNear);
+        break;
     }
 
     // 8. Apply Physical Flinch Recoil
@@ -579,6 +582,119 @@ export class CreatureAnimationEngine {
       rig.torso.position.y += telegraph * 0.35;
     } else {
       rig.attackWindupProgress = 0;
+    }
+  }
+
+  // ==========================================
+  // BOSS ANCIENT COLOSSUS LOCOMOTION (Batara Kala 4-Armed Primordial Titan)
+  // ==========================================
+  private static updateBossColossus(
+    dt: number,
+    rig: CreatureRig,
+    state: EntityState,
+    time: number,
+    isMoving: boolean,
+    isRunning: boolean,
+    isNear: boolean
+  ): void {
+    const initTorsoY = rig.initialTorsoPos?.y || 3.6;
+    const hpRatio = state.maxHealth > 0 ? (state.health / state.maxHealth) : 1.0;
+    const isEnraged = hpRatio <= 0.25;
+    const isPhase2 = hpRatio <= 0.60;
+
+    // 1. Heavy Plinth Leg Stomping Gait
+    if (isMoving) {
+      const walkGaitSpeed = isEnraged ? 4.8 : 3.2;
+      const walkCycle = time * walkGaitSpeed;
+      const stepAngle = isEnraged ? 0.48 : 0.35;
+
+      if (rig.legFL) rig.legFL.rotation.x = Math.sin(walkCycle) * stepAngle;
+      if (rig.legFR) rig.legFR.rotation.x = -Math.sin(walkCycle) * stepAngle;
+
+      // Heavy torso bobbing on footsteps
+      const stepImpactBob = Math.abs(Math.sin(walkCycle * 2)) * 0.14;
+      rig.torso.position.y = initTorsoY - stepImpactBob;
+      rig.torso.rotation.z = Math.sin(walkCycle) * 0.05;
+    } else {
+      // Idle heavy breathing
+      rig.torso.position.y = initTorsoY + Math.sin(time * 1.5) * 0.06;
+      rig.torso.rotation.z = 0;
+      if (rig.legFL) rig.legFL.rotation.x = 0;
+      if (rig.legFR) rig.legFR.rotation.x = 0;
+    }
+
+    // 2. Colossal Head Scanning
+    if (rig.head) {
+      rig.head.rotation.y = Math.sin(time * 0.8) * 0.15;
+      rig.head.rotation.x = isNear ? 0.15 : 0;
+    }
+
+    // 3. Lower Secondary Mudra Arms (Levitating Mystic Ley Palms)
+    const mudraTime = time * (isEnraged ? 3.5 : 2.0);
+    if (rig.armLowerL) {
+      rig.armLowerL.rotation.x = 0.35 + Math.sin(mudraTime) * 0.22;
+      rig.armLowerL.rotation.y = 0.25 + Math.cos(mudraTime * 0.8) * 0.18;
+      rig.armLowerL.rotation.z = Math.sin(mudraTime * 1.2) * 0.12;
+    }
+    if (rig.armLowerR) {
+      rig.armLowerR.rotation.x = 0.35 + Math.cos(mudraTime) * 0.22;
+      rig.armLowerR.rotation.y = -0.25 - Math.sin(mudraTime * 0.8) * 0.18;
+      rig.armLowerR.rotation.z = -Math.sin(mudraTime * 1.2) * 0.12;
+    }
+
+    // 4. Upper Primary Arms (Holding Great Basalt Gada Clubs) & Attack Wind-Up
+    if (state.aiState === 'attack' || (rig.attackWindupProgress && rig.attackWindupProgress > 0)) {
+      rig.attackWindupProgress = Math.min(1.0, (rig.attackWindupProgress || 0) + dt * (isEnraged ? 2.5 : 1.8));
+      const windup = Math.sin(rig.attackWindupProgress * Math.PI);
+
+      // Raise both massive basalt gada clubs high overhead
+      if (rig.armL) {
+        rig.armL.rotation.x = -windup * 2.2;
+        rig.armL.rotation.z = -windup * 0.35;
+      }
+      if (rig.armR) {
+        rig.armR.rotation.x = -windup * 2.2;
+        rig.armR.rotation.z = windup * 0.35;
+      }
+      // Torso arches backwards dramatically
+      rig.torso.rotation.x = -windup * 0.28;
+    } else {
+      rig.attackWindupProgress = 0;
+      rig.torso.rotation.x = 0;
+      if (isMoving) {
+        const sway = Math.sin(time * 3.2) * 0.2;
+        if (rig.armL) rig.armL.rotation.x = -sway;
+        if (rig.armR) rig.armR.rotation.x = sway;
+      } else {
+        if (rig.armL) rig.armL.rotation.x = THREE.MathUtils.lerp(rig.armL.rotation.x, 0, dt * 6);
+        if (rig.armR) rig.armR.rotation.x = THREE.MathUtils.lerp(rig.armR.rotation.x, 0, dt * 6);
+      }
+      if (rig.armL) rig.armL.rotation.z = 0;
+      if (rig.armR) rig.armR.rotation.z = 0;
+    }
+
+    // 5. Dynamic Aether Furnace Heart Core Pulse & Phase Shift
+    if (rig.core) {
+      const pulseSpeed = isEnraged ? 9.0 : isPhase2 ? 5.5 : 3.0;
+      const pulseAmplitude = isEnraged ? 0.3 : 0.15;
+      const coreScale = 1.0 + Math.sin(time * pulseSpeed) * pulseAmplitude;
+      rig.core.scale.set(coreScale, coreScale, coreScale);
+
+      // Dynamically react material color based on phase
+      const coreMesh = rig.core as THREE.Mesh;
+      if (coreMesh.material && (coreMesh.material as THREE.MeshStandardMaterial).emissive) {
+        const stdMat = coreMesh.material as THREE.MeshStandardMaterial;
+        if (isEnraged) {
+          stdMat.emissive.setHex(0xef4444); // Enraged Crimson
+          stdMat.emissiveIntensity = 2.0;
+        } else if (isPhase2) {
+          stdMat.emissive.setHex(0xf59e0b); // Leyline Amber
+          stdMat.emissiveIntensity = 1.5;
+        } else {
+          stdMat.emissive.setHex(0x0891b2); // Cyan Leyline
+          stdMat.emissiveIntensity = 1.0;
+        }
+      }
     }
   }
 

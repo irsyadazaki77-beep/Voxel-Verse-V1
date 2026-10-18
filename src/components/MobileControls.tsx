@@ -11,7 +11,8 @@ import {
   Map, 
   BookOpen, 
   Maximize2,
-  ChevronDown
+  ChevronDown,
+  Target
 } from 'lucide-react';
 import { requestFullscreenMode } from '../utils/orientation';
 import { SettingsManager, MobileControlsSettings } from '../engine/ui/SettingsManager';
@@ -35,6 +36,9 @@ interface MobileControlsProps {
   breakProgress?: number; // 0..1
   isBlocked?: boolean;
   onTelemetryUpdate?: (data: TouchDebugData) => void;
+  onToggleLockOn?: () => void;
+  isLockOnActive?: boolean;
+  onTriggerSkill?: () => void;
 }
 
 export const MobileControls: React.FC<MobileControlsProps> = ({
@@ -54,6 +58,9 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   breakProgress = 0,
   isBlocked = false,
   onTelemetryUpdate,
+  onToggleLockOn,
+  isLockOnActive = false,
+  onTriggerSkill,
 }) => {
   const [mobileSettings, setMobileSettings] = useState<MobileControlsSettings>(
     SettingsManager.get().mobileControls
@@ -616,6 +623,50 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
       >
         {/* Upper Action Row: Sprint / Run Toggle & Place / Use Block */}
         <div className="flex items-center gap-3">
+          {/* TARGET LOCK-ON BUTTON */}
+          {onToggleLockOn && (
+            <button
+              id="mobile-btn-lockon"
+              onClick={() => {
+                triggerHaptic('medium');
+                onToggleLockOn();
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                triggerHaptic('medium');
+                onToggleLockOn();
+              }}
+              className={`mobile-interactive-btn w-13 h-13 rounded-2xl backdrop-blur-md border flex flex-col items-center justify-center font-bold active:scale-90 transition-all text-white shadow-xl touch-none cursor-pointer ${
+                isLockOnActive
+                  ? 'bg-amber-500/90 border-amber-200 shadow-[0_0_18px_rgba(245,158,11,0.8)] scale-95'
+                  : 'bg-black/55 border-amber-500/40 text-amber-300'
+              }`}
+            >
+              <Target className={`w-5 h-5 ${isLockOnActive ? 'text-amber-100 animate-spin' : 'text-amber-300'}`} />
+              <span className="text-[8px] font-mono uppercase tracking-wider font-extrabold">LOCK</span>
+            </button>
+          )}
+
+          {/* WEAPON PUSAKA SKILL BUTTON */}
+          {onTriggerSkill && (
+            <button
+              id="mobile-btn-skill"
+              onClick={() => {
+                triggerHaptic('impact');
+                onTriggerSkill();
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                triggerHaptic('impact');
+                onTriggerSkill();
+              }}
+              className="mobile-interactive-btn w-13 h-13 rounded-2xl backdrop-blur-md border border-orange-500/60 bg-gradient-to-tr from-amber-600/90 to-orange-500/90 flex flex-col items-center justify-center font-bold active:scale-90 transition-all text-white shadow-[0_0_15px_rgba(249,115,22,0.6)] touch-none cursor-pointer"
+            >
+              <Zap className="w-5 h-5 text-amber-200 animate-pulse" />
+              <span className="text-[8px] font-mono uppercase tracking-wider font-black">JURUS</span>
+            </button>
+          )}
+
           {/* SPRINT BUTTON */}
           <button
             id="mobile-btn-sprint"

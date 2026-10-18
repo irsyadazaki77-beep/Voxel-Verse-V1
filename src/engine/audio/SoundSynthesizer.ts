@@ -495,6 +495,191 @@ export class SoundSynthesizer {
     osc.stop(t + dur);
   }
 
+  // 18. Ancient Nusantara Bronze Gong
+  public playAncientGong(): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    // Harmonic partials for Indonesian Gamelan Ageng gong resonance
+    const partials = [
+      { freq: 110, gainRatio: 1.0, decay: 3.5 },
+      { freq: 221, gainRatio: 0.6, decay: 2.8 },
+      { freq: 334, gainRatio: 0.35, decay: 2.2 },
+      { freq: 442, gainRatio: 0.2, decay: 1.6 },
+      { freq: 558, gainRatio: 0.15, decay: 1.2 },
+    ];
+
+    partials.forEach(({ freq, gainRatio, decay }) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+
+      const vol = this.masterVolume * this.sfxVolume * 0.45 * gainRatio;
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.0005, t + decay);
+
+      osc.connect(gain);
+      gain.connect(this.ctx!.destination);
+
+      osc.start(t);
+      osc.stop(t + decay);
+    });
+  }
+
+  // 18b. Authentic Gamelan Saron (Slendro Scale: 1: Panunggul, 2: Gulu, 3: Dada, 5: Lima, 6: Nem)
+  public playGamelanSaron(scaleIndex: number = 2): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const slendroFreqs = [260, 298, 340, 392, 450, 520, 596]; // Hz
+    const freq = slendroFreqs[Math.abs(scaleIndex) % slendroFreqs.length];
+    const t = this.ctx.currentTime;
+    const dur = 1.4;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+
+    // Subtle metallic overtone (ring modulation vibe)
+    const overtone = this.ctx.createOscillator();
+    const overGain = this.ctx.createGain();
+    overtone.type = 'triangle';
+    overtone.frequency.setValueAtTime(freq * 2.76, t);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(freq * 1.5, t);
+    filter.Q.setValueAtTime(3.0, t);
+
+    const vol = this.masterVolume * this.sfxVolume * 0.35;
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    overGain.gain.setValueAtTime(vol * 0.4, t);
+    overGain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+
+    osc.connect(gain);
+    overtone.connect(overGain);
+    overGain.connect(gain);
+    gain.connect(filter);
+    filter.connect(this.ctx.destination);
+
+    osc.start(t);
+    overtone.start(t);
+    osc.stop(t + dur);
+    overtone.stop(t + 0.35);
+  }
+
+  // 18c. Sundanese Angklung Bamboo Resonance
+  public playAngklungBamboo(pitchIndex: number = 0): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const pitches = [330, 370, 415, 494, 554];
+    const baseFreq = pitches[Math.abs(pitchIndex) % pitches.length];
+    const t = this.ctx.currentTime;
+
+    // Bamboo rattling dual tube resonance
+    [baseFreq, baseFreq * 2].forEach((f, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      const filter = this.ctx!.createBiquadFilter();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, t);
+
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(f, t);
+      filter.Q.setValueAtTime(8, t);
+
+      const amp = this.masterVolume * this.sfxVolume * (idx === 0 ? 0.28 : 0.16);
+      gain.gain.setValueAtTime(amp, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx!.destination);
+
+      osc.start(t);
+      osc.stop(t + 0.6);
+    });
+  }
+
+  // 18d. Suling Bamboo Flute Tone
+  public playSulingBamboo(freq: number = 440): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 0.9;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+    // Breath vibrato
+    osc.frequency.linearRampToValueAtTime(freq + 4, t + 0.3);
+    osc.frequency.linearRampToValueAtTime(freq - 3, t + 0.6);
+
+    const vol = this.masterVolume * this.sfxVolume * 0.22;
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + dur);
+  }
+
+  // 19. Primeval Titan Sub-Bass Roar & Earth Quake
+  public playTitanRoar(): void {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 1.8;
+
+    // Sub oscillator (sawtooth pitch sweep)
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(130, t);
+    osc.frequency.linearRampToValueAtTime(165, t + 0.3);
+    osc.frequency.exponentialRampToValueAtTime(32, t + dur);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(280, t);
+    filter.frequency.linearRampToValueAtTime(420, t + 0.4);
+    filter.frequency.exponentialRampToValueAtTime(90, t + dur);
+    filter.Q.setValueAtTime(4.0, t);
+
+    const vol = this.masterVolume * this.sfxVolume * 0.55;
+    gain.gain.setValueAtTime(0.01, t);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.2);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + dur);
+  }
+
   public dispose(): void {
     if (this.ctx && this.ctx.state !== 'closed') {
       this.ctx.close().catch(() => {});

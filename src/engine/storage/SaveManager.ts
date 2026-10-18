@@ -10,7 +10,7 @@ import { makeDimensionChunkKey, parseDimensionChunkKey, CHUNK_SIZE_X, CHUNK_SIZE
 import { Logger } from '../ui/Logger';
 
 export const CURRENT_SAVE_VERSION = 3;
-export const CURRENT_CHECKSUM_VERSION = 1;
+export const CURRENT_CHECKSUM_VERSION = 2;
 const WORLDS_INDEX_KEY = 'voxelverse_worlds_index';
 const RECOVERY_KEY = 'voxelverse_crash_recovery';
 
@@ -26,14 +26,56 @@ export interface WorldSummary {
 }
 
 export class SaveManager {
-  private static saveMutexMap: Map<string, Promise<boolean>> = new Map();
+  private static worldLockMap: Map<string, Promise<any>> = new Map();
+  private static deletedWorldsSet: Set<string> = new Set();
 
   public static getWorlds(): WorldSummary[] {
     try {
+      if (typeof localStorage === 'undefined') return [];
       const raw = localStorage.getItem(WORLDS_INDEX_KEY);
-      if (!raw) return [];
-      const list = JSON.parse(raw);
-      if (!Array.isArray(list)) return [];
+      let list: any[] = [];
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) list = parsed;
+        } catch {
+          Logger.warn('SaveManager', 'Failed to parse worlds index from localStorage');
+        }
+      }
+
+      // If index is missing or empty, salvage worlds from individual localStorage entries
+      if (list.length === 0) {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('voxelverse_world_') && !key.includes('_backup') && !key.includes('_temp')) {
+            const rawItem = localStorage.getItem(key);
+            if (rawItem) {
+              try {
+                const parsed = JSON.parse(rawItem);
+                const d = parsed.data || parsed;
+                if (d && typeof d === 'object' && d.id) {
+                  list.push({
+                    id: d.id,
+                    name: d.name || 'Recovered Realm',
+                    seed: typeof d.seed === 'number' ? d.seed : 42819,
+                    gameMode: d.gameMode || 'survival',
+                    difficulty: d.difficulty || 'normal',
+                    preset: d.preset || 'standard',
+                    lastPlayed: typeof d.lastPlayed === 'number' ? d.lastPlayed : Date.now(),
+                    createdAt: typeof d.createdAt === 'number' ? d.createdAt : Date.now(),
+                  });
+                }
+              } catch {}
+            }
+          }
+        }
+        if (list.length > 0) {
+          try {
+            localStorage.setItem(WORLDS_INDEX_KEY, JSON.stringify(list));
+          } catch {}
+        }
+      }
+
       return list
         .filter((w) => w && typeof w.id === 'string' && typeof w.name === 'string')
         .map((w) => ({
@@ -43,13 +85,29 @@ export class SaveManager {
           seed: typeof w.seed === 'number' ? w.seed : 42819,
         }));
     } catch (e) {
-      Logger.warn('SaveManager', 'Failed to parse worlds index', { error: (e as Error).message });
+      Logger.warn('SaveManager', 'Failed to read worlds index', { error: (e as Error).message });
       return [];
     }
   }
 
-  // Fast sampled checksum calculation for save validation (prevents thread lockup on mobile)
-  public static calculateChecksum(str: string): string {
+  // Full-Payload Checksum (examines 100% of bytes for strict tamper & corruption detection)
+  public static calculateFullChecksum(str: string): string {
+    if (!str) return '0';
+    let h1 = 0xdeadbeef;
+    let h2 = 0x41c64e6d;
+    const len = str.length;
+    for (let i = 0; i < len; i++) {
+      const ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+  }
+
+  // Legacy sampled checksum for backward compatibility with v1 saves
+  public static calculateSampledChecksum(str: string): string {
     if (!str) return '0';
     let hash = 0;
     const len = str.length;
@@ -57,17 +115,76 @@ export class SaveManager {
     for (let i = 0; i < len; i += step) {
       const char = str.charCodeAt(i);
       hash = (hash << 5) - hash + char;
-      hash |= 0; // Convert to 32bit integer
+      hash |= 0;
     }
     return hash.toString(16);
   }
 
-  public static createChecksum(payload: any): string {
-    const serialized = typeof payload === 'string' ? payload : JSON.stringify(payload);
-    return this.calculateChecksum(serialized);
+  public static calculateChecksum(str: string, version: number = CURRENT_CHECKSUM_VERSION): string {
+    if (version === 1) {
+      return this.calculateSampledChecksum(str);
+    }
+    return this.calculateFullChecksum(str);
   }
 
-  // Strictly verify raw payload and reject corrupt data / checksum mismatch
+  public static createChecksum(payload: any, version: number = CURRENT_CHECKSUM_VERSION): string {
+    const serialized = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    return this.calculateChecksum(serialized, version);
+  }
+
+  // Synchronize index across IndexedDB and LocalStorage, salvaging worlds that exist only in IndexedDB
+  public static async getWorldsAsync(): Promise<WorldSummary[]> {
+    const localList = this.getWorlds();
+    const indexMap = new Map<string, WorldSummary>();
+    localList.forEach((w) => indexMap.set(w.id, w));
+
+    try {
+      const idbRecords = await IndexedDBStorage.getAll<{ id: string; payload: string; updatedAt?: number }>(STORE_WORLDS);
+      for (const record of idbRecords) {
+        if (!record || typeof record.id !== 'string') continue;
+        const key = record.id;
+        if (key.startsWith('__') || key.endsWith('_temp')) continue;
+
+        const isBackup = key.endsWith('_backup') || key.endsWith('_backup_1') || key.endsWith('_backup_2');
+        const primaryId = isBackup ? key.replace(/_backup(_\d)?$/, '') : key;
+
+        if (!indexMap.has(primaryId) && record.payload) {
+          const verified = this.verifyAndExtractData(record.payload);
+          if (verified) {
+            indexMap.set(verified.id, {
+              id: verified.id,
+              name: verified.name,
+              seed: verified.seed,
+              gameMode: verified.gameMode,
+              difficulty: verified.difficulty || 'normal',
+              preset: verified.preset || 'standard',
+              lastPlayed: verified.lastPlayed || record.updatedAt || Date.now(),
+              createdAt: verified.createdAt || Date.now(),
+            });
+          }
+        }
+      }
+
+      const mergedList = Array.from(indexMap.values()).sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));
+
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem(WORLDS_INDEX_KEY, JSON.stringify(mergedList));
+        } catch {}
+      }
+
+      return mergedList;
+    } catch (e) {
+      Logger.warn('SaveManager', 'Failed to synchronize worlds index from IndexedDB', { error: (e as Error).message });
+      return localList;
+    }
+  }
+
+  public static async syncWorldsIndex(): Promise<WorldSummary[]> {
+    return this.getWorldsAsync();
+  }
+
+  // Strictly verify raw payload and reject corrupt data / checksum mismatch with multi-version fallback
   public static verifyAndExtractData(rawStringOrObj: any): WorldSaveData | null {
     if (!rawStringOrObj) return null;
     let parsed: any;
@@ -87,9 +204,23 @@ export class SaveManager {
     // Standard container with checksum
     if (parsed.data) {
       if (parsed.checksum && typeof parsed.checksum === 'string') {
-        const calculated = this.calculateChecksum(JSON.stringify(parsed.data));
-        if (calculated !== parsed.checksum) {
-          Logger.error('SaveManager', `Save data checksum mismatch: expected ${parsed.checksum}, got ${calculated}`);
+        const serialized = JSON.stringify(parsed.data);
+        const checksumVer = typeof parsed.checksumVersion === 'number' ? parsed.checksumVersion : 0;
+
+        let isValid = false;
+        if (checksumVer >= 2) {
+          isValid = this.calculateFullChecksum(serialized) === parsed.checksum;
+        } else if (checksumVer === 1) {
+          isValid = this.calculateSampledChecksum(serialized) === parsed.checksum;
+        } else {
+          // Unspecified version: test full checksum first, fallback to sampled checksum for legacy saves
+          isValid =
+            this.calculateFullChecksum(serialized) === parsed.checksum ||
+            this.calculateSampledChecksum(serialized) === parsed.checksum;
+        }
+
+        if (!isValid) {
+          Logger.error('SaveManager', `Save data checksum mismatch for payload`);
           return null; // Corrupt or tampered save data rejected
         }
       }
@@ -342,40 +473,65 @@ export class SaveManager {
     if (this.hasWorld(worldId)) return true;
     try {
       const keys = await IndexedDBStorage.getAllKeys(STORE_WORLDS);
-      return keys.includes(worldId) || keys.includes(`${worldId}_backup`);
+      return (
+        keys.includes(worldId) ||
+        keys.includes(`${worldId}_backup`) ||
+        keys.includes(`${worldId}_backup_1`) ||
+        keys.includes(`${worldId}_backup_2`)
+      );
     } catch {
       return false;
     }
   }
 
-  // Durable Asynchronous Save Strategy with active mutex coordination (Queues concurrent requests)
-  public static async saveWorldAsync(data: WorldSaveData): Promise<boolean> {
-    const worldId = data.id || 'world';
-    const previousSavePromise = this.saveMutexMap.get(worldId) || Promise.resolve(true);
-
-    const queuedOperation = (async () => {
-      try {
-        await previousSavePromise;
-      } catch {
-        // Continue even if previous save failed so new save isn't permanently blocked
-      }
-      return this.executeSaveWorldAsync(data);
-    })();
-
-    this.saveMutexMap.set(worldId, queuedOperation);
+  // Coordination mutex for per-world serialization of save, delete, rename, and duplicate operations
+  private static async runExclusive<T>(worldId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.worldLockMap.get(worldId) || Promise.resolve();
+    let release: () => void = () => {};
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.worldLockMap.set(worldId, previous.then(() => current, () => current));
 
     try {
-      return await queuedOperation;
+      await previous.catch(() => {});
+      return await operation();
     } finally {
-      if (this.saveMutexMap.get(worldId) === queuedOperation) {
-        this.saveMutexMap.delete(worldId);
+      release();
+      if (this.worldLockMap.get(worldId) === current) {
+        this.worldLockMap.delete(worldId);
       }
     }
+  }
+
+  public static resetSessionState(): void {
+    this.deletedWorldsSet.clear();
+    this.worldLockMap.clear();
+  }
+
+  // Durable Asynchronous Save Strategy with active mutex coordination (Queues concurrent requests)
+  public static async saveWorldAsync(data: WorldSaveData): Promise<boolean> {
+    if (!data || typeof data !== 'object' || !data.id) {
+      Logger.error('SaveManager', 'Cannot save corrupt or invalid WorldSaveData in-memory payload.');
+      return false;
+    }
+    const worldId = data.id;
+    return this.runExclusive(worldId, async () => {
+      return this.executeSaveWorldAsync(data);
+    });
   }
 
   // Internal execution of atomic persistent commit with historical backup rotation
   private static async executeSaveWorldAsync(data: WorldSaveData): Promise<boolean> {
     try {
+      if (!data || typeof data !== 'object' || !data.id) {
+        Logger.error('SaveManager', 'Rejected attempt to persist invalid save data structure.');
+        return false;
+      }
+
+      if (this.deletedWorldsSet.has(data.id)) {
+        Logger.warn('SaveManager', `Aborting save for deleted world '${data.id}'.`);
+        return false;
+      }
+
       const key = `voxelverse_world_${data.id}`;
       const tempKey = `${key}_temp`;
       const backup1Key = `${key}_backup_1`;
@@ -399,7 +555,7 @@ export class SaveManager {
       data.containers = BlockPlacementEngine.serializeContainers();
 
       const serialized = JSON.stringify(data);
-      const checksum = this.calculateChecksum(serialized);
+      const checksum = this.calculateFullChecksum(serialized);
       const payload = JSON.stringify({ 
         version: CURRENT_SAVE_VERSION,
         checksumVersion: CURRENT_CHECKSUM_VERSION,
@@ -417,7 +573,21 @@ export class SaveManager {
         if (existingRecord?.payload) {
           const verifiedExisting = this.verifyAndExtractData(existingRecord.payload);
           if (verifiedExisting) {
-            // Rotate verified healthy prior primary to backup (historical recovery snapshot)
+            // Rotate prior verified backup 1 to backup 2
+            const existingB1 = await IndexedDBStorage.getItem<{ id: string; payload: string }>(STORE_WORLDS, `${data.id}_backup_1`);
+            if (existingB1?.payload && this.verifyAndExtractData(existingB1.payload)) {
+              await IndexedDBStorage.setItem(STORE_WORLDS, {
+                id: `${data.id}_backup_2`,
+                payload: existingB1.payload,
+                updatedAt: Date.now(),
+              });
+            }
+            // Rotate verified healthy prior primary to backup 1 and standard backup
+            await IndexedDBStorage.setItem(STORE_WORLDS, {
+              id: `${data.id}_backup_1`,
+              payload: existingRecord.payload,
+              updatedAt: Date.now(),
+            });
             await IndexedDBStorage.setItem(STORE_WORLDS, {
               id: `${data.id}_backup`,
               payload: existingRecord.payload,
@@ -506,9 +676,20 @@ export class SaveManager {
     return this.saveWorldAsync(data);
   }
 
-  // Inspect Available Recovery Snapshot for a world (IDB backup, LocalStorage backups, or crash recovery)
+  // Inspect Available Recovery Snapshot for a world (IDB backups, LocalStorage backups, or crash recovery)
   public static async getAvailableRecoverySnapshot(worldId: string): Promise<{ layer: string; data: WorldSaveData; timestamp?: number } | null> {
-    // 1. IndexedDB Backup
+    // 1. IndexedDB Backup 1
+    try {
+      const b1Record = await IndexedDBStorage.getItem<{ id: string; payload: string; updatedAt?: number }>(STORE_WORLDS, `${worldId}_backup_1`);
+      if (b1Record?.payload) {
+        const verified = this.verifyAndExtractData(b1Record.payload);
+        if (verified) {
+          return { layer: 'IndexedDB Historical Backup (Snapshot 1)', data: verified, timestamp: b1Record.updatedAt };
+        }
+      }
+    } catch {}
+
+    // 2. IndexedDB Standard Backup
     try {
       const backupRecord = await IndexedDBStorage.getItem<{ id: string; payload: string; updatedAt?: number }>(STORE_WORLDS, `${worldId}_backup`);
       if (backupRecord?.payload) {
@@ -519,7 +700,18 @@ export class SaveManager {
       }
     } catch {}
 
-    // 2. LocalStorage Backup 1
+    // 3. IndexedDB Backup 2
+    try {
+      const b2Record = await IndexedDBStorage.getItem<{ id: string; payload: string; updatedAt?: number }>(STORE_WORLDS, `${worldId}_backup_2`);
+      if (b2Record?.payload) {
+        const verified = this.verifyAndExtractData(b2Record.payload);
+        if (verified) {
+          return { layer: 'IndexedDB Historical Backup (Snapshot 2)', data: verified, timestamp: b2Record.updatedAt };
+        }
+      }
+    } catch {}
+
+    // 4. LocalStorage Backup 1
     try {
       if (typeof localStorage !== 'undefined') {
         const b1 = localStorage.getItem(`voxelverse_world_${worldId}_backup_1`);
@@ -539,7 +731,7 @@ export class SaveManager {
       }
     } catch {}
 
-    // 3. Crash Recovery
+    // 5. Crash Recovery
     const crash = this.getCrashRecoveryState();
     if (crash && (crash.id === worldId || crash.id === 'recovery')) {
       return { layer: 'Session Crash Recovery Buffer', data: crash, timestamp: crash.lastPlayed };
@@ -550,12 +742,14 @@ export class SaveManager {
 
   // Load World with Strict Multi-Layer Fallback Sequence:
   // Layer 1: IndexedDB primary
-  // Layer 2: IndexedDB backup
-  // Layer 3: localStorage primary
-  // Layer 4: localStorage backup 1
-  // Layer 5: localStorage backup 2
-  // Layer 6: Crash recovery
-  // Layer 7: Total rejection / null
+  // Layer 2: IndexedDB backup 1
+  // Layer 3: IndexedDB backup standard
+  // Layer 4: IndexedDB backup 2
+  // Layer 5: localStorage primary
+  // Layer 6: localStorage backup 1
+  // Layer 7: localStorage backup 2
+  // Layer 8: Crash recovery
+  // Layer 9: Total rejection / null
   public static async loadWorldAsync(worldId: string): Promise<WorldSaveData | null> {
     try {
       const asyncLoadPromise = (async () => {
@@ -573,13 +767,27 @@ export class SaveManager {
           Logger.warn('SaveManager', 'IndexedDB primary read error', { error: (e as Error).message });
         }
 
-        // Layer 2: IndexedDB Backup
+        // Layer 2: IndexedDB Backup 1
+        try {
+          const b1Record = await IndexedDBStorage.getItem<{ id: string; payload: string }>(STORE_WORLDS, `${worldId}_backup_1`);
+          if (b1Record?.payload) {
+            const verified = this.verifyAndExtractData(b1Record.payload);
+            if (verified) {
+              Logger.warn('SaveManager', `[Layer 2 - IndexedDB Backup 1] Recovered world '${worldId}' from snapshot 1`);
+              return verified;
+            }
+          }
+        } catch (e) {
+          Logger.warn('SaveManager', 'IndexedDB backup 1 read error', { error: (e as Error).message });
+        }
+
+        // Layer 3: IndexedDB Standard Backup
         try {
           const backupRecord = await IndexedDBStorage.getItem<{ id: string; payload: string }>(STORE_WORLDS, `${worldId}_backup`);
           if (backupRecord?.payload) {
             const verified = this.verifyAndExtractData(backupRecord.payload);
             if (verified) {
-              Logger.warn('SaveManager', `[Layer 2 - IndexedDB Backup] Recovered world '${worldId}' from historical backup snapshot`);
+              Logger.warn('SaveManager', `[Layer 3 - IndexedDB Backup] Recovered world '${worldId}' from historical backup snapshot`);
               return verified;
             }
           }
@@ -587,7 +795,21 @@ export class SaveManager {
           Logger.warn('SaveManager', 'IndexedDB backup read error', { error: (e as Error).message });
         }
 
-        // Layers 3 to 6: LocalStorage & Crash Recovery fallbacks
+        // Layer 4: IndexedDB Backup 2
+        try {
+          const b2Record = await IndexedDBStorage.getItem<{ id: string; payload: string }>(STORE_WORLDS, `${worldId}_backup_2`);
+          if (b2Record?.payload) {
+            const verified = this.verifyAndExtractData(b2Record.payload);
+            if (verified) {
+              Logger.warn('SaveManager', `[Layer 4 - IndexedDB Backup 2] Recovered world '${worldId}' from snapshot 2`);
+              return verified;
+            }
+          }
+        } catch (e) {
+          Logger.warn('SaveManager', 'IndexedDB backup 2 read error', { error: (e as Error).message });
+        }
+
+        // Layers 5 to 8: LocalStorage & Crash Recovery fallbacks
         return this.loadWorld(worldId);
       })();
 
@@ -604,6 +826,7 @@ export class SaveManager {
       return this.loadWorld(worldId);
     }
   }
+
 
   // Load World with Multi-Layer Local Fallback & Strict Checksum Verification
   public static loadWorld(worldId: string): WorldSaveData | null {
@@ -694,25 +917,70 @@ export class SaveManager {
   }
 
   // Export / Import World Capabilities
+  public static async exportWorldJSONAsync(worldId: string): Promise<string | null> {
+    const data = await this.loadWorldAsync(worldId);
+    if (!data) return null;
+    return JSON.stringify({ voxelVerseSave: true, schemaVersion: CURRENT_SAVE_VERSION, data }, null, 2);
+  }
+
   public static exportWorldJSON(worldId: string): string | null {
     const data = this.loadWorld(worldId);
     if (!data) return null;
     return JSON.stringify({ voxelVerseSave: true, schemaVersion: CURRENT_SAVE_VERSION, data }, null, 2);
   }
 
-  public static importWorldJSON(jsonString: string): WorldSummary | null {
+  // Import World JSON: strictly awaits persistent storage commit before returning summary
+  public static async importWorldJSON(jsonString: string): Promise<WorldSummary | null> {
     try {
-      const parsed = JSON.parse(jsonString);
-      const data = parsed.data || parsed;
-      if (!data || typeof data !== 'object') throw new Error('Invalid save payload structure');
+      if (!jsonString || typeof jsonString !== 'string') {
+        Logger.error('SaveManager', 'importWorldJSON: Payload is empty or not a string');
+        return null;
+      }
 
-      const importedId = `world_${Date.now()}`;
-      const name = data.name ? `${data.name} (Imported)` : 'Imported Realm';
-      const sanitized = this.validateAndSanitizeSave(data, importedId, data.seed || Math.floor(Math.random() * 9999999));
+      let parsed: any;
+      try {
+        parsed = JSON.parse(jsonString);
+      } catch (parseErr) {
+        Logger.error('SaveManager', 'importWorldJSON: JSON parse failed', { error: (parseErr as Error).message });
+        return null;
+      }
+
+      const data = parsed.data || parsed;
+      if (!data || typeof data !== 'object') {
+        Logger.error('SaveManager', 'importWorldJSON: Invalid save payload structure');
+        return null;
+      }
+
+      // Check for recognizable world save fields to reject arbitrary non-save JSON
+      const hasSaveFields =
+        parsed.voxelVerseSave === true ||
+        data.player !== undefined ||
+        data.modifiedBlocks !== undefined ||
+        data.seed !== undefined ||
+        data.gameTime !== undefined ||
+        (typeof data.id === 'string' && (data.name !== undefined || data.version !== undefined));
+
+      if (!hasSaveFields) {
+        Logger.error('SaveManager', 'importWorldJSON: Payload does not contain recognizable world save data');
+        return null;
+      }
+
+      const importedId = `world_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      this.deletedWorldsSet.delete(importedId);
+
+      const name = typeof data.name === 'string' && data.name.trim() ? `${data.name.trim()} (Imported)` : 'Imported Realm';
+      const sanitized = this.validateAndSanitizeSave(
+        data,
+        importedId,
+        typeof data.seed === 'number' ? data.seed : Math.floor(Math.random() * 9999999)
+      );
       sanitized.id = importedId;
       sanitized.name = name;
+      sanitized.createdAt = Date.now();
+      sanitized.lastPlayed = Date.now();
 
-      if (this.saveWorld(sanitized)) {
+      const success = await this.saveWorldAsync(sanitized);
+      if (success) {
         return {
           id: sanitized.id,
           name: sanitized.name,
@@ -724,6 +992,8 @@ export class SaveManager {
           createdAt: sanitized.createdAt,
         };
       }
+
+      Logger.error('SaveManager', `importWorldJSON: saveWorldAsync failed to persist imported world '${importedId}'`);
       return null;
     } catch (e) {
       Logger.error('SaveManager', 'Failed to import world from JSON', { error: (e as Error).message });
@@ -731,25 +1001,59 @@ export class SaveManager {
     }
   }
 
+  public static async deleteWorldAsync(worldId: string): Promise<boolean> {
+    return this.runExclusive(worldId, async () => {
+      try {
+        this.deletedWorldsSet.add(worldId);
+        const key = `voxelverse_world_${worldId}`;
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem(key);
+          localStorage.removeItem(`${key}_temp`);
+          localStorage.removeItem(`${key}_backup_1`);
+          localStorage.removeItem(`${key}_backup_2`);
+        }
+
+        await IndexedDBStorage.removeItem(STORE_WORLDS, worldId);
+        await IndexedDBStorage.removeItem(STORE_WORLDS, `${worldId}_backup`);
+        await IndexedDBStorage.removeItem(STORE_WORLDS, `${worldId}_backup_1`);
+        await IndexedDBStorage.removeItem(STORE_WORLDS, `${worldId}_backup_2`);
+
+        const crash = this.getCrashRecoveryState();
+        if (crash && crash.id === worldId) {
+          this.clearCrashRecoveryState();
+        }
+
+        const worlds = this.getWorlds().filter((w) => w.id !== worldId);
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(WORLDS_INDEX_KEY, JSON.stringify(worlds));
+        }
+        return true;
+      } catch (e) {
+        Logger.error('SaveManager', 'Failed to delete world', { error: (e as Error).message });
+        return false;
+      }
+    });
+  }
+
   public static deleteWorld(worldId: string): void {
+    this.deleteWorldAsync(worldId).catch(() => {});
     try {
       const key = `voxelverse_world_${worldId}`;
-      localStorage.removeItem(key);
-      localStorage.removeItem(`${key}_temp`);
-      localStorage.removeItem(`${key}_backup_1`);
-      localStorage.removeItem(`${key}_backup_2`);
-      IndexedDBStorage.removeItem(STORE_WORLDS, worldId);
-      IndexedDBStorage.removeItem(STORE_WORLDS, `${worldId}_backup`);
-
-      const worlds = this.getWorlds().filter((w) => w.id !== worldId);
-      localStorage.setItem(WORLDS_INDEX_KEY, JSON.stringify(worlds));
-    } catch (e) {
-      Logger.error('SaveManager', 'Failed to delete world', { error: (e as Error).message });
-    }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(key);
+        localStorage.removeItem(`${key}_temp`);
+        localStorage.removeItem(`${key}_backup_1`);
+        localStorage.removeItem(`${key}_backup_2`);
+        const worlds = this.getWorlds().filter((w) => w.id !== worldId);
+        localStorage.setItem(WORLDS_INDEX_KEY, JSON.stringify(worlds));
+      }
+    } catch {}
   }
 
   public static saveWorldSync(data: WorldSaveData): boolean {
     try {
+      if (!data || typeof data !== 'object' || !data.id) return false;
+      this.deletedWorldsSet.delete(data.id);
       const key = `voxelverse_world_${data.id}`;
       const tempKey = `${key}_temp`;
       const backup1Key = `${key}_backup_1`;
@@ -769,7 +1073,7 @@ export class SaveManager {
       data.difficulty = data.difficulty || 'normal';
 
       const serialized = JSON.stringify(data);
-      const checksum = this.calculateChecksum(serialized);
+      const checksum = this.calculateFullChecksum(serialized);
       const payload = JSON.stringify({ 
         version: CURRENT_SAVE_VERSION,
         checksumVersion: CURRENT_CHECKSUM_VERSION,
@@ -819,6 +1123,20 @@ export class SaveManager {
     }
   }
 
+  public static async renameWorldAsync(worldId: string, newName: string): Promise<boolean> {
+    return this.runExclusive(worldId, async () => {
+      try {
+        const data = await this.loadWorldAsync(worldId);
+        if (!data) return false;
+        data.name = newName.trim() || 'Renamed Realm';
+        return await this.executeSaveWorldAsync(data);
+      } catch (e) {
+        Logger.error('SaveManager', 'Failed to rename world', { error: (e as Error).message });
+        return false;
+      }
+    });
+  }
+
   public static renameWorld(worldId: string, newName: string): boolean {
     try {
       const data = this.loadWorld(worldId);
@@ -831,12 +1149,44 @@ export class SaveManager {
     }
   }
 
+  public static async duplicateWorldAsync(worldId: string): Promise<WorldSummary | null> {
+    try {
+      const data = await this.loadWorldAsync(worldId);
+      if (!data) return null;
+
+      const newId = `world_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      this.deletedWorldsSet.delete(newId);
+      data.id = newId;
+      data.name = `${data.name} (Copy)`;
+      data.createdAt = Date.now();
+      data.lastPlayed = Date.now();
+
+      const success = await this.saveWorldAsync(data);
+      if (success) {
+        return {
+          id: data.id,
+          name: data.name,
+          seed: data.seed,
+          gameMode: data.gameMode,
+          difficulty: data.difficulty,
+          preset: data.preset,
+          lastPlayed: data.lastPlayed,
+          createdAt: data.createdAt,
+        };
+      }
+      return null;
+    } catch (e) {
+      Logger.error('SaveManager', 'Failed to duplicate world', { error: (e as Error).message });
+      return null;
+    }
+  }
+
   public static duplicateWorld(worldId: string): WorldSummary | null {
     try {
       const data = this.loadWorld(worldId);
       if (!data) return null;
 
-      const newId = `world_${Date.now()}`;
+      const newId = `world_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       data.id = newId;
       data.name = `${data.name} (Copy)`;
       data.createdAt = Date.now();

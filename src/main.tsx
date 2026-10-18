@@ -3,15 +3,15 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Handle benign preview dev server websocket closure errors gracefully
-if (typeof window !== 'undefined') {
+// Handle benign preview dev server websocket closure errors gracefully in DEV mode only
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
   window.addEventListener('unhandledrejection', (event) => {
-    if (
-      event.reason &&
-      (String(event.reason).includes('WebSocket closed') ||
-       String(event.reason?.message).includes('WebSocket closed') ||
-       String(event.reason).includes('[vite]'))
-    ) {
+    const reasonStr = String(event.reason?.message || event.reason || '');
+    // Only suppress benign Vite HMR reconnection/closure rejections
+    const isViteHmrError =
+      reasonStr.includes('[vite]') ||
+      (reasonStr.includes('WebSocket') && (reasonStr.includes('vite') || reasonStr.includes('hmr')));
+    if (isViteHmrError) {
       event.preventDefault();
     }
   });

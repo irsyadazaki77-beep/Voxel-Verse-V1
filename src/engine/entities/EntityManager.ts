@@ -675,13 +675,22 @@ export class EntityManager {
         this.updateEntityAI(state, EntityManager._tempVecA, playerPos, distToPlayer, world, isNight, timeOfDay);
       }
 
-      if (state.aiState === 'attack' && state.type === 'hostile') {
+      if (state.aiState === 'attack' && (state.type === 'hostile' || state.type === 'boss' || state.isBoss)) {
          if (now - (state.lastAttackTime || 0) > (state.attackCooldown || 1500)) {
              state.lastAttackTime = now;
              if (mesh.userData.rig) {
                CreatureAnimationEngine.triggerAttack(mesh.userData.rig);
              }
-             if (damagePlayer) {
+             if (state.isBoss || state.type === 'boss' || state.modelType === 'batara_kala_colossus') {
+               GameEventBus.emit('BOSS_ATTACK_TELEGRAPH', {
+                 bossId: id,
+                 bossName: state.name,
+                 position: [playerPos.x, Math.floor(playerPos.y), playerPos.z],
+                 damage: state.damage,
+                 radius: state.modelType === 'batara_kala_colossus' ? 5.8 : 4.2,
+                 duration: (state.health / state.maxHealth <= 0.25) ? 1.05 : 1.3,
+               });
+             } else if (damagePlayer) {
                  damagePlayer(state.damage, state.name);
              }
          }
@@ -948,12 +957,34 @@ export class EntityManager {
     return null;
   }
 
-  public spawnBoss(type: 'ruin_sentinel' | 'boss_void_sovereign' | 'void_sovereign', position: [number, number, number], world: VoxelWorld): string {
+  public spawnBoss(type: 'ruin_sentinel' | 'boss_void_sovereign' | 'void_sovereign' | 'batara_kala_colossus', position: [number, number, number], world: VoxelWorld): string {
     const id = `boss_${type}_${Date.now()}`;
     const spawnY = world.getSpawnHeight(position[0], position[2]);
     const actualPos: [number, number, number] = [position[0], spawnY, position[2]];
 
-    if (type === 'ruin_sentinel') {
+    if (type === 'batara_kala_colossus') {
+      this.spawnEntity({
+        id,
+        type: 'boss',
+        name: 'Batara Kala Underchamber Colossus',
+        position: actualPos,
+        velocity: [0, 0, 0],
+        rotation: 0,
+        health: 1200,
+        maxHealth: 1200,
+        damage: 42,
+        speed: 2.2,
+        aiState: 'wander',
+        modelType: 'batara_kala_colossus',
+        drops: [
+          { itemId: 'mustika_naga_pusaka', chance: 1.0, count: [1, 1] },
+          { itemId: 'cakra_surya_precursor', chance: 0.8, count: [1, 1] },
+          { itemId: 'keris_kyai_sengkelat', chance: 0.5, count: [1, 1] },
+          { itemId: 'aether_crystal', chance: 1.0, count: [12, 24] },
+          { itemId: 'mythril_ingot', chance: 1.0, count: [6, 12] }
+        ]
+      });
+    } else if (type === 'ruin_sentinel') {
       this.spawnEntity({
         id,
         type: 'boss',

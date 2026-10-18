@@ -230,6 +230,7 @@ export class ChunkScheduler {
             transitionChunkState(chunk, chunk.state, ChunkState.UNLOADED, 'zombie_recovery');
             this.world.chunks.delete(key);
             this.world.worldGroup.remove(chunk.group);
+            chunk.dispose();
           } else {
             chunk.setDirty();
             transitionChunkState(chunk, chunk.state, ChunkState.DIRTY, 'zombie_recovery');

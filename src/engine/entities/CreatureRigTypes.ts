@@ -13,7 +13,8 @@ export type CreatureLocomotionType =
   | 'aberration'
   | 'boss'
   | 'boss_golem'
-  | 'boss_sovereign';
+  | 'boss_sovereign'
+  | 'boss_colossus';
 
 export type CreatureAnimState =
   | 'idle'
@@ -45,6 +46,8 @@ export interface CreatureRig {
   // Biped Arms & Legs
   armL?: THREE.Object3D;
   armR?: THREE.Object3D;
+  armLowerL?: THREE.Object3D;
+  armLowerR?: THREE.Object3D;
   legL?: THREE.Object3D;
   legR?: THREE.Object3D;
   

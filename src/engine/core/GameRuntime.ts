@@ -54,6 +54,8 @@ import { RenderPipeline } from '../rendering/RenderPipeline';
 import { BalanceTelemetry } from '../telemetry/BalanceTelemetry';
 
 import { NetworkSession } from '../network/NetworkSession';
+import { TelegraphVisualEngine } from '../combat/TelegraphVisualEngine';
+import { WeaponSkillManager } from '../combat/WeaponSkillManager';
 
 export interface GameRuntimeCallbacks {
   onBossUpdated?: (boss: BossCombatState | null) => void;
@@ -111,6 +113,7 @@ export class GameRuntime {
   public renderSystem!: RenderSystem;
   public renderQualityManager!: RenderQualityManager;
   public renderPipeline!: RenderPipeline;
+  public telegraphEngine!: TelegraphVisualEngine;
 
   private reqId: number = 0;
   private lastTime: number = 0;
@@ -315,6 +318,15 @@ export class GameRuntime {
     this.inputManager.onAction('Perspective', () => {
       this.player.togglePerspective();
     });
+    this.inputManager.onAction('LockOn', () => {
+      this.toggleTargetLockOn();
+    });
+    this.inputManager.onAction('WeaponSkill', () => {
+      this.triggerWeaponSkill();
+    });
+    this.inputManager.onAction('Dodge', () => {
+      this.player.triggerDodge();
+    });
 
     // Drop active item
     this.inputManager.onAction('Drop', () => {
@@ -456,6 +468,7 @@ export class GameRuntime {
     this.worldStreamingSystem = new WorldStreamingSystem(this);
     this.environmentSystem = new EnvironmentSystem(this);
     this.persistenceSystem = new PersistenceSystem(this);
+    this.telegraphEngine = new TelegraphVisualEngine(this.scene);
 
     // Pre-warm materials, shaders, & pipeline programs to eliminate runtime stutter
     try {
@@ -638,6 +651,61 @@ export class GameRuntime {
     }
   }
 
+  public triggerWeaponSkill(): boolean {
+    return WeaponSkillManager.triggerSkill(this);
+  }
+
+  public toggleTargetLockOn(): boolean {
+    if (this.player.isLockOnActive) {
+      this.player.toggleLockOn();
+      this.audio.playFootstep('stone');
+      NotificationManager.show('🔓 TARGET LOCK-ON', 'Kamera bebas kembali.', 'info', 1800);
+      return false;
+    }
+
+    // Priority 1: Active boss
+    if (this.combatSystem.activeBoss) {
+      const bossEntry = this.entities.entities.get(this.combatSystem.activeBoss.id);
+      if (bossEntry && bossEntry.mesh) {
+        this.player.toggleLockOn(this.combatSystem.activeBoss.id, bossEntry.mesh.position, 3.2);
+        this.audio.playFootstep('stone');
+        NotificationManager.show('🎯 TARGET LOCKED', `Mengunci sudut pandang ke ${this.combatSystem.activeBoss.name}!`, 'warning', 2200);
+        return true;
+      }
+    }
+
+    // Priority 2: Nearest boss or hostile creature within 36m
+    let nearestTarget: { id: string; name: string; pos: THREE.Vector3; dist: number; height: number } | null = null;
+    const playerPos = this.player.position;
+
+    this.entities.entities.forEach((entry, id) => {
+      const isCandidate = entry.state.isBoss || entry.state.type === 'hostile' || entry.state.type === 'boss';
+      if (!isCandidate || entry.state.health <= 0) return;
+
+      const dist = playerPos.distanceTo(entry.mesh.position);
+      if (dist < 36 && (!nearestTarget || dist < nearestTarget.dist)) {
+        nearestTarget = {
+          id,
+          name: entry.state.name || 'Musuh',
+          pos: entry.mesh.position,
+          dist,
+          height: entry.state.isBoss ? 3.2 : 1.2,
+        };
+      }
+    });
+
+    if (nearestTarget) {
+      const t = nearestTarget as { id: string; name: string; pos: THREE.Vector3; dist: number; height: number };
+      this.player.toggleLockOn(t.id, t.pos, t.height);
+      this.audio.playFootstep('stone');
+      NotificationManager.show('🎯 TARGET LOCKED', `Mengunci sudut pandang ke ${t.name}!`, 'info', 2000);
+      return true;
+    }
+
+    NotificationManager.show('🔍 TIDAK ADA TARGET', 'Tidak ada musuh dalam jangkauan radar 36m.', 'info', 1500);
+    return false;
+  }
+
   public resize(width: number, height: number): void {
     this.renderSystem.resize(width, height);
     if (this.renderQualityManager) {
@@ -727,6 +795,9 @@ export class GameRuntime {
     this.particles.dispose();
     this.entities.dispose();
     this.gameStats.dispose();
+    if (this.telegraphEngine) {
+      this.telegraphEngine.dispose();
+    }
     if (this.renderPipeline) {
       this.renderPipeline.dispose();
     }
@@ -908,8 +979,21 @@ export class GameRuntime {
     // 5. Interaction System (Block break/place, Crops)
     this.interactionSystem.update(deltaTime);
 
-    // 6. Combat System (Bow, projectile spawning)
+    // 6. Combat System (Bow, projectile spawning, weapon arts)
     this.combatSystem.update(deltaTime);
+    this.telegraphEngine.update(deltaTime);
+    WeaponSkillManager.update(deltaTime);
+
+    // Dynamic Target Lock-On Live Position Tracker
+    if (this.player.isLockOnActive && this.player.lockOnTargetId) {
+      const targetEntry = this.entities.entities.get(this.player.lockOnTargetId);
+      if (targetEntry && targetEntry.state.health > 0) {
+        this.player.lockOnTargetPos.copy(targetEntry.mesh.position);
+      } else {
+        this.player.isLockOnActive = false;
+        this.player.lockOnTargetId = null;
+      }
+    }
 
     // 7. World Streaming (Chunk loading/unloading)
     this.worldStreamingSystem.update(deltaTime);

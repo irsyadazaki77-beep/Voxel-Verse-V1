@@ -7,7 +7,9 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { CRAFTING_RECIPES } from './src/engine/items/CraftingSystem';
 import { InventoryManager } from './src/engine/items/InventoryManager';
-import { ServerAuthority } from './src/engine/network/ServerAuthority';
+import { ServerAuthority, isValidVector3, toVector3Tuple } from './src/engine/network/ServerAuthority';
+import { InventoryActionMessage } from './src/engine/network/NetworkProtocol';
+export { ServerAuthority, isValidVector3, toVector3Tuple };
 import { ITEM_DEFS } from './src/engine/items/ItemRegistry';
 import { MiningEngine } from './src/engine/world/MiningEngine';
 import { WORLD_MIN_Y, WORLD_MAX_Y, MAX_INTERACTION_REACH } from './src/engine/world/WorldConfig';
@@ -61,7 +63,7 @@ export interface PlayerPersistentState {
     level: number;
     exp: number;
   };
-  questProgress: Record<string, any>;
+  questProgress: Record<string, unknown>;
   reputation: Record<string, number>;
   lastPlayed: number;
 }
@@ -99,6 +101,47 @@ export interface ActiveSession {
   expiresAt: number;
 }
 
+// Debounced Atomic Write Mutex & Mechanism for database
+let saveDebounceTimer: NodeJS.Timeout | null = null;
+let isSaving = false;
+let pendingSave = false;
+
+export function scheduleRealmSave(): void {
+  db.markDirty();
+  if (saveDebounceTimer) {
+    clearTimeout(saveDebounceTimer);
+  }
+  saveDebounceTimer = setTimeout(() => {
+    saveDebounceTimer = null;
+    executeAtomicSave().catch((err) => {
+      console.error('[DB] Error during debounced realm save:', err);
+    });
+  }, 2000);
+}
+
+export async function executeAtomicSave(): Promise<void> {
+  if (isSaving) {
+    pendingSave = true;
+    return;
+  }
+  isSaving = true;
+  try {
+    const tempFile = `${DB_FILE}.tmp`;
+    const jsonStr = JSON.stringify(db.getData(), null, 2);
+    await fs.promises.writeFile(tempFile, jsonStr, 'utf8');
+    await fs.promises.rename(tempFile, DB_FILE);
+  } catch (e) {
+    console.error('[DB] Atomic realm save failed:', e);
+    scheduleRealmSave();
+  } finally {
+    isSaving = false;
+    if (pendingSave) {
+      pendingSave = false;
+      scheduleRealmSave();
+    }
+  }
+}
+
 // Initialize and seed JSON Database with Dirty-Flag & Asynchronous Persistence Architecture
 export class JsonDatabase {
   private data: DBStructure;
@@ -110,10 +153,16 @@ export class JsonDatabase {
     this.load();
     this.seedDefaults();
 
-    // Asynchronous Periodic Persistence Loop (Flush dirty state every 2 seconds without blocking loop)
+    // Periodic check to flush dirty state
     this.flushTimer = setInterval(() => {
-      this.flushAsync();
+      if (this.isDirty) {
+        scheduleRealmSave();
+      }
     }, 2000);
+  }
+
+  public getData(): DBStructure {
+    return this.data;
   }
 
   public load(): void {
@@ -137,17 +186,7 @@ export class JsonDatabase {
   }
 
   public async flushAsync(): Promise<void> {
-    if (!this.isDirty) return;
-    this.isDirty = false;
-    try {
-      const tempFile = `${DB_FILE}.tmp`;
-      const jsonStr = JSON.stringify(this.data, null, 2);
-      await fs.promises.writeFile(tempFile, jsonStr, 'utf8');
-      await fs.promises.rename(tempFile, DB_FILE);
-    } catch (e) {
-      console.error('[DB] Asynchronous persistence flush failed:', e);
-      this.isDirty = true; // Retry on next frame
-    }
+    await executeAtomicSave();
   }
 
   public flushSync(): void {
@@ -212,13 +251,12 @@ export class JsonDatabase {
 
   public setRealm(id: string, realm: Realm): void {
     this.data.realms[id] = realm;
-    this.markDirty();
+    scheduleRealmSave();
   }
 
   public deleteRealm(id: string): void {
     delete this.data.realms[id];
-    this.markDirty();
-    this.flushSync();
+    scheduleRealmSave();
   }
 
   public getRealmsList(): Array<Partial<Realm>> {
@@ -239,13 +277,17 @@ export class JsonDatabase {
 
   public setPlayer(id: string, player: PlayerPersistentState): void {
     this.data.players[id] = player;
-    this.markDirty();
+    scheduleRealmSave();
   }
 
   public destroy(): void {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
+    }
+    if (saveDebounceTimer) {
+      clearTimeout(saveDebounceTimer);
+      saveDebounceTimer = null;
     }
     this.flushSync();
   }
@@ -548,7 +590,7 @@ async function startServer() {
   });
 
   // WebSocket lifecycle with strict session binding
-  wss.on('connection', (ws: WebSocket, req: any) => {
+  wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
     const url = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
     const token = url.searchParams.get('token');
     const session = token ? sessions.get(token) : null;
@@ -576,7 +618,9 @@ async function startServer() {
       if (pl) pl.chatMsgCount = 0;
     }, 1000);
 
-    ws.on('message', (message: string) => {
+    ws.on('message', (rawData: WebSocket.RawData | string) => {
+      const message = typeof rawData === 'string' ? rawData : rawData.toString('utf8');
+
       // 1. Oversized Payload Security Boundary
       if (message.length > 32768) {
         console.warn(`[Server Security] Oversized packet rejected: ${message.length} bytes`);
@@ -593,25 +637,32 @@ async function startServer() {
         return;
       }
 
-      // Packet Rate limiter
+      // Connection-level Packet Rate Limiter (Max 60 packets per second to prevent DoS)
       packetCountInSecond++;
-      if (packetCountInSecond > 65) {
-        console.warn(`[Server Security] Packet rate limit exceeded by player session ${activeSessionId}.`);
+      if (packetCountInSecond > 60) {
+        console.warn(`[Server Security] Packet rate limit exceeded by player session ${activeSessionId} (${packetCountInSecond}/s).`);
         return;
       }
 
-      // 2. Safe JSON Parsing
-      let msg: any;
+      // 2. Safe JSON Parsing with try/catch & structural validation
+      let parsed: unknown;
       try {
-        msg = JSON.parse(message);
-      } catch (err) {
+        parsed = JSON.parse(message);
+      } catch {
         console.warn('[Server Security] Malformed JSON rejected');
         return;
       }
 
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        console.warn('[Server Security] Non-object message payload rejected');
+        return;
+      }
+
+      const msg = parsed as Record<string, any>;
+
       // 3. Protocol Version verification
-      if (!msg || msg.protocolVersion !== PROTOCOL_VERSION) {
-        console.warn(`[Server Security] Invalid protocol version: ${msg?.protocolVersion}`);
+      if (!msg.protocolVersion || msg.protocolVersion !== PROTOCOL_VERSION) {
+        console.warn(`[Server Security] Invalid protocol version: ${String(msg.protocolVersion)}`);
         ws.send(
           JSON.stringify({
             type: 'CHAT_MESSAGE',
@@ -794,12 +845,11 @@ async function startServer() {
 
           // Server-Authoritative Movement Speed & Coordinate Bounds Check
           const lastPos = player.position;
-          const nextPos = msg.position as [number, number, number];
-
-          if (!Array.isArray(nextPos) || nextPos.length !== 3 || nextPos.some((n) => !Number.isFinite(n))) {
+          if (!isValidVector3(msg.position)) {
             console.warn(`[Server Security] Invalid movement coordinates from ${player.playerName}`);
             return;
           }
+          const nextPos = toVector3Tuple(msg.position)!;
 
           const dx = nextPos[0] - lastPos[0];
           const dy = nextPos[1] - lastPos[1];
@@ -951,19 +1001,32 @@ async function startServer() {
           const bx = Number(msg.x);
           const by = Number(msg.y);
           const bz = Number(msg.z);
+          const oldBlockType = Number(msg.oldBlockType);
+          const newBlockType = Number(msg.newBlockType);
+
+          if (!isValidVector3([bx, by, bz])) {
+            console.warn(`[Server Security] Invalid block coordinates from ${player.playerName}`);
+            return;
+          }
 
           const coordKey = `${bx},${by},${bz}`;
           const currentServerBlock = realm.worldBlocks[coordKey];
           const pState = db.getPlayer(player.playerId);
           const currentInv = pState?.inventory || [];
 
-          // Comprehensive authoritative validation via ServerAuthority
-          const valRes = ServerAuthority.validateBlockChange(
-            msg,
-            player.position,
-            currentInv,
-            currentServerBlock
-          );
+          // Comprehensive authoritative validation via ServerAuthority (validateMining for breaking vs validateBlockPlacement)
+          const valRes = newBlockType === 0
+            ? ServerAuthority.validateMining(player.position, [bx, by, bz], oldBlockType, currentServerBlock)
+            : ServerAuthority.validateBlockPlacement(
+                player.position,
+                bx,
+                by,
+                bz,
+                oldBlockType,
+                newBlockType,
+                currentInv,
+                currentServerBlock
+              );
 
           if (!valRes.valid) {
             console.warn(`[Server Security] Block action rejected for ${player.playerName}: ${valRes.reason}`);
@@ -1132,17 +1195,18 @@ async function startServer() {
             return;
           }
 
-          const recipeId = msg.recipeId;
+          const recipeId = String(msg.recipeId || '');
           const quantity = typeof msg.quantity === 'number' && msg.quantity > 0 ? Math.floor(msg.quantity) : 1;
+          const stationContext = typeof msg.stationContext === 'string' ? msg.stationContext : undefined;
           const pState = db.getPlayer(activeSessionId);
           if (!pState) return;
 
           // Server-side authoritative craft validation via ServerAuthority
-          const valRes = ServerAuthority.validateCraftRequest(
+          const valRes = ServerAuthority.validateCrafting(
             recipeId,
             quantity,
             pState.inventory,
-            msg.stationContext
+            stationContext
           );
 
           if (!valRes.valid) {
@@ -1229,7 +1293,7 @@ async function startServer() {
           const pState = db.getPlayer(activeSessionId);
           if (!pState) return;
 
-          const valRes = ServerAuthority.validateInventoryAction(msg, pState.inventory);
+          const valRes = ServerAuthority.validateInventoryAction(msg as unknown as InventoryActionMessage, pState.inventory);
           if (!valRes.valid) {
             console.warn(`[Server Security] Inventory action rejected for ${player.playerName}: ${valRes.reason}`);
             ws.send(
@@ -1509,7 +1573,7 @@ async function startServer() {
   });
 
   // Server broadcast helpers strictly restricted to active realm ID
-  function broadcastToRealm(realmId: string, payload: any) {
+  function broadcastToRealm(realmId: string, payload: unknown) {
     const serialized = JSON.stringify(payload);
     players.forEach((p) => {
       const pSession = sessions.get(p.token);
@@ -1519,7 +1583,7 @@ async function startServer() {
     });
   }
 
-  function broadcastToOthersInRealm(excludeSessionId: string, realmId: string, payload: any) {
+  function broadcastToOthersInRealm(excludeSessionId: string, realmId: string, payload: unknown) {
     const serialized = JSON.stringify(payload);
     players.forEach((p) => {
       const pSession = sessions.get(p.token);

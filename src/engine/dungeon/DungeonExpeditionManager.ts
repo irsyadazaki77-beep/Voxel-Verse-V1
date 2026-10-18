@@ -152,6 +152,10 @@ export class DungeonExpeditionManager {
     return this.currentExpedition;
   }
 
+  public static startAncientSanctumExpedition(): ExpeditionRunState {
+    return this.startExpedition('ancient_candi_sanctum_01', 'ancient_curse');
+  }
+
   public static clearRoom(): void {
     if (this.currentExpedition.isActive) {
       this.currentExpedition.roomsCleared = Math.min(

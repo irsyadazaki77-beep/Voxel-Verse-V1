@@ -1,4 +1,6 @@
 const fs = require('fs');
+const path = require('path');
+const atlasPath = path.resolve(__dirname, '../src/engine/world/TextureAtlas.ts');
 
 const addition = `
     // 33. Gold Block
@@ -12,14 +14,14 @@ const addition = `
 
     // 34. Torch & Lantern
     drawTile(13, 2, (c, ox, oy) => {
-      fillBg(ox, oy, 'transparent');
+      fillBg(ox, oy, 'rgba(0,0,0,0)');
       ctx.fillStyle = '#78350f';
       ctx.fillRect(ox + 6, oy + 4, 4, 12);
       ctx.fillStyle = '#fbbf24';
       ctx.fillRect(ox + 6, oy + 0, 4, 4);
     });
     drawTile(14, 2, (c, ox, oy) => {
-      fillBg(ox, oy, 'transparent');
+      fillBg(ox, oy, 'rgba(0,0,0,0)');
       ctx.fillStyle = '#1e293b';
       ctx.fillRect(ox + 4, oy + 2, 8, 12);
       ctx.fillStyle = '#fde047';
@@ -42,6 +44,7 @@ const addition = `
 
 `;
 
-let content = fs.readFileSync('src/engine/world/TextureAtlas.ts', 'utf-8');
+let content = fs.readFileSync(atlasPath, 'utf-8');
 content = content.replace(/\/\/ 32\. Missing Texture Checkerboard/, addition + '    // 32. Missing Texture Checkerboard');
-fs.writeFileSync('src/engine/world/TextureAtlas.ts', content);
+fs.writeFileSync(atlasPath, content);
+console.log('Texture atlas updated.');
