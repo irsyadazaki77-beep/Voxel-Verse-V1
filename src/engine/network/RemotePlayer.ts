@@ -4,6 +4,7 @@ import * as THREE from 'three';
 interface TransformBufferEntry {
   position: [number, number, number];
   rotation: [number, number, number];
+  velocity?: [number, number, number];
   timestamp: number;
 }
 
@@ -30,6 +31,7 @@ export class RemotePlayer {
 
   // Configuration for interpolation delay
   private readonly interpolationDelayMs = 100; // Standard 100ms render buffer
+  private lastAppliedTimestamp = 0;
 
   constructor(id: string, name: string) {
     this.id = id;
@@ -86,8 +88,18 @@ export class RemotePlayer {
     return sprite;
   }
 
-  public pushTransformSnapshot(pos: [number, number, number], rot: [number, number, number], timestamp: number): void {
-    this.buffer.push({ position: pos, rotation: rot, timestamp });
+  public pushTransformSnapshot(
+    pos: [number, number, number],
+    rot: [number, number, number],
+    timestamp: number,
+    vel?: [number, number, number]
+  ): void {
+    // Discard stale or duplicate snapshots
+    if (timestamp < this.lastAppliedTimestamp - 1000) {
+      return;
+    }
+
+    this.buffer.push({ position: pos, rotation: rot, velocity: vel, timestamp });
     
     // Sort buffer by timestamp to ensure monotonic timeline
     this.buffer.sort((a, b) => a.timestamp - b.timestamp);
@@ -118,6 +130,7 @@ export class RemotePlayer {
       if (leftIndex !== -1) {
         const snapA = this.buffer[leftIndex];
         const snapB = this.buffer[leftIndex + 1];
+        this.lastAppliedTimestamp = snapB.timestamp;
 
         // Linear interpolation factor between snapA and snapB
         const duration = snapB.timestamp - snapA.timestamp;
@@ -142,12 +155,27 @@ export class RemotePlayer {
       }
     }
 
-    // Fallback: lerp smoothly to the latest received snapshot if buffer is starved
+    // Dead Reckoning / Extrapolation Fallback:
+    // If buffer is starved, extrapolate along last velocity for up to 200ms
     const latest = this.buffer[this.buffer.length - 1];
+    const timeSinceLatest = Date.now() - latest.timestamp;
+
+    if (latest.velocity && timeSinceLatest > 0 && timeSinceLatest < 200) {
+      const extraSeconds = Math.min(0.2, timeSinceLatest / 1000);
+      RemotePlayer._scratchTargetPos.set(
+        latest.position[0] + latest.velocity[0] * extraSeconds,
+        latest.position[1] + latest.velocity[1] * extraSeconds,
+        latest.position[2] + latest.velocity[2] * extraSeconds
+      );
+    } else {
+      RemotePlayer._scratchTargetPos.set(latest.position[0], latest.position[1], latest.position[2]);
+    }
+
     const lerpFactor = Math.min(1.0, deltaTime * 12.0);
-    RemotePlayer._scratchTargetPos.set(latest.position[0], latest.position[1], latest.position[2]);
     this.currentPos.lerp(RemotePlayer._scratchTargetPos, lerpFactor);
-    this.currentYaw += (latest.rotation[1] - this.currentYaw) * lerpFactor;
+    const diffYaw = latest.rotation[1] - this.currentYaw;
+    const shortestYaw = Math.atan2(Math.sin(diffYaw), Math.cos(diffYaw));
+    this.currentYaw += shortestYaw * lerpFactor;
 
     this.group.position.copy(this.currentPos);
     this.group.rotation.y = this.currentYaw;

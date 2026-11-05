@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { ItemStack } from '../types';
 import { ITEM_DEFS } from '../engine/items/ItemRegistry';
 import { BlockPlacementEngine } from '../engine/world/BlockPlacementEngine';
+import { InventoryManager } from '../engine/items/InventoryManager';
 
 interface ChestModalProps {
   chestPos: [number, number, number];
@@ -207,13 +208,45 @@ export const ChestModal: React.FC<ChestModalProps> = ({
             </div>
           </div>
 
-          <button
-            id="btn-close-chest"
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 flex items-center justify-center text-xs font-mono transition-all cursor-pointer"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const { updatedSource, updatedTarget } = InventoryManager.quickStackMatching(
+                  playerInventory,
+                  chestSlots,
+                  9
+                );
+                setPlayerInventory(updatedSource);
+                updateChestSlots(updatedTarget);
+                setSelectedSlot(null);
+                const rt = (window as any).__voxelRuntime;
+                rt?.audio?.playUIClick?.();
+              }}
+              title="Pindahkan semua item di tas yang sudah memiliki tumpukan serupa di dalam peti"
+              className="px-2.5 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-[11px] font-bold text-sky-300 hover:text-white transition-all cursor-pointer"
+            >
+              ⚡ Quick-Stack
+            </button>
+            <button
+              onClick={() => {
+                updateChestSlots(InventoryManager.sortAndConsolidate(chestSlots, 0));
+                setSelectedSlot(null);
+                const rt = (window as any).__voxelRuntime;
+                rt?.audio?.playUIClick?.();
+              }}
+              title="Gabungkan dan urutkan isi peti penyimpanan"
+              className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-[11px] font-bold text-amber-300 hover:text-white transition-all cursor-pointer"
+            >
+              ⇅ Rapikan Peti
+            </button>
+            <button
+              id="btn-close-chest"
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 flex items-center justify-center text-xs font-mono transition-all cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Chest Vault Grid (27 slots: 3x9) */}

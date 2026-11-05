@@ -313,6 +313,9 @@ export class ChunkWorkerPool {
         }
 
         const meshData = VoxelMesher.buildChunkMeshData(getBlock, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z);
+        if (fresh.haloBuffer && ChunkWorkerPool.onRecycleHaloBuffer) {
+          ChunkWorkerPool.onRecycleHaloBuffer(fresh.haloBuffer);
+        }
         if (task.sessionToken === this.currentSessionToken) {
           task.onComplete(meshData, task.sourceRevision ?? 0);
         }
@@ -322,6 +325,8 @@ export class ChunkWorkerPool {
       }
     }
   }
+
+  public static onRecycleHaloBuffer: ((buf: ArrayBuffer) => void) | null = null;
 
   public setSessionToken(token: number): void {
     this.currentSessionToken = token;
@@ -557,6 +562,10 @@ export class ChunkWorkerPool {
 
     this.clearTaskTimeout(result.taskId);
 
+    if (result.type === 'mesh' && result.returnedHaloBuffer && ChunkWorkerPool.onRecycleHaloBuffer) {
+      ChunkWorkerPool.onRecycleHaloBuffer(result.returnedHaloBuffer);
+    }
+
     if (task && task.sessionToken === this.currentSessionToken && task.taskId === result.taskId) {
       this.recordDuration(task.type, duration);
 
@@ -568,6 +577,23 @@ export class ChunkWorkerPool {
     }
 
     this.processQueue();
+  }
+
+  private static computeFastMaxOrP95(arr: number[]): number {
+    const len = arr.length;
+    if (len === 0) return 0;
+    let max1 = 0;
+    let max2 = 0;
+    for (let i = 0; i < len; i++) {
+      const v = arr[i];
+      if (v >= max1) {
+        max2 = max1;
+        max1 = v;
+      } else if (v > max2) {
+        max2 = v;
+      }
+    }
+    return Math.round(len >= 20 ? max2 : max1);
   }
 
   public getStats(): {
@@ -582,19 +608,23 @@ export class ChunkWorkerPool {
     avgMeshMs: number;
     p95MeshMs: number;
   } {
-    const healthy = this.workerSlots.filter(s => s.state === WorkerState.HEALTHY).length;
-    const busy = this.workerSlots.filter(s => s.state === WorkerState.BUSY).length;
-    const recovering = this.workerSlots.filter(s => s.state === WorkerState.RECOVERING).length;
-    const failed = this.workerSlots.filter(s => s.state === WorkerState.FAILED || s.state === WorkerState.DISABLED).length;
+    let healthy = 0;
+    let busy = 0;
+    let recovering = 0;
+    let failed = 0;
+    for (let i = 0; i < this.workerSlots.length; i++) {
+      const st = this.workerSlots[i].state;
+      if (st === WorkerState.HEALTHY) healthy++;
+      else if (st === WorkerState.BUSY) busy++;
+      else if (st === WorkerState.RECOVERING) recovering++;
+      else if (st === WorkerState.FAILED || st === WorkerState.DISABLED) failed++;
+    }
 
     const avgGenMs = this.recentGenDurations.length ? Math.round(this.recentGenDurations.reduce((a, b) => a + b, 0) / this.recentGenDurations.length) : 0;
     const avgMeshMs = this.recentMeshDurations.length ? Math.round(this.recentMeshDurations.reduce((a, b) => a + b, 0) / this.recentMeshDurations.length) : 0;
 
-    const sortedGen = [...this.recentGenDurations].sort((a, b) => a - b);
-    const sortedMesh = [...this.recentMeshDurations].sort((a, b) => a - b);
-
-    const p95GenMs = sortedGen.length ? Math.round(sortedGen[Math.floor(sortedGen.length * 0.95)] || 0) : 0;
-    const p95MeshMs = sortedMesh.length ? Math.round(sortedMesh[Math.floor(sortedMesh.length * 0.95)] || 0) : 0;
+    const p95GenMs = ChunkWorkerPool.computeFastMaxOrP95(this.recentGenDurations);
+    const p95MeshMs = ChunkWorkerPool.computeFastMaxOrP95(this.recentMeshDurations);
 
     return {
       healthyWorkers: healthy,

@@ -11,6 +11,9 @@ import { BalanceTelemetry } from '../telemetry/BalanceTelemetry';
 import { NetworkSession } from '../network/NetworkSession';
 import { TelegraphVisualEngine } from '../combat/TelegraphVisualEngine';
 import { CreatureAnimationEngine } from '../entities/CreatureAnimationEngine';
+import { NusantaraSanctumSilatSubakSystem } from './NusantaraSanctumSilatSubakSystem';
+import { CharacterProgressionManager } from '../progression/CharacterProgressionManager';
+import { WeaponArchetypes } from '../combat/WeaponArchetypes';
 
 export class CombatSystem implements GameSystem {
   public readonly name = 'CombatSystem';
@@ -20,6 +23,9 @@ export class CombatSystem implements GameSystem {
   public telegraphEngine: TelegraphVisualEngine;
   private lastBossPhase: number = 1;
   private bossAttackTimer: number = 0;
+  private static readonly _tmpSlashPos = new THREE.Vector3();
+  private static readonly _tmpSlashForward = new THREE.Vector3();
+  private static readonly _tmpSlashRight = new THREE.Vector3();
 
   constructor(runtime: GameRuntime) {
     this.runtime = runtime;
@@ -36,9 +42,17 @@ export class CombatSystem implements GameSystem {
         this.bossAttackTimer = 0;
         this.runtime.audio.playAncientGong();
 
+        const isAntaboga = bossEntity.state.modelType === 'naga_antaboga';
+        const isButoIjo = bossEntity.state.modelType === 'buto_ijo_colossus';
         this.activeBoss = {
           id: e.bossId,
-          name: bossEntity.state.name || 'Batara Kala Underchamber Colossus',
+          name:
+            bossEntity.state.name ||
+            (isButoIjo
+              ? 'Raksasa Buto Ijo Penjaga Candi'
+              : isAntaboga
+              ? 'Sang Hyang Naga Antaboga'
+              : 'Batara Kala Underchamber Colossus'),
           modelType: bossEntity.state.modelType || 'batara_kala_colossus',
           health: bossEntity.state.health,
           maxHealth: bossEntity.state.maxHealth,
@@ -46,7 +60,11 @@ export class CombatSystem implements GameSystem {
           maxPhases: 3,
           enraged: false,
           isShielded: false,
-          phaseSubtitle: 'FASE I: TEBASAN PURBA',
+          phaseSubtitle: isButoIjo
+            ? 'FASE I: HANTAMAN GADA GEMPA CANDI'
+            : isAntaboga
+            ? 'FASE I: BELITAN INTI BUMI'
+            : 'FASE I: TEBASAN PURBA',
           poise: poise.currentPoise,
           maxPoise: poise.maxPoise,
           position: e.pos,
@@ -157,22 +175,40 @@ export class CombatSystem implements GameSystem {
         const maxHp = bossEntry.state.maxHealth;
         const hpRatio = hp / maxHp;
 
+        const isAntaboga = bossEntry.state.modelType === 'naga_antaboga';
+        const isButoIjo = bossEntry.state.modelType === 'buto_ijo_colossus';
         let phase = 1;
-        let phaseSubtitle = 'FASE I: TEBASAN PURBA';
+        let phaseSubtitle = isButoIjo
+          ? 'FASE I: HANTAMAN GADA GEMPA CANDI'
+          : isAntaboga
+          ? 'FASE I: BELITAN INTI BUMI'
+          : 'FASE I: TEBASAN PURBA';
         let isShielded = false;
         let enraged = false;
 
         if (hpRatio <= 0.25) {
           phase = 3;
-          phaseSubtitle = 'FASE III: AMARAH KOSMIK (BERSERK)';
+          phaseSubtitle = isButoIjo
+            ? 'FASE III: AMUKAN RAKSASA KALA-MAKARA (BERSERK)'
+            : isAntaboga
+            ? 'FASE III: LETUSAN GEYSER MAGMA (BERSERK)'
+            : 'FASE III: AMARAH KOSMIK (BERSERK)';
           enraged = true;
         } else if (hpRatio <= 0.60) {
           phase = 2;
-          phaseSubtitle = 'FASE II: PERISAI AETHER LEYLINE';
+          phaseSubtitle = isButoIjo
+            ? 'FASE II: PERISAI BATU CANDI & LINDU BERUNTUN'
+            : isAntaboga
+            ? 'FASE II: SISIK EMAS PELINDUNG LEY'
+            : 'FASE II: PERISAI AETHER LEYLINE';
           isShielded = true;
         } else {
           phase = 1;
-          phaseSubtitle = 'FASE I: TEBASAN PURBA';
+          phaseSubtitle = isButoIjo
+            ? 'FASE I: HANTAMAN GADA GEMPA CANDI'
+            : isAntaboga
+            ? 'FASE I: BELITAN INTI BUMI'
+            : 'FASE I: TEBASAN PURBA';
         }
 
         const poise = PoiseSystem.getOrCreatePoise(this.activeBoss.id, 240, true);
@@ -203,16 +239,20 @@ export class CombatSystem implements GameSystem {
             audio.playAncientGong();
             player.applyScreenShake(0.5);
             GameEventBus.emit('NOTIFICATION_SHOW', {
-              title: '⚡ PERISAI LEYLINE DIAKTIFKAN',
-              message: 'Batara Kala menyerap energi leylines purba! Patahkan poise untuk membuka perisai!',
+              title: isAntaboga ? '🐉 SISIK EMAS LEYLINE AKTIF' : '⚡ PERISAI LEYLINE DIAKTIFKAN',
+              message: isAntaboga
+                ? 'Naga Antaboga mengeraskan sisik emas prada! Hancurkan poise atau lakukan Parry untuk menembusnya!'
+                : 'Batara Kala menyerap energi leylines purba! Patahkan poise untuk membuka perisai!',
               type: 'warning'
             });
           } else if (phase === 3 && prevPhase < 3) {
             audio.playTitanRoar();
             player.applyScreenShake(0.85);
             GameEventBus.emit('NOTIFICATION_SHOW', {
-              title: '🔥 AMARAH KOSMIK BATARA KALA',
-              message: 'Tungku aether meledak dalam amarah! Waspadai lingkaran telegraf merah di lantai!',
+              title: isAntaboga ? '🌋 LETUSAN MAGMA SAPTAPATALA' : '🔥 AMARAH KOSMIK BATARA KALA',
+              message: isAntaboga
+                ? 'Inti bumi bergejolak! Hindari semburan cincin geyser magma beruntun di lantai!'
+                : 'Tungku aether meledak dalam amarah! Waspadai lingkaran telegraf merah di lantai!',
               type: 'danger'
             });
           }
@@ -283,14 +323,27 @@ export class CombatSystem implements GameSystem {
           }
 
           if (player.isBlockingShield) {
+            const stance = NusantaraSanctumSilatSubakSystem.getActiveStanceDef();
+            const progBonuses = CharacterProgressionManager.getComputedBonuses('shield');
             audio.playShieldBlock(true);
             audio.playCriticalHit();
             player.applyScreenShake(0.35);
-            PoiseSystem.applyPoiseDamage(boss.id, 80);
+            PoiseSystem.applyPoiseDamage(
+              boss.id,
+              Math.round(80 * (stance.parryPoiseReflectBonus + progBonuses.parryPoiseReflectBonus))
+            );
+            CharacterProgressionManager.addWeaponMasteryXp('shield', 20);
+            NusantaraSanctumSilatSubakSystem.addTenagaDalam(35);
+            if (this.runtime.stats) {
+              this.runtime.stats.stamina = Math.min(
+                this.runtime.stats.maxStamina,
+                this.runtime.stats.stamina + stance.staminaOnHitRestore * 2
+              );
+            }
             GameEventBus.emit('PERFECT_PARRY', { bossId: boss.id });
             GameEventBus.emit('NOTIFICATION_SHOW', {
               title: '🛡️ TANGKISAN SEMPURNA (PARRY)',
-              message: 'Hantaman gada dipantulkan! Poise boss terpukul jatuh!',
+              message: `Hantaman dipantulkan (${stance.name})! +35% Tenaga Dalam & Poise boss terpukul!`,
               type: 'success'
             });
             return;
@@ -304,6 +357,90 @@ export class CombatSystem implements GameSystem {
         }
       }
     });
+
+    // Naga Antaboga Phase 2 & 3 Satellite Magma Geyser Rings
+    if (boss.modelType === 'naga_antaboga' && (boss.phase >= 2 || isEnraged) && !customPos) {
+      const geyserCount = isEnraged ? 3 : 2;
+      for (let i = 0; i < geyserCount; i++) {
+        const angle = (Math.PI * 2 * i) / geyserCount + Math.random() * 0.8;
+        const distOffset = 4.2 + Math.random() * 2.5;
+        const gx = slamPos[0] + Math.cos(angle) * distOffset;
+        const gz = slamPos[2] + Math.sin(angle) * distOffset;
+        const geyserPos: [number, number, number] = [gx, slamPos[1], gz];
+        const geyserRadius = 2.6;
+
+        this.telegraphEngine.spawnTelegraph({
+          sourceEntityId: boss.id,
+          position: geyserPos,
+          radius: geyserRadius,
+          duration: duration + 0.35 + i * 0.15,
+          color: 0x10b981, // Emerald-Magma Ley Geyser
+          type: 'concentric',
+          onComplete: () => {
+            const pPos = player.position;
+            const d = Math.hypot(pPos.x - geyserPos[0], pPos.z - geyserPos[2]);
+            const dy = Math.abs(pPos.y - geyserPos[1]);
+            if (this.runtime.particles) {
+              this.runtime.particles.spawnCombatSparks(new THREE.Vector3(...geyserPos).add(new THREE.Vector3(0, 0.5, 0)), true);
+            }
+            if (d <= geyserRadius + 0.25 && dy <= 3.0 && !player.isDodging) {
+              this.runtime.stats.takeDamage(isEnraged ? 26 : 18, 'Semburan Geyser Antaboga');
+              player.applyDamageFeedback();
+              player.applyScreenShake(0.45);
+              audio.playDamage();
+            }
+          }
+        });
+      }
+    }
+  }
+
+  public handleAirSwing(): boolean {
+    const { player, stats, audio, gameMode } = this.runtime;
+    if (!player) return false;
+
+    // Check stamina cost for survival mode
+    if (stats && gameMode !== 'creative') {
+      if (stats.stamina < 6) return false;
+      stats.stamina = Math.max(0, stats.stamina - 6);
+    }
+
+    const activeItem = this.runtime.getActiveHotbarItem();
+    const canSwing = this.combatMachine.triggerMeleeAttack(activeItem);
+    if (!canSwing) return false;
+
+    const currentComboStep = this.combatMachine.comboStep;
+    player.triggerSwing();
+    if (this.runtime.viewmodel) {
+      this.runtime.viewmodel.triggerSwing('slash', currentComboStep);
+    }
+    audio.playComboSlash(currentComboStep);
+
+    // Emit 3D Slash Arc Ribbon Particles in front of player (Zero-GC vector math)
+    if (this.runtime.particles) {
+      player.getForwardVector(CombatSystem._tmpSlashForward);
+      CombatSystem._tmpSlashRight.set(-CombatSystem._tmpSlashForward.z, 0, CombatSystem._tmpSlashForward.x).normalize();
+      const arcColor =
+        currentComboStep === 2
+          ? '#f59e0b' // Stage 3: Pamungkas Gold-Flame Finisher
+          : currentComboStep === 1
+          ? '#38bdf8' // Stage 2: Cross-Slash Aether Cyan
+          : '#f8fafc'; // Stage 1: Crisp Steel Arc
+      for (let s = -2; s <= 2; s++) {
+        CombatSystem._tmpSlashPos
+          .copy(player.position)
+          .addScaledVector(CombatSystem._tmpSlashForward, 1.35 + (currentComboStep === 2 ? Math.abs(s) * 0.15 : 0))
+          .addScaledVector(CombatSystem._tmpSlashRight, s * 0.26 * (currentComboStep === 1 ? -1 : 1));
+        CombatSystem._tmpSlashPos.y += 1.05 + (currentComboStep === 1 ? s * 0.12 : 0);
+        this.runtime.particles.emitBlockBreak(CombatSystem._tmpSlashPos, arcColor, 'crystal');
+      }
+    }
+
+    if (this.runtime.cameraMotion) {
+      this.runtime.cameraMotion.triggerAttackRecoil(currentComboStep === 2 ? 0.06 : 0.03);
+    }
+
+    return true;
   }
 
   public handleMeleeAttack(targetEntityId: string): boolean {
@@ -320,7 +457,32 @@ export class CombatSystem implements GameSystem {
     const canSwing = this.combatMachine.triggerMeleeAttack(activeItem);
     if (!canSwing) return false;
 
+    const currentComboStep = this.combatMachine.comboStep;
     player.triggerSwing();
+    if (this.runtime.viewmodel) {
+      this.runtime.viewmodel.triggerSwing('slash', currentComboStep);
+    }
+    audio.playComboSlash(currentComboStep);
+
+    // Emit 3D Slash Arc Ribbon Particles in front of player (Zero-GC vector math)
+    if (this.runtime.particles) {
+      player.getForwardVector(CombatSystem._tmpSlashForward);
+      CombatSystem._tmpSlashRight.set(-CombatSystem._tmpSlashForward.z, 0, CombatSystem._tmpSlashForward.x).normalize();
+      const arcColor =
+        currentComboStep === 2
+          ? '#f59e0b' // Stage 3: Pamungkas Gold-Flame Finisher
+          : currentComboStep === 1
+          ? '#38bdf8' // Stage 2: Cross-Slash Aether Cyan
+          : '#f8fafc'; // Stage 1: Crisp Steel Arc
+      for (let s = -2; s <= 2; s++) {
+        CombatSystem._tmpSlashPos
+          .copy(player.position)
+          .addScaledVector(CombatSystem._tmpSlashForward, 1.35 + (currentComboStep === 2 ? Math.abs(s) * 0.15 : 0))
+          .addScaledVector(CombatSystem._tmpSlashRight, s * 0.26 * (currentComboStep === 1 ? -1 : 1));
+        CombatSystem._tmpSlashPos.y += 1.05 + (currentComboStep === 1 ? s * 0.12 : 0);
+        this.runtime.particles.emitBlockBreak(CombatSystem._tmpSlashPos, arcColor, 'crystal');
+      }
+    }
 
     // If in multiplayer, notify authoritative server of attack intent
     const netSession = NetworkSession.getInstance();
@@ -338,7 +500,12 @@ export class CombatSystem implements GameSystem {
       isTargetStaggered
     );
 
-    let damageToDeal = attackCalc.damage;
+    const weaponCategory = WeaponArchetypes.getProfile(activeItem).category;
+    const progBonuses = CharacterProgressionManager.getComputedBonuses(weaponCategory);
+
+    let isCritHit = attackCalc.isCritical || Math.random() < progBonuses.critChanceBonus;
+    let damageToDeal = Math.max(1, Math.round(attackCalc.damage * progBonuses.meleeDamageMultiplier));
+    const poiseToDeal = Math.round(attackCalc.poiseDamage * progBonuses.poiseDamageMultiplier);
     let isShieldMitigated = false;
 
     // Check boss aether shield
@@ -351,29 +518,61 @@ export class CombatSystem implements GameSystem {
       targetEntityId,
       damageToDeal,
       player.position,
-      attackCalc.isCritical,
+      isCritHit,
       attackCalc.comboIndex,
       1.0,
-      attackCalc.poiseDamage
+      poiseToDeal
     );
 
+    CharacterProgressionManager.addWeaponMasteryXp(weaponCategory, isCritHit ? 14 : 9);
+
+    // VoxelVerse v4.6.0: Pencak Silat Stance Stamina Recovery & Tenaga Dalam Charge
+    const activeStance = NusantaraSanctumSilatSubakSystem.getActiveStanceDef();
+    NusantaraSanctumSilatSubakSystem.addTenagaDalam(isCritHit ? 24 : 16);
+    if (stats) {
+      stats.stamina = Math.min(
+        stats.maxStamina,
+        stats.stamina + activeStance.staminaOnHitRestore + progBonuses.staminaOnHitBonus
+      );
+    }
+
     const feedback = this.combatMachine.applyHitFeedback(
-      attackCalc.isCritical,
+      attackCalc.isCritical || attackCalc.comboIndex === 2,
       damageToDeal,
       [player.position.x, player.position.y, player.position.z]
     );
-    player.applyScreenShake(isShieldMitigated ? feedback.screenShake * 0.5 : feedback.screenShake);
+
+    // Crisp Micro Hit-Stop (48ms on Finisher/Crit, 24ms on normal hit)
+    const isFinisherOrCrit = attackCalc.isCritical || attackCalc.comboIndex === 2;
+    const hitStopDuration = isFinisherOrCrit ? 0.048 : 0.024;
+    this.combatMachine.hitStopRemaining = hitStopDuration;
+    if (this.runtime.viewmodel) {
+      this.runtime.viewmodel.triggerHitStop(hitStopDuration);
+    }
+
+    const recoilAmount = isFinisherOrCrit ? 0.08 : 0.04;
+    const shakeAmount = isShieldMitigated
+      ? feedback.screenShake * 0.5
+      : isFinisherOrCrit
+      ? Math.max(0.45, feedback.screenShake)
+      : feedback.screenShake;
+    player.applyScreenShake(shakeAmount);
 
     if (this.runtime.cameraMotion) {
-      this.runtime.cameraMotion.triggerAttackRecoil(attackCalc.isCritical ? 0.08 : 0.04);
+      this.runtime.cameraMotion.triggerAttackRecoil(recoilAmount);
     }
 
     const targetEntity = entities.entities.get(targetEntityId);
     if (targetEntity && targetEntity.mesh && targetEntity.mesh.position && this.runtime.particles) {
-      this.runtime.particles.spawnCombatSparks(
-        targetEntity.mesh.position.clone().add(new THREE.Vector3(0, 0.8, 0)),
-        attackCalc.isCritical
-      );
+      const hitPos = targetEntity.mesh.position.clone().add(new THREE.Vector3(0, 0.8, 0));
+      this.runtime.particles.spawnCombatSparks(hitPos, attackCalc.isCritical);
+
+      const pamorElem = activeItem?.modifiers?.pamorElement;
+      if (pamorElem) {
+        const elemColor =
+          pamorElem === 'surya_api' ? '#f97316' : pamorElem === 'bajra_petir' ? '#38bdf8' : '#2dd4bf';
+        this.runtime.particles.emitBlockBreak(hitPos, elemColor, 'crystal');
+      }
     }
 
     GameEventBus.emit('COMBAT_HIT', {
@@ -399,10 +598,11 @@ export class CombatSystem implements GameSystem {
       audio.playPlayerHit();
     }
 
-    // Life Leech bonus from Artifact Synergy
+    // Life Leech bonus from Artifact Synergy & Jawara Silat Keystone
     const synergy = ArtifactSynergyManager.getCombinedBonuses();
-    if (synergy.lifeLeechRatio && synergy.lifeLeechRatio > 0 && stats && attackCalc.isCritical) {
-      const leechAmount = damageToDeal * synergy.lifeLeechRatio;
+    const totalLeechRatio = (synergy.lifeLeechRatio || 0) + progBonuses.critLifeLeechRatio;
+    if (totalLeechRatio > 0 && stats && isCritHit) {
+      const leechAmount = damageToDeal * totalLeechRatio;
       stats.heal(leechAmount);
     }
 
@@ -410,6 +610,7 @@ export class CombatSystem implements GameSystem {
       const isBossKill = targetEntity?.state.type === 'boss' || targetEntity?.state.isBoss || (this.activeBoss && this.activeBoss.id === targetEntityId);
       const xpAmount = isBossKill ? 250 : 15;
       stats.addXP(xpAmount);
+      CharacterProgressionManager.addWeaponMasteryXp(weaponCategory, isBossKill ? 80 : 22);
 
       if (isBossKill) {
         const relicPool = ['mustika_naga_pusaka', 'cakra_surya_precursor', 'keris_kyai_sengkelat'];

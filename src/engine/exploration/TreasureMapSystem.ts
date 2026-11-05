@@ -151,7 +151,13 @@ export class TreasureMapSystem {
 
   public static getProximityHint(
     playerPos: THREE.Vector3
-  ): { mapName: string; distance: number; bearing: string; heat: 'HOT' | 'WARM' | 'COLD' } | null {
+  ): {
+    mapName: string;
+    distance: number;
+    bearing: string;
+    heat: 'HOT' | 'WARM' | 'COLD';
+    targetPos: [number, number, number];
+  } | null {
     let closestMap: TreasureMap | null = null;
     let minDistance = 160; // Proximity detection threshold
 
@@ -185,6 +191,7 @@ export class TreasureMapSystem {
         distance: Math.round(minDistance),
         bearing,
         heat,
+        targetPos: closestMap.targetPos,
       };
     }
 

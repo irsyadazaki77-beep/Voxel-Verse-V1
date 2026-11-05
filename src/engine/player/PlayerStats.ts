@@ -1,6 +1,7 @@
 // Player Vital Statistics 2.0: Metabolism, Saturation, Temperature, Diminishing Armor & Status System
 import { Difficulty, PlayerEquipment, StatusEffect, StatusEffectType } from '../../types';
 import { ITEM_DEFS } from '../items/ItemRegistry';
+import { CharacterProgressionManager } from '../progression/CharacterProgressionManager';
 
 export class PlayerStats {
   // Core Vitals
@@ -43,20 +44,24 @@ export class PlayerStats {
   ): void {
     if (this.isDead) return;
 
+    this.recalculateProgressionBonuses();
+    const progBonuses = CharacterProgressionManager.getComputedBonuses();
+
     // 1. Oxygen (Submerged underwater)
-    if (isSubmerged) {
+    const hasWaterBreathing = this.hasEffect('water_breathing');
+    if (isSubmerged && !hasWaterBreathing) {
       this.oxygen = Math.max(0, this.oxygen - deltaTime * 14);
       if (this.oxygen <= 0) {
         this.takeDamage(deltaTime * 10, 'drowning');
       }
     } else {
-      this.oxygen = Math.min(this.maxOxygen, this.oxygen + deltaTime * 30);
+      this.oxygen = Math.min(this.maxOxygen, this.oxygen + deltaTime * 35);
     }
 
     // 2. Stamina Regeneration & Depletion
     let staminaDrain = 0;
-    if (isSprinting) staminaDrain += 18;
-    if (isSwimming) staminaDrain += 12;
+    if (isSprinting) staminaDrain += 18 * progBonuses.sprintStaminaDrainMultiplier;
+    if (isSwimming) staminaDrain += 12 * progBonuses.sprintStaminaDrainMultiplier;
     if (isMining) staminaDrain += 8;
 
     // Status effect modifiers on stamina
@@ -77,21 +82,23 @@ export class PlayerStats {
 
     // 3. Environmental Temperature & Body Heat
     let targetTemp = ambientTemp;
-    if (hasHeatSource) targetTemp = Math.max(targetTemp, 22);
+    if (hasHeatSource || progBonuses.hasExtremeWeatherImmunity) targetTemp = 22;
 
     // Apply thermal insulation from clothes/armor
     const tempDiff = targetTemp - this.temperature;
     const tempAdaptSpeed = 0.08 / (1 + this.thermalInsulation * 0.05);
     this.temperature += tempDiff * deltaTime * tempAdaptSpeed;
 
-    if (this.temperature < 0) {
-      this.addEffect('freezing', 5, 1);
-      if (this.temperature < -10) {
-        this.takeDamage(deltaTime * 3.0, 'freezing');
+    if (!progBonuses.hasExtremeWeatherImmunity) {
+      if (this.temperature < 0) {
+        this.addEffect('freezing', 5, 1);
+        if (this.temperature < -10) {
+          this.takeDamage(deltaTime * 3.0, 'freezing');
+        }
+      } else if (this.temperature > 40) {
+        this.addEffect('heat_exhaustion', 5, 1);
+        this.drainExertion(deltaTime * 0.5); // Dehydration
       }
-    } else if (this.temperature > 40) {
-      this.addEffect('heat_exhaustion', 5, 1);
-      this.drainExertion(deltaTime * 0.5); // Dehydration
     }
 
     // 4. Natural Hunger Drain & Healing
@@ -174,9 +181,14 @@ export class PlayerStats {
 
     if (!isTrueDamage) {
       // Diminishing returns formula: reduction = defense / (defense + 60)
-      // 30 armor = 33% reduction, 60 armor = 50%, 120 armor = 66.7%, 240 armor = 80%, capped at 85%
       this.damageReduction = Math.min(0.85, this.armorDefense / (this.armorDefense + 60));
       actualDamage = Math.max(1, amount * (1 - this.damageReduction));
+
+      // Keystone Empu Aether Emergency Shield when health is low (<35%)
+      const progBonuses = CharacterProgressionManager.getComputedBonuses();
+      if (progBonuses.hasEmergencyAetherShield && this.health / this.maxHealth <= 0.35) {
+        actualDamage = Math.max(1, actualDamage * 0.5);
+      }
     }
 
     this.health = Math.max(0, this.health - actualDamage);
@@ -225,15 +237,28 @@ export class PlayerStats {
     this.damageReduction = Math.min(0.85, this.armorDefense / (this.armorDefense + 60));
   }
 
+  public recalculateProgressionBonuses(): void {
+    const bonuses = CharacterProgressionManager.getComputedBonuses();
+    this.maxHealth = 100 + (this.level - 1) * 5 + bonuses.maxHealthBonus;
+    this.maxStamina = 100 + bonuses.maxStaminaBonus;
+    this.maxOxygen = 100 + bonuses.maxOxygenBonus;
+    if (this.health > this.maxHealth) this.health = this.maxHealth;
+    if (this.stamina > this.maxStamina) this.stamina = this.maxStamina;
+    if (this.oxygen > this.maxOxygen) this.oxygen = this.maxOxygen;
+  }
+
   // XP & Leveling
   public addXP(amount: number): boolean {
-    this.xp += amount;
+    const bonuses = CharacterProgressionManager.getComputedBonuses();
+    const scaledXp = Math.max(1, Math.round(amount * bonuses.xpGainMultiplier));
+    this.xp += scaledXp;
     const reqXP = this.level * 50;
     if (this.xp >= reqXP) {
       this.xp -= reqXP;
       this.level += 1;
-      this.maxHealth = 100 + (this.level - 1) * 5;
+      this.recalculateProgressionBonuses();
       this.health = this.maxHealth;
+      CharacterProgressionManager.onPlayerLevelUp(this.level);
       return true; // Leveled up!
     }
     return false;
@@ -289,6 +314,8 @@ export class PlayerStats {
         return { name: 'Enfeebled', type: 'debuff', color: '#78716c' };
       case 'heat_exhaustion':
         return { name: 'Heat Exhaustion', type: 'debuff', color: '#f97316' };
+      case 'water_breathing':
+        return { name: 'Tirta Selam Samudra', type: 'buff', color: '#06b6d4' };
       default:
         return { name: 'Status Effect', type: 'buff', color: '#38bdf8' };
     }

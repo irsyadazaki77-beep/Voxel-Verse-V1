@@ -95,6 +95,7 @@ export class VoxelWorld {
       shader.uniforms.uTime = { value: 0 };
       shader.uniforms.uWetness = { value: 0 };
       shader.uniforms.uSnowAccumulation = { value: 0 };
+      shader.uniforms.uSeaLevel = { value: SEA_LEVEL };
       this.solidMaterial.userData.shader = shader;
       shader.vertexShader = `
         attribute vec2 localUv;
@@ -129,6 +130,7 @@ export class VoxelWorld {
         uniform float uTime;
         uniform float uWetness;
         uniform float uSnowAccumulation;
+        uniform float uSeaLevel;
         
         float hash(vec3 p) {
           p = fract(p * 0.3183099 + .1);
@@ -155,41 +157,47 @@ export class VoxelWorld {
         vec3 blockCoord = floor(vWorldPos + 0.5);
         float h = hash(blockCoord);
         
-        float variation = (h - 0.5) * 0.06;
+        float variation = (h - 0.5) * 0.04;
         diffuseColor.rgb *= (1.0 + variation);
 
+        // Subtle crisp voxel block edge definition for visual clarity
+        vec2 cellUv = fract(vLocalUv);
+        vec2 edgeDist = min(cellUv, 1.0 - cellUv);
+        float borderLine = 1.0 - smoothstep(0.0, 0.035, min(edgeDist.x, edgeDist.y));
+        diffuseColor.rgb *= (1.0 - borderLine * 0.055);
+
         // MaterialClass Properties Resolver
-        float roughnessVal = 0.85;
+        float roughnessVal = 0.82;
         float metalnessVal = 0.05;
         vec3 emissiveVal = vec3(0.0);
         
         int mClass = int(vMaterialClass + 0.5);
         if (mClass == 0) { // SOIL
-          roughnessVal = mix(0.90, 0.70, uWetness);
+          roughnessVal = mix(0.88, 0.68, uWetness);
           metalnessVal = 0.0;
-          diffuseColor.rgb *= mix(1.0, 0.70, uWetness);
+          diffuseColor.rgb *= mix(1.0, 0.74, uWetness);
         } else if (mClass == 1) { // GRASS
-          roughnessVal = mix(0.95, 0.75, uWetness);
+          roughnessVal = mix(0.90, 0.72, uWetness);
           metalnessVal = 0.0;
-          diffuseColor.rgb *= mix(1.0, 0.72, uWetness);
+          diffuseColor.rgb *= mix(1.0, 0.76, uWetness);
         } else if (mClass == 2) { // STONE
-          roughnessVal = mix(0.80, 0.45, uWetness);
+          roughnessVal = mix(0.76, 0.45, uWetness);
           metalnessVal = 0.1;
-          diffuseColor.rgb *= mix(1.0, 0.80, uWetness);
-        } else if (mClass == 3) { // WOOD
-          roughnessVal = mix(0.85, 0.60, uWetness);
-          metalnessVal = 0.0;
           diffuseColor.rgb *= mix(1.0, 0.82, uWetness);
+        } else if (mClass == 3) { // WOOD
+          roughnessVal = mix(0.82, 0.58, uWetness);
+          metalnessVal = 0.0;
+          diffuseColor.rgb *= mix(1.0, 0.84, uWetness);
         } else if (mClass == 4) { // METAL
-          roughnessVal = mix(0.30, 0.10, uWetness);
+          roughnessVal = mix(0.28, 0.10, uWetness);
           metalnessVal = 0.90;
         } else if (mClass == 5) { // GLASS
-          roughnessVal = 0.08;
+          roughnessVal = 0.06;
           metalnessVal = 0.1;
         } else if (mClass == 6) { // CRYSTAL
-          roughnessVal = 0.22;
+          roughnessVal = 0.20;
           metalnessVal = 0.2;
-          emissiveVal = diffuseColor.rgb * 0.60;
+          emissiveVal = diffuseColor.rgb * 0.55;
         } else if (mClass == 7) { // AETHER
           roughnessVal = 0.15;
           metalnessVal = 0.4;
@@ -198,9 +206,9 @@ export class VoxelWorld {
         } else if (mClass == 8) { // LAVA
           roughnessVal = 0.60;
           metalnessVal = 0.1;
-          emissiveVal = vec3(1.0, 0.32, 0.0) * 1.5;
+          emissiveVal = vec3(1.0, 0.32, 0.0) * 1.4;
         } else if (mClass == 10) { // FOLIAGE
-          roughnessVal = 0.95;
+          roughnessVal = 0.90;
           metalnessVal = 0.0;
         }
 
@@ -208,13 +216,24 @@ export class VoxelWorld {
         if (vWorldNormal.y > 0.70 && uSnowAccumulation > 0.01) {
           float snowAmount = smoothstep(0.1, 0.9, uSnowAccumulation * (0.6 + 0.4 * sin(vWorldPos.x * 0.5 + vWorldPos.z * 0.5)));
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.98, 1.0), snowAmount * 0.90);
-          roughnessVal = mix(roughnessVal, 0.90, snowAmount);
+          roughnessVal = mix(roughnessVal, 0.88, snowAmount);
           metalnessVal = mix(metalnessVal, 0.0, snowAmount);
         }
 
-        // Stylized dynamic cloud shadow approximation
-        float cShadow = smoothstep(0.35, 0.75, sin(vWorldPos.x * 0.016 + uCloudShadowDrift) * cos(vWorldPos.z * 0.016 + uCloudShadowDrift * 0.8));
-        diffuseColor.rgb *= (1.0 - cShadow * 0.13);
+        // Subtle dynamic cloud shadow approximation (lightened for crystal-clear daylight)
+        float cShadow = smoothstep(0.40, 0.80, sin(vWorldPos.x * 0.016 + uCloudShadowDrift) * cos(vWorldPos.z * 0.016 + uCloudShadowDrift * 0.8));
+        diffuseColor.rgb *= (1.0 - cShadow * 0.07);
+
+        // Underwater Seabed & Shoreline Caustic Lattice (for submerged terrain & Candi Samudra)
+        if (vWorldPos.y < uSeaLevel + 0.86) {
+          float submergeDepth = clamp((uSeaLevel + 0.86 - vWorldPos.y) / 14.0, 0.0, 1.0);
+          float c1 = sin(vWorldPos.x * 2.7 + uTime * 2.1 + cos(vWorldPos.z * 2.3 - uTime * 1.6));
+          float c2 = cos(vWorldPos.z * 3.1 - uTime * 1.9 + sin(vWorldPos.x * 2.5 + uTime * 1.4));
+          float causticWeb = pow(clamp((c1 * c2) * 0.5 + 0.5, 0.0, 1.0), 3.2);
+          float normalUpWeight = clamp(vWorldNormal.y * 0.7 + 0.3, 0.2, 1.0);
+          float depthFade = (1.0 - submergeDepth * 0.75) * normalUpWeight;
+          diffuseColor.rgb += vec3(0.14, 0.48, 0.58) * causticWeb * depthFade * 0.42;
+        }
         `
       ).replace(
         '#include <roughnessmap_fragment>',
@@ -538,7 +557,7 @@ export class VoxelWorld {
           #endif
           float depthAbsorption = 1.0 - exp(-depthMetric * 3.4);
           
-          // 5. Environmental & Biome Water Color
+          // 5. Environmental & Biome Water Color with Subsurface Wave Crest Scattering
           vec3 waterBodyColor = mix(uWaterBaseColor, uWaterDeepColor, depthAbsorption);
           
           // Fresnel reflection (Schlick dielectric F0 ~ 0.025 for water)
@@ -552,14 +571,33 @@ export class VoxelWorld {
           float reflectElev = clamp(worldReflect.y * 1.4 + 0.1, 0.0, 1.0);
           vec3 skyReflection = mix(uSkyHorizonColor, uSkyZenithColor, reflectElev);
           
-          // Controlled Sun / Moon Specular Streak (follows normal, bounded, no whiteout)
+          // Controlled Sun / Moon Dual-Scale Specular Path & Micro-Glints
           vec3 lightDir = normalize(uSunDirection.y > -0.05 ? uSunDirection : uMoonDirection);
-          vec3 lightCol = uSunDirection.y > -0.05 ? uSunColor : uMoonColor * 0.7;
+          vec3 lightCol = uSunDirection.y > -0.05 ? uSunColor : uMoonColor * 0.72;
           vec3 halfDir = normalize(lightDir + worldVDir);
           float nDotH = max(0.0, dot(worldN, halfDir));
-          float specHighlight = pow(nDotH, 85.0);
+          float specBroad = pow(nDotH, 64.0) * 0.45;
+          float specGlint = pow(nDotH, 180.0) * 1.35;
+          float specHighlight = specBroad + specGlint;
           float boundedStreak = (specHighlight * 1.8) / (specHighlight + 0.45);
-          vec3 specularStreak = lightCol * boundedStreak * 0.65;
+          vec3 specularStreak = lightCol * boundedStreak * 0.72;
+
+          // Subsurface Emerald Scattering through wave crests toward camera
+          float sssFactor = pow(clamp(dot(worldVDir, -lightDir) + worldN.y * 0.35, 0.0, 1.0), 3.0) * (1.0 - depthAbsorption * 0.65);
+          waterBodyColor += vec3(0.06, 0.46, 0.44) * sssFactor * 0.38;
+
+          // Shallow Water Caustic Shimmer (encoded in B channel for 1-4 block shallow terraces & lagoons)
+          #ifdef USE_COLOR
+          float shallowCaustic = vColor.b;
+          #else
+          float shallowCaustic = 0.0;
+          #endif
+          if (shallowCaustic > 0.02 && uSunDirection.y > -0.05) {
+            float cw1 = sin(vWorldPosition.x * 3.2 + uTime * 2.3 + cos(vWorldPosition.z * 2.8 - uTime * 1.8));
+            float cw2 = cos(vWorldPosition.z * 3.4 - uTime * 2.1 + sin(vWorldPosition.x * 3.0 + uTime * 1.6));
+            float causticLattice = pow(clamp((cw1 * cw2) * 0.5 + 0.5, 0.0, 1.0), 3.0);
+            waterBodyColor += mix(uSunColor, vec3(0.35, 0.95, 0.88), 0.5) * causticLattice * shallowCaustic * 0.28;
+          }
           
           // Shoreline Foam & Dynamic Wave Surge (Smooth distance field in G channel)
           #ifdef USE_COLOR
@@ -577,7 +615,7 @@ export class VoxelWorld {
           waterBodyColor = mix(waterBodyColor, mix(uWaterBaseColor, vec3(0.35, 0.85, 0.95), 0.45), shallowWetEdge * 0.5);
           
           // Composite Water Color with Fresnel Reflection and Foam
-          vec3 compositeWater = mix(waterBodyColor, skyReflection, fresnel * 0.82);
+          vec3 compositeWater = mix(waterBodyColor, skyReflection, fresnel * 0.84);
           vec3 seafoamColor = vec3(0.92, 0.97, 1.0);
           compositeWater = mix(compositeWater, seafoamColor, foamBand * 0.88);
           compositeWater += specularStreak;
@@ -586,10 +624,10 @@ export class VoxelWorld {
           float wCloudShadow = smoothstep(0.35, 0.75, sin(vWorldPosition.x * 0.016 + uCloudShadowDrift) * cos(vWorldPosition.z * 0.016 + uCloudShadowDrift * 0.8));
           compositeWater *= (1.0 - wCloudShadow * 0.14);
           
-          diffuseColor.rgb = mix(diffuseColor.rgb, compositeWater, 0.88);
+          diffuseColor.rgb = mix(diffuseColor.rgb, compositeWater, 0.90);
           
           // Depth- and Fresnel-based transparency
-          float baseAlpha = mix(0.48, 0.94, depthAbsorption);
+          float baseAlpha = mix(0.46, 0.94, depthAbsorption);
           diffuseColor.a = clamp(baseAlpha + fresnel * (1.0 - baseAlpha) + foamBand * 0.35, 0.0, 0.98);
         }
         `

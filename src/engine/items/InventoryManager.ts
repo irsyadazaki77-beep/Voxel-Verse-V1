@@ -1,5 +1,5 @@
 // Inventory Manager 2.0: Atomic Transaction Layer, Stack Splitting, Instance Tracking & Anti-Duplication
-import { ItemStack, ItemDef, PlayerEquipment, StatusEffectType } from '../../types';
+import { ItemStack, ItemDef, PlayerEquipment, StatusEffectType, PamorElement } from '../../types';
 import { ITEM_DEFS } from './ItemRegistry';
 import { PlayerStats } from '../player/PlayerStats';
 
@@ -103,36 +103,72 @@ export class InventoryManager {
   // ATOMIC TRANSACTIONS
   // ==========================================
 
-  // Add an item to an inventory array (first merges into existing stacks, then fills empty slots)
+  // Pre-validate whether an inventory can fit all specified items without any overflow or truncation
+  public static canFitItems(
+    inventory: (ItemStack | null)[],
+    itemsToAdd: Array<{ itemId: string; count: number }>
+  ): boolean {
+    if (!Array.isArray(itemsToAdd) || itemsToAdd.length === 0) return true;
+    const simulated = this.cloneInventory(inventory);
+    for (const item of itemsToAdd) {
+      if (!item || item.count <= 0) continue;
+      const res = this.addItem(simulated, item.itemId, item.count);
+      if (!res.success || res.remainingCount > 0 || res.addedCount < item.count) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Add an item to an inventory array (first merges into existing stacks, then fills empty slots without truncating at maxStack)
   public static addItem(
     inventory: (ItemStack | null)[],
     itemToAdd: ItemStack | string,
     rawCount?: number
   ): AddItemResult {
-    let stack: ItemStack | null = null;
+    let itemId: string;
+    let totalToAdd: number;
+    let templateStack: ItemStack | null = null;
+
     if (typeof itemToAdd === 'string') {
-      stack = this.createStack(itemToAdd, rawCount || 1);
+      itemId = itemToAdd;
+      totalToAdd = typeof rawCount === 'number' ? Math.floor(rawCount) : 1;
+      const def = ITEM_DEFS[itemId];
+      if (!def || isNaN(totalToAdd) || totalToAdd <= 0) {
+        return { success: false, remainingCount: Math.max(0, totalToAdd || 0), addedCount: 0, modifiedSlots: [] };
+      }
+      templateStack = this.createStack(itemId, 1);
     } else {
-      stack = this.sanitizeSlot(itemToAdd);
+      if (!itemToAdd || typeof itemToAdd !== 'object' || typeof itemToAdd.itemId !== 'string') {
+        return { success: false, remainingCount: 0, addedCount: 0, modifiedSlots: [] };
+      }
+      itemId = itemToAdd.itemId;
+      const explicitCount = typeof rawCount === 'number' ? Math.floor(rawCount) : Math.floor(itemToAdd.count);
+      totalToAdd = explicitCount;
+      const def = ITEM_DEFS[itemId];
+      if (!def || isNaN(totalToAdd) || totalToAdd <= 0) {
+        return { success: false, remainingCount: Math.max(0, totalToAdd || 0), addedCount: 0, modifiedSlots: [] };
+      }
+      templateStack = this.sanitizeSlot({ ...itemToAdd, count: 1 });
     }
 
-    if (!stack || stack.count <= 0) {
-      return { success: false, remainingCount: 0, addedCount: 0, modifiedSlots: [] };
+    if (!templateStack) {
+      return { success: false, remainingCount: totalToAdd, addedCount: 0, modifiedSlots: [] };
     }
 
-    const def = ITEM_DEFS[stack.itemId];
+    const def = ITEM_DEFS[itemId];
     if (!def) {
-      return { success: false, remainingCount: stack.count, addedCount: 0, modifiedSlots: [] };
+      return { success: false, remainingCount: totalToAdd, addedCount: 0, modifiedSlots: [] };
     }
 
-    let remaining = stack.count;
+    let remaining = totalToAdd;
     const modifiedSlots: number[] = [];
 
     // Phase 1: Merge into existing stacks (if stackable)
-    if (def.maxStack > 1 && stack.durability === undefined) {
+    if (def.maxStack > 1 && templateStack.durability === undefined) {
       for (let i = 0; i < inventory.length; i++) {
         const slot = inventory[i];
-        if (slot && this.canMerge(slot, stack) && slot.count < def.maxStack) {
+        if (slot && this.canMerge(slot, templateStack) && slot.count < def.maxStack) {
           const space = def.maxStack - slot.count;
           const transfer = Math.min(space, remaining);
           slot.count += transfer;
@@ -144,13 +180,13 @@ export class InventoryManager {
       }
     }
 
-    // Phase 2: Place in first available empty slots
+    // Phase 2: Place in available empty slots in chunks of up to def.maxStack
     if (remaining > 0) {
       for (let i = 0; i < inventory.length; i++) {
         if (inventory[i] === null) {
           const placeCount = Math.min(remaining, def.maxStack);
           inventory[i] = {
-            ...stack,
+            ...templateStack,
             instanceId: this.generateInstanceId(),
             count: placeCount,
           };
@@ -162,7 +198,7 @@ export class InventoryManager {
       }
     }
 
-    const addedCount = stack.count - remaining;
+    const addedCount = totalToAdd - remaining;
     return {
       success: addedCount > 0,
       remainingCount: remaining,
@@ -336,15 +372,29 @@ export class InventoryManager {
     }
 
     const def = ITEM_DEFS[slot.itemId];
-    if (!def || (def.category !== 'food' && def.category !== 'consumable')) {
+    if (
+      !def ||
+      (def.category !== 'food' &&
+        def.category !== 'consumable' &&
+        def.category !== 'potion' &&
+        !def.foodValue &&
+        !def.healValue)
+    ) {
       return { success: false, consumedItem: null, effectsApplied: [], message: 'Not edible' };
     }
 
-    // Apply food & stamina & healing
-    const foodVal = def.foodValue || 0;
+    // Apply food & stamina & healing (with sensible Nusantara regional food defaults)
+    const foodVal =
+      def.foodValue ||
+      (def as any).foodRestoration ||
+      (def.category === 'food' ? 18 : 0);
     const satVal = def.saturationValue || Math.round(foodVal * 0.75);
-    const healVal = def.healValue || 0;
-    const stamVal = def.staminaRestore || 0;
+    const healVal =
+      def.healValue ||
+      (def.category === 'potion' ? 25 : def.rarity === 'uncommon' && def.category === 'food' ? 8 : 0);
+    const stamVal =
+      def.staminaRestore ||
+      (def.category === 'food' ? 20 : def.category === 'potion' ? 35 : 0);
 
     if (foodVal > 0 || satVal > 0) {
       stats.eatFood(foodVal, satVal);
@@ -372,7 +422,7 @@ export class InventoryManager {
       success: true,
       consumedItem: slot,
       effectsApplied: appliedEffects,
-      message: `Consumed ${def.name}`,
+      message: `Mengonsumsi ${def.name}`,
     };
   }
 
@@ -414,4 +464,282 @@ export class InventoryManager {
       materialConsumed: toConsume,
     };
   }
+
+  // Consolidate partial stacks and sort slots by category, rarity, and item name
+  public static sortAndConsolidate(
+    slots: (ItemStack | null)[],
+    startIndex: number = 0
+  ): (ItemStack | null)[] {
+    const result = this.cloneInventory(slots);
+
+    // 1. Consolidate identical stackable items across the entire array (preferring earlier/hotbar slots)
+    for (let i = 0; i < result.length; i++) {
+      const slotA = result[i];
+      if (!slotA) continue;
+      const defA = ITEM_DEFS[slotA.itemId];
+      const maxStack = defA?.maxStack || 64;
+      if (slotA.count >= maxStack) continue;
+
+      for (let j = i + 1; j < result.length; j++) {
+        const slotB = result[j];
+        if (!slotB) continue;
+        if (this.canMerge(slotA, slotB)) {
+          const space = maxStack - slotA.count;
+          const transfer = Math.min(space, slotB.count);
+          if (transfer > 0) {
+            slotA.count += transfer;
+            slotB.count -= transfer;
+            if (slotB.count <= 0) {
+              result[j] = null;
+            }
+          }
+          if (slotA.count >= maxStack) break;
+        }
+      }
+    }
+
+    // 2. Extract non-null items from startIndex..end and sort them
+    const categoryOrder: Record<string, number> = {
+      weapon: 1,
+      tool: 2,
+      armor: 3,
+      accessory: 4,
+      consumable: 5,
+      farming: 6,
+      material: 7,
+      block: 8,
+    };
+    const rarityOrder: Record<string, number> = {
+      mythic: 1,
+      legendary: 2,
+      epic: 3,
+      rare: 4,
+      uncommon: 5,
+      common: 6,
+    };
+
+    const sortable = result.slice(startIndex).filter((s): s is ItemStack => s !== null);
+    sortable.sort((a, b) => {
+      const defA = ITEM_DEFS[a.itemId];
+      const defB = ITEM_DEFS[b.itemId];
+      const catA = categoryOrder[defA?.category || 'block'] ?? 99;
+      const catB = categoryOrder[defB?.category || 'block'] ?? 99;
+      if (catA !== catB) return catA - catB;
+
+      const rarA = rarityOrder[defA?.rarity || 'common'] ?? 99;
+      const rarB = rarityOrder[defB?.rarity || 'common'] ?? 99;
+      if (rarA !== rarB) return rarA - rarB;
+
+      const nameA = defA?.name || a.itemId;
+      const nameB = defB?.name || b.itemId;
+      if (nameA !== nameB) return nameA.localeCompare(nameB);
+
+      return b.count - a.count;
+    });
+
+    for (let i = startIndex; i < result.length; i++) {
+      result[i] = sortable[i - startIndex] || null;
+    }
+
+    return result;
+  }
+
+  // Quick-stack items from source (e.g. backpack) into target container (e.g. chest) if target already holds that itemId
+  public static quickStackMatching(
+    sourceSlots: (ItemStack | null)[],
+    targetSlots: (ItemStack | null)[],
+    sourceStartIndex: number = 9
+  ): {
+    updatedSource: (ItemStack | null)[];
+    updatedTarget: (ItemStack | null)[];
+    movedCount: number;
+  } {
+    const src = this.cloneInventory(sourceSlots);
+    const tgt = this.cloneInventory(targetSlots);
+    let movedCount = 0;
+
+    const existingItemIds = new Set<string>();
+    for (const slot of tgt) {
+      if (slot) existingItemIds.add(slot.itemId);
+    }
+
+    for (let i = sourceStartIndex; i < src.length; i++) {
+      const item = src[i];
+      if (!item || !existingItemIds.has(item.itemId)) continue;
+
+      const def = ITEM_DEFS[item.itemId];
+      const maxStack = def?.maxStack || 64;
+
+      // 1. Fill partial stacks in target
+      for (let j = 0; j < tgt.length; j++) {
+        const tSlot = tgt[j];
+        if (tSlot && this.canMerge(tSlot, item) && tSlot.count < maxStack) {
+          const toAdd = Math.min(maxStack - tSlot.count, item.count);
+          tSlot.count += toAdd;
+          item.count -= toAdd;
+          movedCount += toAdd;
+          if (item.count <= 0) break;
+        }
+      }
+
+      // 2. Place remaining into empty target slots
+      if (item.count > 0) {
+        for (let j = 0; j < tgt.length; j++) {
+          if (tgt[j] === null) {
+            tgt[j] = { ...item };
+            movedCount += item.count;
+            item.count = 0;
+            break;
+          }
+        }
+      }
+
+      if (item.count <= 0) {
+        src[i] = null;
+      }
+    }
+
+    return { updatedSource: src, updatedTarget: tgt, movedCount };
+  }
+
+  // Forge Nusantara Elemental Pamor onto a Weapon or Tool at the Smithing Anvil
+  public static forgeWeaponPamor(
+    targetItem: ItemStack,
+    pamorElement: PamorElement,
+    catalystItem?: ItemStack | null
+  ): {
+    success: boolean;
+    forgedItem?: ItemStack;
+    catalystConsumed: number;
+    message: string;
+  } {
+    const def = ITEM_DEFS[targetItem.itemId];
+    if (!def || (def.category !== 'weapon' && def.category !== 'tool')) {
+      return {
+        success: false,
+        catalystConsumed: 0,
+        message: 'Pilih senjata atau peralatan tempur terlebih dahulu.',
+      };
+    }
+
+    const pamorCatalog: Record<
+      PamorElement,
+      { name: string; dmgBonus: number; critBonus: number; poiseBonus: number; duraBonus: number }
+    > = {
+      surya_api: {
+        name: 'Pamor Surya Merapi (Api Kawah)',
+        dmgBonus: 16,
+        critBonus: 0.1,
+        poiseBonus: 15,
+        duraBonus: 150,
+      },
+      bajra_petir: {
+        name: 'Pamor Bajra Kilat (Petir Berantai)',
+        dmgBonus: 12,
+        critBonus: 0.18,
+        poiseBonus: 20,
+        duraBonus: 120,
+      },
+      tirta_beku: {
+        name: 'Pamor Tirta Puncak Jaya (Es Pelumpuh Poise)',
+        dmgBonus: 10,
+        critBonus: 0.08,
+        poiseBonus: 40,
+        duraBonus: 180,
+      },
+    };
+
+    const chosen = pamorCatalog[pamorElement];
+    const currentMods = targetItem.modifiers || {};
+    const nextTier = Math.min(3, (currentMods.pamorTier || 0) + 1);
+
+    let catalystConsumed = 0;
+    if (catalystItem && catalystItem.count > 0) {
+      catalystConsumed = 1;
+    }
+
+    const baseMaxDura = targetItem.maxDurability || def.durability || 500;
+    const newMaxDura = baseMaxDura + chosen.duraBonus;
+
+    const forgedItem: ItemStack = {
+      ...targetItem,
+      durability: newMaxDura,
+      maxDurability: newMaxDura,
+      quality: nextTier >= 2 ? 'astral' : 'masterwork',
+      modifiers: {
+        ...currentMods,
+        pamorElement,
+        pamorName: chosen.name,
+        pamorTier: nextTier,
+        damageBonus: chosen.dmgBonus * nextTier + (currentMods.socketedMustika ? 15 : 0),
+        critChanceBonus: chosen.critBonus,
+        poiseDamageBonus: chosen.poiseBonus,
+      },
+    };
+
+    return {
+      success: true,
+      forgedItem,
+      catalystConsumed,
+      message: `Berhasil menempa ${chosen.name} (Tingkat ${nextTier}) pada ${def.name}!`,
+    };
+  }
+
+  // Socket a Sacred Mustika Relic Gem into a Weapon, Tool, or Armor Piece
+  public static socketMustikaGem(
+    targetItem: ItemStack,
+    mustikaItem: ItemStack | null
+  ): {
+    success: boolean;
+    socketedItem?: ItemStack;
+    gemConsumed: number;
+    message: string;
+  } {
+    const def = ITEM_DEFS[targetItem.itemId];
+    if (!def || (def.category !== 'weapon' && def.category !== 'tool' && def.category !== 'armor')) {
+      return {
+        success: false,
+        gemConsumed: 0,
+        message: 'Pilih senjata, peralatan, atau zirah untuk disematkan Batu Mustika.',
+      };
+    }
+
+    const gemId = mustikaItem?.itemId || 'mustika_merah_delima';
+    const gemCatalog: Record<
+      string,
+      { name: string; dmg: number; def: number; crit: number; poise: number }
+    > = {
+      mustika_merah_delima: { name: 'Mustika Merah Delima', dmg: 18, def: 10, crit: 0.12, poise: 15 },
+      mustika_zamrud_khatulistiwa: { name: 'Mustika Zamrud Khatulistiwa', dmg: 12, def: 14, crit: 0.08, poise: 35 },
+      mustika_bintang_jatuh: { name: 'Mustika Inti Bintang Jatuh', dmg: 22, def: 18, crit: 0.18, poise: 25 },
+      mustika_naga_pusaka: { name: 'Mustika Naga Warisan Purba', dmg: 25, def: 20, crit: 0.15, poise: 40 },
+      aether_crystal: { name: 'Kristal Ley Aether', dmg: 8, def: 6, crit: 0.06, poise: 12 },
+      starfall_ore: { name: 'Inti Meteorit Starfall', dmg: 14, def: 12, crit: 0.1, poise: 20 },
+    };
+
+    const gemStats = gemCatalog[gemId] || gemCatalog['mustika_merah_delima'];
+    const currentMods = targetItem.modifiers || {};
+
+    const socketedItem: ItemStack = {
+      ...targetItem,
+      quality: 'astral',
+      modifiers: {
+        ...currentMods,
+        socketedMustika: gemId,
+        mustikaName: gemStats.name,
+        damageBonus: (currentMods.damageBonus || 0) + gemStats.dmg,
+        defenseBonus: (currentMods.defenseBonus || 0) + gemStats.def,
+        critChanceBonus: Math.min(0.65, (currentMods.critChanceBonus || 0) + gemStats.crit),
+        poiseDamageBonus: (currentMods.poiseDamageBonus || 0) + gemStats.poise,
+      },
+    };
+
+    return {
+      success: true,
+      socketedItem,
+      gemConsumed: mustikaItem ? 1 : 0,
+      message: `${gemStats.name} berhasil disematkan ke ${def.name}! (+${gemStats.dmg} DMG, +${gemStats.poise} Poise)`,
+    };
+  }
 }
+

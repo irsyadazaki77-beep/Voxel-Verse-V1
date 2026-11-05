@@ -105,6 +105,12 @@ export class PoiseSystem {
     };
   }
 
+  public static resetPlayerPoise(): void {
+    this.playerPoise.currentPoise = this.playerPoise.maxPoise;
+    this.playerPoise.isStaggered = false;
+    this.playerPoise.staggerTimer = 0;
+  }
+
   public static getEntityPoise(entityId: string): { current: number; max: number; isStaggered: boolean } | null {
     const entry = this.entityPoises.get(entityId);
     if (!entry) return null;

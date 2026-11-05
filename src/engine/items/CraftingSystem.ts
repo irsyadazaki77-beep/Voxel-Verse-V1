@@ -149,6 +149,124 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     output: { itemId: 'bread', count: 1 },
     xpReward: 2,
   },
+  {
+    id: 'kincir_air_subak_hand',
+    name: 'Kincir Air Subak Bali 3D',
+    category: 'functional',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wood_planks', count: 4 },
+      { itemId: 'stick', count: 4 },
+    ],
+    output: { itemId: 'kincir_air_subak', count: 1 },
+    xpReward: 18,
+  },
+  {
+    id: 'panggung_wayang_kulit_hand',
+    name: 'Panggung Kelir Wayang 3D',
+    category: 'functional',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wood_planks', count: 4 },
+      { itemId: 'torch', count: 2 },
+    ],
+    output: { itemId: 'panggung_wayang_kulit', count: 1 },
+    xpReward: 22,
+  },
+  {
+    id: 'kitab_silat_nusantara_hand',
+    name: 'Kitab Lontar Silat & Ajian Sakti',
+    category: 'weapons',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wood_planks', count: 2 },
+      { itemId: 'coal', count: 1 },
+    ],
+    output: { itemId: 'kitab_silat_nusantara', count: 1 },
+    xpReward: 20,
+  },
+  {
+    id: 'kompas_candi_bawah_tanah_hand',
+    name: 'Prasasti Gerbang Candi Bawah Tanah',
+    category: 'tools',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'cobblestone', count: 4 },
+      { itemId: 'torch', count: 1 },
+    ],
+    output: { itemId: 'kompas_candi_bawah_tanah', count: 1 },
+    xpReward: 25,
+  },
+  {
+    id: 'gamelan_angklung_pusaka_hand',
+    name: 'Pendopo Gamelan & Angklung Pusaka 3D',
+    category: 'functional',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wood_planks', count: 4 },
+      { itemId: 'copper_ingot', count: 2 },
+    ],
+    output: { itemId: 'gamelan_angklung_pusaka', count: 1 },
+    xpReward: 28,
+  },
+  {
+    id: 'lokomotif_uap_aether_hand',
+    name: 'Lokomotif Kereta Uap Aether & Bor Tambang 3D',
+    category: 'functional',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'iron_ingot', count: 3 },
+      { itemId: 'coal', count: 2 },
+    ],
+    output: { itemId: 'lokomotif_uap_aether', count: 1 },
+    xpReward: 32,
+  },
+  {
+    id: 'kapal_selam_nanggala_hand',
+    name: 'Kapal Selam Nanggala Kencana 3D',
+    category: 'tools',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'iron_ingot', count: 4 },
+      { itemId: 'gold_ingot', count: 2 },
+    ],
+    output: { itemId: 'kapal_selam_nanggala', count: 1 },
+    xpReward: 35,
+  },
+  {
+    id: 'mustika_khodam_pendamping_hand',
+    name: 'Mustika Khodam Pendamping & Arena 3D',
+    category: 'weapons',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'kristal_lahar_merapi', count: 1 },
+      { itemId: 'mutiara_candi_samudra', count: 1 },
+    ],
+    output: { itemId: 'mustika_khodam_pendamping', count: 1 },
+    xpReward: 40,
+  },
+  {
+    id: 'mustika_bintang_from_samudra_merapi',
+    name: 'Tempa Mustika Bintang Jatuh (Samudra & Merapi)',
+    category: 'basics',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'mutiara_candi_samudra', count: 1 },
+      { itemId: 'kristal_lahar_merapi', count: 1 },
+    ],
+    output: { itemId: 'mustika_bintang_jatuh', count: 2 },
+    xpReward: 45,
+  },
+
 
   // ==========================================
   // 2. ARTISAN WORKBENCH CRAFTING (3x3 station)
@@ -1239,6 +1357,237 @@ export const CRAFTING_RECIPES: CraftingRecipe[] = [
     output: { itemId: 'fertilizer', count: 2 },
     xpReward: 2,
   },
+  // ==========================================
+  // MARITIME VESSELS & MYTHIC CATACLYSM RECIPES
+  // ==========================================
+  {
+    id: 'craft_perahu_cadik',
+    name: 'Perahu Cadik Nusantara',
+    category: 'tools',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wood_planks', count: 5 },
+      { itemId: 'stick', count: 4 },
+    ],
+    output: { itemId: 'perahu_cadik', count: 1 },
+    xpReward: 12,
+  },
+  {
+    id: 'craft_kapal_phinisi',
+    name: 'Kapal Phinisi Samudra',
+    category: 'tools',
+    station: 'crafting_bench',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wood_planks', count: 12 },
+      { itemId: 'stick', count: 6 },
+      { itemId: 'torch', count: 2 },
+    ],
+    output: { itemId: 'kapal_phinisi', count: 1 },
+    xpReward: 35,
+  },
+  {
+    id: 'craft_tirta_selam',
+    name: 'Ramuan Tirta Selam Samudra (2x)',
+    category: 'alchemy',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'torch', count: 1 },
+      { itemId: 'wheat', count: 1 },
+    ],
+    output: { itemId: 'tirta_selam', count: 2 },
+    xpReward: 15,
+  },
+  {
+    id: 'craft_astrolabe_nusantara',
+    name: 'Astrolabe Bintang Kuno',
+    category: 'tools',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'stone', count: 4 },
+      { itemId: 'torch', count: 2 },
+    ],
+    output: { itemId: 'astrolabe_nusantara', count: 1 },
+    xpReward: 25,
+  },
+  // ==========================================
+  // HOLOGRAM BLUEPRINT, PRASASTI & JAMU NUSANTARA RECIPES
+  // ==========================================
+  {
+    id: 'craft_lontar_arsitek_nusantara',
+    name: 'Lontar Cetak Biru Arsitektur 3D',
+    category: 'tools',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wood_planks', count: 4 },
+      { itemId: 'stick', count: 2 },
+    ],
+    output: { itemId: 'lontar_arsitek_nusantara', count: 1 },
+    xpReward: 30,
+  },
+  {
+    id: 'craft_prasasti_harta_nusantara',
+    name: 'Prasasti Peta Harta Karun Kuno',
+    category: 'tools',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'stone', count: 4 },
+      { itemId: 'coal', count: 1 },
+    ],
+    output: { itemId: 'prasasti_harta_nusantara', count: 1 },
+    xpReward: 25,
+  },
+  {
+    id: 'craft_jamu_kunyit_asam',
+    name: 'Jamu Kunyit Asam Segar (2x)',
+    category: 'alchemy',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wheat', count: 1 },
+      { itemId: 'apple', count: 1 },
+    ],
+    output: { itemId: 'jamu_kunyit_asam', count: 2 },
+    xpReward: 18,
+  },
+  {
+    id: 'craft_jamu_beras_kencur',
+    name: 'Jamu Beras Kencur Kebugaran (2x)',
+    category: 'alchemy',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wheat', count: 2 },
+    ],
+    output: { itemId: 'jamu_beras_kencur', count: 2 },
+    xpReward: 18,
+  },
+  {
+    id: 'craft_rendang_pusaka_minang',
+    name: 'Rendang Daging Rempah Minang',
+    category: 'food',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'cooked_meat', count: 1 },
+      { itemId: 'wheat', count: 1 },
+    ],
+    output: { itemId: 'rendang_pusaka_minang', count: 1 },
+    xpReward: 28,
+  },
+
+  // ==========================================
+  // VOXELVERSE v4.5 RECIPES: GARUDA, GLIDER, KENTONGAN, LAMPION & ZIRAH ADAT
+  // ==========================================
+  {
+    id: 'craft_peluit_garuda_kencana',
+    name: 'Peluit Pusaka Garuda Kencana 3D',
+    category: 'tools',
+    station: 'crafting_bench',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'gold_ingot', count: 4 },
+      { itemId: 'aether_crystal', count: 2 },
+    ],
+    output: { itemId: 'peluit_garuda_kencana', count: 1 },
+    xpReward: 65,
+  },
+  {
+    id: 'craft_layang_naga_batik',
+    name: 'Layang-Layang Naga Batik (Glider)',
+    category: 'tools',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'stick', count: 6 },
+      { itemId: 'woolbeast_fiber', count: 4 },
+    ],
+    output: { itemId: 'layang_naga_batik', count: 1 },
+    xpReward: 40,
+  },
+  {
+    id: 'craft_kentongan_siaga_desa',
+    name: 'Kentongan Bambu Siaga Desa',
+    category: 'functional',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'wood_planks', count: 4 },
+      { itemId: 'stick', count: 2 },
+    ],
+    output: { itemId: 'kentongan_siaga_desa', count: 1 },
+    xpReward: 25,
+  },
+  {
+    id: 'craft_lampion_terbang_nusantara',
+    name: 'Lampion Terbang Harapan 3D (4x)',
+    category: 'functional',
+    station: 'hand',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'torch', count: 2 },
+      { itemId: 'stick', count: 2 },
+    ],
+    output: { itemId: 'lampion_terbang_nusantara', count: 4 },
+    xpReward: 20,
+  },
+  {
+    id: 'craft_mahkota_garuda_emas',
+    name: 'Mahkota Kencana Prajurit Garuda',
+    category: 'armor',
+    station: 'anvil',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'gold_ingot', count: 5 },
+      { itemId: 'aether_crystal', count: 1 },
+    ],
+    output: { itemId: 'mahkota_garuda_emas', count: 1 },
+    xpReward: 50,
+  },
+  {
+    id: 'craft_zirah_prajurit_majapahit',
+    name: 'Zirah Lempeng Bhayangkara Majapahit',
+    category: 'armor',
+    station: 'anvil',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'iron_ingot', count: 6 },
+      { itemId: 'gold_ingot', count: 2 },
+    ],
+    output: { itemId: 'zirah_prajurit_majapahit', count: 1 },
+    xpReward: 65,
+  },
+  {
+    id: 'craft_celana_tenun_satria',
+    name: 'Celana Tenun Pelindung Satria',
+    category: 'armor',
+    station: 'anvil',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'iron_ingot', count: 4 },
+      { itemId: 'woolbeast_fiber', count: 3 },
+    ],
+    output: { itemId: 'celana_tenun_satria', count: 1 },
+    xpReward: 45,
+  },
+  {
+    id: 'craft_terompah_angin_kencana',
+    name: 'Terompah Angin Kencana',
+    category: 'armor',
+    station: 'anvil',
+    unlockedByDefault: true,
+    inputs: [
+      { itemId: 'gold_ingot', count: 3 },
+      { itemId: 'woolbeast_fiber', count: 2 },
+    ],
+    output: { itemId: 'terompah_angin_kencana', count: 1 },
+    xpReward: 40,
+  },
 ];
 
 
@@ -1310,9 +1659,31 @@ export class CraftingSystem {
       }
     }
 
+    maxCraftable = Math.max(0, maxCraftable);
+
+    // Verify that the output items will fit in the inventory after consuming the inputs
+    let hasCapacityForMultiplier = false;
+    if (missingIngredients.length === 0 && maxCraftable >= multiplier && multiplier > 0) {
+      const simulatedInv = InventoryManager.cloneInventory(inventory);
+      let inputsRemoved = true;
+      for (const input of recipe.inputs) {
+        const rem = InventoryManager.removeItem(simulatedInv, input.itemId, input.count * multiplier);
+        if (!rem.success) {
+          inputsRemoved = false;
+          break;
+        }
+      }
+      if (inputsRemoved) {
+        const totalOutput = recipe.output.count * multiplier;
+        hasCapacityForMultiplier = InventoryManager.canFitItems(simulatedInv, [
+          { itemId: recipe.output.itemId, count: totalOutput },
+        ]);
+      }
+    }
+
     return {
-      canCraft: missingIngredients.length === 0 && maxCraftable >= multiplier,
-      maxCraftable: Math.max(0, maxCraftable),
+      canCraft: missingIngredients.length === 0 && maxCraftable >= multiplier && hasCapacityForMultiplier,
+      maxCraftable,
       missingIngredients,
     };
   }
@@ -1322,29 +1693,40 @@ export class CraftingSystem {
     return this.calculateCraftability(recipe, inventory, multiplier).canCraft;
   }
 
-  // Atomic craft execution with multi-craft support
+  // Atomic craft execution with multi-craft support and pre-transaction capacity validation
   public static craftRecipe(
     recipe: CraftingRecipe,
     inventory: (ItemStack | null)[],
     countToCraft: number = 1
   ): { success: boolean; craftedCount: number; xpEarned: number } {
-    if (countToCraft <= 0) return { success: false, craftedCount: 0, xpEarned: 0 };
+    if (countToCraft <= 0 || !Number.isInteger(countToCraft)) {
+      return { success: false, craftedCount: 0, xpEarned: 0 };
+    }
 
     const calc = this.calculateCraftability(recipe, inventory, countToCraft);
     if (!calc.canCraft) return { success: false, craftedCount: 0, xpEarned: 0 };
 
-    // Deduct inputs atomically
+    // Execute on a cloned inventory first to guarantee strict atomicity (no partial deduction or output truncation)
+    const workingInv = InventoryManager.cloneInventory(inventory);
+
     for (const input of recipe.inputs) {
       const totalToRemove = input.count * countToCraft;
-      const removeRes = InventoryManager.removeItem(inventory, input.itemId, totalToRemove);
-      if (!removeRes.success) {
+      const removeRes = InventoryManager.removeItem(workingInv, input.itemId, totalToRemove);
+      if (!removeRes.success || removeRes.removedCount < totalToRemove) {
         return { success: false, craftedCount: 0, xpEarned: 0 };
       }
     }
 
-    // Add outputs
     const totalOutputCount = recipe.output.count * countToCraft;
-    InventoryManager.addItem(inventory, recipe.output.itemId, totalOutputCount);
+    const addRes = InventoryManager.addItem(workingInv, recipe.output.itemId, totalOutputCount);
+    if (!addRes.success || addRes.remainingCount > 0 || addRes.addedCount < totalOutputCount) {
+      return { success: false, craftedCount: 0, xpEarned: 0 };
+    }
+
+    // Commit validated transaction to live inventory in-place
+    for (let i = 0; i < inventory.length; i++) {
+      inventory[i] = workingInv[i];
+    }
 
     const xpEarned = (recipe.xpReward || 1) * countToCraft;
 

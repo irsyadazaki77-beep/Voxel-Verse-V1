@@ -104,6 +104,9 @@ export class Chunk {
     const minX = cx * CHUNK_SIZE_X;
     const minZ = cz * CHUNK_SIZE_Z;
     this.group.position.set(minX, 0, minZ);
+    this.group.matrixAutoUpdate = false;
+    this.group.updateMatrix();
+    this.group.matrixWorldNeedsUpdate = true;
 
     this.worldBounds = new THREE.Box3(
       new THREE.Vector3(minX, 0, minZ),
@@ -226,16 +229,23 @@ export class Chunk {
       this.solidMesh = new THREE.Mesh(sGeo, solidMaterial);
       this.solidMesh.castShadow = true;
       this.solidMesh.receiveShadow = true;
+      this.solidMesh.matrixAutoUpdate = false;
+      this.solidMesh.updateMatrix();
       this.group.add(this.solidMesh);
     }
     if (tGeo) {
       this.transMesh = new THREE.Mesh(tGeo, transMaterial);
+      this.transMesh.matrixAutoUpdate = false;
+      this.transMesh.updateMatrix();
       this.group.add(this.transMesh);
     }
     if (wGeo) {
       this.waterMesh = new THREE.Mesh(wGeo, waterMaterial);
+      this.waterMesh.matrixAutoUpdate = false;
+      this.waterMesh.updateMatrix();
       this.group.add(this.waterMesh);
     }
+    this.group.matrixWorldNeedsUpdate = true;
 
     if (sourceRevision !== undefined) {
       this.meshRevision = sourceRevision;
@@ -279,8 +289,7 @@ export class Chunk {
       this.blockStates.delete(idx);
       this.updateHeightMapColumn(lx, lz, ly);
       this.voxelRevision++;
-      this.isDirty = true;
-      this.state = ChunkState.DIRTY;
+      this.setDirty();
       return true;
     }
     return false;
@@ -299,8 +308,7 @@ export class Chunk {
     }
     this.updateHeightMapColumn(lx, lz, ly);
     this.voxelRevision++;
-    this.isDirty = true;
-    this.state = ChunkState.DIRTY;
+    this.setDirty();
     return true;
   }
 
@@ -315,14 +323,13 @@ export class Chunk {
     this.blockStates.set(idx, updated);
     this.updateHeightMapColumn(lx, lz, ly);
     this.voxelRevision++;
-    this.isDirty = true;
-    this.state = ChunkState.DIRTY;
+    this.setDirty();
     return true;
   }
 
   public setDirty(): void {
     this.isDirty = true;
-    if (this.state === ChunkState.READY) {
+    if (this.state === ChunkState.READY || this.state === ChunkState.GENERATED) {
       this.state = ChunkState.DIRTY;
     }
   }
@@ -371,16 +378,23 @@ export class Chunk {
       this.solidMesh = new THREE.Mesh(sGeo, solidMaterial);
       this.solidMesh.castShadow = true;
       this.solidMesh.receiveShadow = true;
+      this.solidMesh.matrixAutoUpdate = false;
+      this.solidMesh.updateMatrix();
       this.group.add(this.solidMesh);
     }
     if (tGeo) {
       this.transMesh = new THREE.Mesh(tGeo, transMaterial);
+      this.transMesh.matrixAutoUpdate = false;
+      this.transMesh.updateMatrix();
       this.group.add(this.transMesh);
     }
     if (wGeo) {
       this.waterMesh = new THREE.Mesh(wGeo, waterMaterial);
+      this.waterMesh.matrixAutoUpdate = false;
+      this.waterMesh.updateMatrix();
       this.group.add(this.waterMesh);
     }
+    this.group.matrixWorldNeedsUpdate = true;
 
     this.meshRevision = rev;
     this.isDirty = false;

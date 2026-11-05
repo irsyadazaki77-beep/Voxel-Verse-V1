@@ -1,12 +1,16 @@
 import * as THREE from 'three';
 import { GameSystem } from './GameSystem';
 import type { GameRuntime } from '../core/GameRuntime';
+import { WorldEventManager } from '../events/WorldEventManager';
+import { MaritimeVesselSystem } from './MaritimeVesselSystem';
 
 export class EnvironmentSystem implements GameSystem {
   public readonly name = 'EnvironmentSystem';
   private runtime: GameRuntime;
   private darknessTimer: number = 0;
   private eyeAdaptation: number = 0;
+  private ambientMoteTimer: number = 0;
+  private static readonly _tmpAtmosVec = new THREE.Vector3();
 
   constructor(runtime: GameRuntime) {
     this.runtime = runtime;
@@ -41,6 +45,8 @@ export class EnvironmentSystem implements GameSystem {
       : 1;
 
     world.update(deltaTime, camera, {
+      waterBaseColor: sky.currentWaterBaseColor,
+      waterDeepColor: sky.currentWaterDeepColor,
       skyZenithColor: sky.currentSkyZenithColor,
       skyHorizonColor: sky.currentSkyHorizonColor,
       sunDirection: sky.currentSunDirection,
@@ -127,7 +133,58 @@ export class EnvironmentSystem implements GameSystem {
       if (player.isEyesInWater) {
         particles.spawnUnderwaterBubbles(player.position);
       }
+
+      // Maritime Vessel & Swimming Water Foam Spray
+      if (MaritimeVesselSystem.activeVesselId && Math.random() < deltaTime * 6.0) {
+        particles.spawnWaterFoamSpray(player.position);
+      }
+
+      // VoxelVerse v5.0.0: Contextual Nature Particles (Kunang-Kunang Malam, Debu Cahaya Fajar/Senja & Serpihan Daun Bioma)
+      this.ambientMoteTimer += deltaTime;
+      if (this.ambientMoteTimer >= 0.36 && !player.isEyesInWater && (this.runtime.currentFps || 60) >= 42) {
+        this.ambientMoteTimer = 0;
+        const tod = sky.timeOfDay;
+        const isNightFireflyHours = tod >= 19.0 || tod <= 5.0;
+        const isGoldenHour = (tod >= 5.2 && tod <= 8.0) || (tod >= 16.0 && tod <= 19.0);
+        const weatherClear = !weather || weather.weather.type === 'clear' || weather.weather.type === 'rimba_mist';
+
+        if (weatherClear && (isNightFireflyHours || isGoldenHour)) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = 3.0 + Math.random() * 10.5;
+          EnvironmentSystem._tmpAtmosVec.set(
+            player.position.x + Math.cos(angle) * dist,
+            player.position.y + 0.5 + Math.random() * 2.8,
+            player.position.z + Math.sin(angle) * dist
+          );
+          particles.spawnFireflyOrSunMote(EnvironmentSystem._tmpAtmosVec, isNightFireflyHours);
+        }
+
+        // Biome-specific drifting foliage, volcanic ash, or sacred Subak spores
+        const biomeId = (biome?.id || '').toLowerCase();
+        const regionId = (region?.id || '').toLowerCase();
+        if (biomeId.includes('volcan') || biomeId.includes('lava')) {
+          particles.spawnBiomeFoliageDrift(player.position, 'embers', 3.0);
+        } else if (regionId === 'bali' || biomeId.includes('crystal')) {
+          particles.spawnBiomeFoliageDrift(player.position, 'spores', 2.0);
+        } else if (biomeId.includes('forest') || regionId === 'jawa' || regionId === 'minang' || regionId === 'borneo') {
+          particles.spawnBiomeFoliageDrift(player.position, 'leaves', 2.2);
+        } else if (biomeId.includes('desert') || regionId === 'nusa') {
+          particles.spawnBiomeFoliageDrift(player.position, 'sand', 3.2);
+        }
+      }
+
       particles.update(deltaTime, player.position);
+    }
+
+    // Adaptive Gamelan Nusantara Music Director
+    if (this.runtime.audio) {
+      this.runtime.audio.updateAmbientGamelan(deltaTime, {
+        biomeName: biome?.name || 'Emerald Highlands',
+        timeOfDay: sky.timeOfDay,
+        isCombatOrCataclysm: !!WorldEventManager.activeEvent || !!this.runtime.activeBoss,
+        isUnderwater: player.isEyesInWater,
+        isSailing: !!MaritimeVesselSystem.activeVesselId,
+      });
     }
   }
 

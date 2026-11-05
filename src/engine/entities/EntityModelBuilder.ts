@@ -2483,6 +2483,13 @@ export class EntityModelBuilder {
       case 'cenderawasih_astral':
         return this.buildCenderawasihAstral(variant);
 
+      case 'cenderawasih_emas':
+        return this.buildCenderawasihEmas(variant);
+
+      case 'garuda_kencana':
+      case 'garuda':
+        return this.buildGarudaKencana(variant);
+
       case 'penyu_garam':
         return this.buildPenyuGaram(variant);
 
@@ -2492,8 +2499,14 @@ export class EntityModelBuilder {
       case 'harimau_cindaku':
         return this.buildHarimauCindaku(variant);
 
+      case 'harimau_sumatera':
+        return this.buildHarimauSumatera(variant);
+
       case 'buaya_puang':
         return this.buildBuayaPuang(variant);
+
+      case 'komodo_purba':
+        return this.buildKomodoPurba(variant);
 
       case 'rangda_corrupted':
         return this.buildRangdaCorrupted(variant);
@@ -2525,6 +2538,15 @@ export class EntityModelBuilder {
       case 'batara_bhumi':
       case 'boss_batara_bhumi':
         return this.buildBataraBhumi();
+
+      case 'naga_antaboga':
+      case 'boss_naga_antaboga':
+        return this.buildNagaAntaboga(variant);
+
+      case 'buto_ijo_colossus':
+      case 'buto_ijo':
+      case 'boss_buto_ijo':
+        return this.buildButoIjoColossus(variant);
 
       default:
         return this.buildStag(variant);
@@ -3590,6 +3612,517 @@ export class EntityModelBuilder {
     rig.torso.position.y = 3.6;
     root.add(rig.torso);
     root.add(CreatureMaterialFactory.getContactShadowMesh(4.2));
+    root.userData.rig = rig;
+    return root;
+  }
+
+  // =========================================================================
+  // SUBTERRANEAN MAGMA-LEY SERPENT TITAN: SANG HYANG NAGA ANTABOGA
+  // =========================================================================
+  public static buildNagaAntaboga(variant: number = 0): THREE.Group {
+    const root = new THREE.Group();
+    const palette = CreatureMaterialFactory.getPalette('naga_antaboga', variant);
+    const rig: CreatureRig = {
+      modelType: 'naga_antaboga',
+      locomotion: 'boss_colossus',
+      root,
+      torso: new THREE.Group(),
+      head: new THREE.Group(),
+      armL: new THREE.Group(),
+      armR: new THREE.Group(),
+      tail: new THREE.Group(),
+      legFL: new THREE.Group(),
+      legFR: new THREE.Group(),
+      shadowBaseScale: 4.5,
+      animPhase: 0,
+      variantIndex: variant,
+      originalMaterials: new Map(),
+    };
+
+    // 1. Coiled Serpentine Upper Torso & Glowing Magma-Ley Heart
+    const torsoGeo = EntityModelCache.getPartGeometry('antaboga_torso', () =>
+      this.buildPartGeometry([
+        // Main Rearing Serpentine Trunk
+        { size: [2.4, 3.6, 2.2], pos: [0, 0.2, 0], matIndex: 0 },
+        // Lower Coiled Base Ring
+        { size: [3.6, 1.4, 3.4], pos: [0, -1.6, -0.3], matIndex: 0 },
+        // Golden Prada Dorsal Ridge Spines
+        { size: [0.45, 3.4, 0.65], pos: [0, 0.3, -1.15], matIndex: 1 },
+        // Glowing Magma-Aether Ventral Belly Scales
+        { size: [1.6, 3.2, 0.45], pos: [0, 0.2, 1.05], matIndex: 2 },
+        // Winged Hood / Naga Collar Flair (Left & Right)
+        { size: [1.1, 2.2, 0.4], pos: [1.55, 0.8, -0.1], rot: [0, -0.25, -0.15], matIndex: 1 },
+        { size: [1.1, 2.2, 0.4], pos: [-1.55, 0.8, -0.1], rot: [0, 0.25, 0.15], matIndex: 1 },
+      ])
+    );
+    const torsoMesh = this.createPartMesh(torsoGeo, [palette.body, palette.accent, palette.belly!], rig);
+    rig.torso.add(torsoMesh);
+
+    // Dedicated Mustika Core Heart on Chest
+    const coreGeo = EntityModelCache.getPartGeometry('antaboga_core', () =>
+      this.buildPartGeometry([
+        { size: [1.0, 1.0, 0.5], pos: [0, 0, 0], matIndex: 0 },
+      ])
+    );
+    const coreMesh = this.createPartMesh(coreGeo, palette.accent, rig);
+    coreMesh.position.set(0, 0.8, 1.25);
+    rig.core = coreMesh;
+    rig.torso.add(coreMesh);
+
+    // 2. Crowned Nusantara Dragon Head (Mahkota Meru Emas, Taring, Kumis Naga)
+    const headGeo = EntityModelCache.getPartGeometry('antaboga_head', () =>
+      this.buildPartGeometry([
+        // Dragon Cranium
+        { size: [1.7, 1.35, 1.9], pos: [0, 0, 0.2], matIndex: 0 },
+        // Elongated Upper Snout & Nostril Ridge
+        { size: [1.3, 0.65, 1.45], pos: [0, -0.1, 1.4], matIndex: 0 },
+        // Lower Jaw & Golden Fangs
+        { size: [1.2, 0.4, 1.35], pos: [0, -0.58, 1.25], matIndex: 2 },
+        { size: [0.22, 0.55, 0.22], pos: [0.45, -0.35, 1.85], matIndex: 1 }, // Fang L
+        { size: [0.22, 0.55, 0.22], pos: [-0.45, -0.35, 1.85], matIndex: 1 }, // Fang R
+        // Sweeping Golden Whiskers
+        { size: [0.16, 0.16, 1.6], pos: [0.75, -0.15, 1.3], rot: [0.1, 0.45, 0], matIndex: 1 },
+        { size: [0.16, 0.16, 1.6], pos: [-0.75, -0.15, 1.3], rot: [0.1, -0.45, 0], matIndex: 1 },
+        // Luminous Jade Eyes
+        { size: [0.32, 0.24, 0.25], pos: [0.68, 0.22, 0.85], matIndex: 3 },
+        { size: [0.32, 0.24, 0.25], pos: [-0.68, 0.22, 0.85], matIndex: 3 },
+        // Multi-Tiered Golden Mahkota Naga Crown
+        { size: [1.85, 0.5, 1.6], pos: [0, 0.85, 0.1], matIndex: 1 },
+        { size: [1.3, 0.65, 1.2], pos: [0, 1.38, 0.0], matIndex: 1 },
+        { size: [0.75, 0.85, 0.75], pos: [0, 1.95, -0.1], matIndex: 1 },
+        // Swept Back Dragon Horns
+        { size: [0.32, 1.4, 0.32], pos: [0.72, 1.15, -0.45], rot: [-0.55, 0, -0.25], matIndex: 1 },
+        { size: [0.32, 1.4, 0.32], pos: [-0.72, 1.15, -0.45], rot: [-0.55, 0, 0.25], matIndex: 1 },
+      ])
+    );
+    const headMesh = this.createPartMesh(headGeo, [palette.body, palette.accent, palette.belly!, palette.eye], rig);
+    headMesh.position.set(0, 2.35, 0.3);
+    rig.head = headMesh;
+    rig.torso.add(rig.head);
+
+    // 3. Fore-Talons Holding Sacred Trisula Energy Claws
+    const talonGeo = EntityModelCache.getPartGeometry('antaboga_talon', () =>
+      this.buildPartGeometry([
+        { size: [0.75, 1.9, 0.75], pos: [0, -0.95, 0], matIndex: 0 },
+        { size: [0.9, 0.65, 1.1], pos: [0, -1.9, 0.35], matIndex: 1 }, // Golden Dragon Claws
+      ])
+    );
+    const aL = this.createPartMesh(talonGeo, [palette.body, palette.accent], rig);
+    aL.position.set(1.65, 1.0, 0.55);
+    rig.armL = aL;
+    rig.torso.add(aL);
+
+    const aR = this.createPartMesh(talonGeo, [palette.body, palette.accent], rig);
+    aR.position.set(-1.65, 1.0, 0.55);
+    rig.armR = aR;
+    rig.torso.add(aR);
+
+    // 4. Sweeping Serpentine Tail with Golden Fan Fin
+    const tailGeo = EntityModelCache.getPartGeometry('antaboga_tail', () =>
+      this.buildPartGeometry([
+        { size: [1.6, 1.1, 2.6], pos: [0, -0.2, -1.3], matIndex: 0 },
+        { size: [1.1, 0.85, 2.2], pos: [0, 0.1, -3.2], rot: [0.25, 0, 0], matIndex: 0 },
+        { size: [1.6, 1.2, 0.35], pos: [0, 0.5, -4.3], rot: [0.4, 0, 0], matIndex: 1 }, // Tail fan crest
+      ])
+    );
+    const tailMesh = this.createPartMesh(tailGeo, [palette.body, palette.accent], rig);
+    tailMesh.position.set(0, -1.35, -1.4);
+    rig.tail = tailMesh;
+    rig.torso.add(tailMesh);
+
+    // 5. Lower Coiled Support Segments (for boss locomotion grounding)
+    const coilLegGeo = EntityModelCache.getPartGeometry('antaboga_coil_support', () =>
+      this.buildPartGeometry([
+        { size: [1.3, 1.2, 1.5], pos: [0, -0.6, 0], matIndex: 0 },
+        { size: [1.4, 0.4, 1.6], pos: [0, -1.2, 0.1], matIndex: 1 },
+      ])
+    );
+    const legL = this.createPartMesh(coilLegGeo, [palette.body, palette.accent], rig);
+    legL.position.set(1.15, -1.2, 0.2);
+    rig.legFL = legL;
+    rig.torso.add(legL);
+
+    const legR = this.createPartMesh(coilLegGeo, [palette.body, palette.accent], rig);
+    legR.position.set(-1.15, -1.2, 0.2);
+    rig.legFR = legR;
+    rig.torso.add(legR);
+
+    rig.torso.position.y = 2.6;
+    root.add(rig.torso);
+    root.add(CreatureMaterialFactory.getContactShadowMesh(4.5));
+    root.userData.rig = rig;
+    return root;
+  }
+
+  // =========================================================================
+  // VOXELVERSE v4.5: ENDEMIC NUSANTARA FAUNA & GARUDA KENCANA 3D MODELS
+  // =========================================================================
+
+  public static buildHarimauSumatera(variant: number = 0): THREE.Group {
+    const root = new THREE.Group();
+    const palette = CreatureMaterialFactory.getPalette('harimau_sumatera', variant);
+    const rig: CreatureRig = {
+      modelType: 'harimau_sumatera',
+      locomotion: 'quadruped',
+      root,
+      torso: new THREE.Group(),
+      head: new THREE.Group(),
+      legFL: new THREE.Group(),
+      legFR: new THREE.Group(),
+      legBL: new THREE.Group(),
+      legBR: new THREE.Group(),
+      tail: new THREE.Group(),
+      shadowBaseScale: 1.5,
+      animPhase: Math.random() * Math.PI * 2,
+      variantIndex: variant,
+      originalMaterials: new Map(),
+    };
+
+    const torsoGeo = EntityModelCache.getPartGeometry('harimau_sumatera_torso', () =>
+      this.buildPartGeometry([
+        { size: [0.76, 0.68, 1.48], pos: [0, 0, 0], matIndex: 0 }, // orange muscular body
+        { size: [0.80, 0.56, 0.14], pos: [0, 0.04, 0.35], matIndex: 1 }, // black stripe band 1
+        { size: [0.80, 0.56, 0.14], pos: [0, 0.04, 0.0], matIndex: 1 }, // black stripe band 2
+        { size: [0.80, 0.56, 0.14], pos: [0, 0.04, -0.35], matIndex: 1 }, // black stripe band 3
+        { size: [0.64, 0.24, 1.32], pos: [0, -0.26, 0], matIndex: 2 }, // cream belly
+      ])
+    );
+    const torsoMesh = this.createPartMesh(torsoGeo, [palette.body, palette.accent, palette.belly!], rig);
+    rig.torso.add(torsoMesh);
+
+    const headGeo = EntityModelCache.getPartGeometry('harimau_sumatera_head', () =>
+      this.buildPartGeometry([
+        { size: [0.54, 0.48, 0.52], pos: [0, 0, 0.18], matIndex: 0 },
+        { size: [0.68, 0.36, 0.24], pos: [0, -0.06, 0.12], matIndex: 2 }, // Sumatran cheek ruff whiskers
+        { size: [0.36, 0.24, 0.30], pos: [0, -0.08, 0.46], matIndex: 0 }, // snout
+        { size: [0.14, 0.16, 0.10], pos: [0.22, 0.28, 0.08], matIndex: 1 }, // ear L
+        { size: [0.14, 0.16, 0.10], pos: [-0.22, 0.28, 0.08], matIndex: 1 }, // ear R
+        { size: [0.08, 0.08, 0.06], pos: [0.16, 0.06, 0.45], matIndex: 3 }, // amber eye L
+        { size: [0.08, 0.08, 0.06], pos: [-0.16, 0.06, 0.45], matIndex: 3 }, // amber eye R
+      ])
+    );
+    const headMesh = this.createPartMesh(headGeo, [palette.body, palette.accent, palette.belly!, palette.eye], rig);
+    headMesh.position.set(0, 0.32, 0.72);
+    rig.head = headMesh;
+    rig.torso.add(rig.head);
+
+    const legGeo = EntityModelCache.getPartGeometry('harimau_sumatera_leg', () =>
+      this.buildPartGeometry([
+        { size: [0.26, 0.68, 0.26], pos: [0, -0.34, 0], matIndex: 0 },
+        { size: [0.28, 0.12, 0.28], pos: [0, -0.22, 0], matIndex: 1 }, // leg stripe
+      ])
+    );
+    const fL = this.createPartMesh(legGeo, [palette.limb || palette.body, palette.accent], rig); fL.position.set(0.28, -0.22, 0.52); rig.legFL = fL; rig.torso.add(fL);
+    const fR = this.createPartMesh(legGeo, [palette.limb || palette.body, palette.accent], rig); fR.position.set(-0.28, -0.22, 0.52); rig.legFR = fR; rig.torso.add(fR);
+    const bL = this.createPartMesh(legGeo, [palette.limb || palette.body, palette.accent], rig); bL.position.set(0.28, -0.22, -0.52); rig.legBL = bL; rig.torso.add(bL);
+    const bR = this.createPartMesh(legGeo, [palette.limb || palette.body, palette.accent], rig); bR.position.set(-0.28, -0.22, -0.52); rig.legBR = bR; rig.torso.add(bR);
+
+    const tailGeo = EntityModelCache.getPartGeometry('harimau_sumatera_tail', () =>
+      this.buildPartGeometry([
+        { size: [0.14, 0.14, 0.85], pos: [0, -0.1, -0.42], rot: [-0.35, 0, 0], matIndex: 0 },
+        { size: [0.16, 0.16, 0.22], pos: [0, -0.24, -0.78], rot: [-0.35, 0, 0], matIndex: 1 },
+      ])
+    );
+    const tailMesh = this.createPartMesh(tailGeo, [palette.body, palette.accent], rig);
+    tailMesh.position.set(0, 0.15, -0.72);
+    rig.tail = tailMesh;
+    rig.torso.add(tailMesh);
+
+    rig.torso.position.y = 0.88;
+    root.add(rig.torso);
+    root.add(CreatureMaterialFactory.getContactShadowMesh(1.5));
+    root.userData.rig = rig;
+    return root;
+  }
+
+  public static buildKomodoPurba(variant: number = 0): THREE.Group {
+    const root = new THREE.Group();
+    const palette = CreatureMaterialFactory.getPalette('komodo_purba', variant);
+    const rig: CreatureRig = {
+      modelType: 'komodo_purba',
+      locomotion: 'quadruped',
+      root,
+      torso: new THREE.Group(),
+      head: new THREE.Group(),
+      legFL: new THREE.Group(),
+      legFR: new THREE.Group(),
+      legBL: new THREE.Group(),
+      legBR: new THREE.Group(),
+      tail: new THREE.Group(),
+      shadowBaseScale: 2.1,
+      animPhase: Math.random() * Math.PI * 2,
+      variantIndex: variant,
+      originalMaterials: new Map(),
+    };
+
+    const torsoGeo = EntityModelCache.getPartGeometry('komodo_purba_torso', () =>
+      this.buildPartGeometry([
+        { size: [1.05, 0.56, 2.15], pos: [0, 0, 0], matIndex: 0 }, // wide armoured monitor body
+        { size: [0.32, 0.24, 1.85], pos: [0, 0.34, 0], matIndex: 1 }, // glowing emerald dorsal osteoderms
+      ])
+    );
+    const torsoMesh = this.createPartMesh(torsoGeo, [palette.body, palette.accent], rig);
+    rig.torso.add(torsoMesh);
+
+    const headGeo = EntityModelCache.getPartGeometry('komodo_purba_head', () =>
+      this.buildPartGeometry([
+        { size: [0.68, 0.38, 0.95], pos: [0, 0, 0.45], matIndex: 0 },
+        { size: [0.16, 0.05, 0.45], pos: [0, -0.08, 1.02], matIndex: 1 }, // forked sensory crimson tongue
+      ])
+    );
+    const headMesh = this.createPartMesh(headGeo, [palette.body, palette.horn!], rig);
+    headMesh.position.set(0, 0.08, 1.05);
+    rig.head = headMesh;
+    rig.torso.add(rig.head);
+
+    const legGeo = EntityModelCache.getPartGeometry('komodo_purba_leg', () =>
+      this.buildPartGeometry([
+        { size: [0.38, 0.48, 0.38], pos: [0, -0.24, 0], matIndex: 0 },
+      ])
+    );
+    const fL = this.createPartMesh(legGeo, palette.limb || palette.body, rig); fL.position.set(0.62, -0.12, 0.78); rig.legFL = fL; rig.torso.add(fL);
+    const fR = this.createPartMesh(legGeo, palette.limb || palette.body, rig); fR.position.set(-0.62, -0.12, 0.78); rig.legFR = fR; rig.torso.add(fR);
+    const bL = this.createPartMesh(legGeo, palette.limb || palette.body, rig); bL.position.set(0.62, -0.12, -0.78); rig.legBL = bL; rig.torso.add(bL);
+    const bR = this.createPartMesh(legGeo, palette.limb || palette.body, rig); bR.position.set(-0.62, -0.12, -0.78); rig.legBR = bR; rig.torso.add(bR);
+
+    const tailGeo = EntityModelCache.getPartGeometry('komodo_purba_tail', () =>
+      this.buildPartGeometry([
+        { size: [0.58, 0.38, 1.65], pos: [0, -0.05, -0.82], matIndex: 0 },
+      ])
+    );
+    const tailMesh = this.createPartMesh(tailGeo, palette.body, rig);
+    tailMesh.position.set(0, 0, -1.05);
+    rig.tail = tailMesh;
+    rig.torso.add(tailMesh);
+
+    rig.torso.position.y = 0.48;
+    root.add(rig.torso);
+    root.add(CreatureMaterialFactory.getContactShadowMesh(2.1));
+    root.userData.rig = rig;
+    return root;
+  }
+
+  public static buildCenderawasihEmas(variant: number = 0): THREE.Group {
+    const root = new THREE.Group();
+    const palette = CreatureMaterialFactory.getPalette('cenderawasih_emas', variant);
+    const rig: CreatureRig = {
+      modelType: 'cenderawasih_emas',
+      locomotion: 'flying',
+      root,
+      torso: new THREE.Group(),
+      head: new THREE.Group(),
+      wingL: new THREE.Group(),
+      wingR: new THREE.Group(),
+      tail: new THREE.Group(),
+      shadowBaseScale: 1.25,
+      animPhase: Math.random() * Math.PI * 2,
+      variantIndex: variant,
+      originalMaterials: new Map(),
+    };
+
+    const torsoGeo = EntityModelCache.getPartGeometry('cenderawasih_emas_torso', () =>
+      this.buildPartGeometry([
+        { size: [0.46, 0.48, 0.78], pos: [0, 0, 0], matIndex: 0 },
+        { size: [0.48, 0.24, 0.35], pos: [0, -0.08, 0.28], matIndex: 2 }, // crimson breast band
+        { size: [0.65, 0.18, 1.65], pos: [0, 0.14, -1.05], rot: [0.18, 0, 0], matIndex: 1 }, // flowing golden-emerald tail plumes
+      ])
+    );
+    const torsoMesh = this.createPartMesh(torsoGeo, [palette.body, palette.accent, palette.belly!], rig);
+    rig.torso.add(torsoMesh);
+
+    const headGeo = EntityModelCache.getPartGeometry('cenderawasih_emas_head', () =>
+      this.buildPartGeometry([
+        { size: [0.30, 0.30, 0.34], pos: [0, 0, 0.12], matIndex: 1 }, // emerald crown head
+        { size: [0.12, 0.10, 0.34], pos: [0, -0.04, 0.38], matIndex: 2 }, // sky-blue beak
+      ])
+    );
+    const headMesh = this.createPartMesh(headGeo, [palette.body, palette.accent, palette.horn!], rig);
+    headMesh.position.set(0, 0.34, 0.32);
+    rig.head = headMesh;
+    rig.torso.add(rig.head);
+
+    const wingGeo = EntityModelCache.getPartGeometry('cenderawasih_emas_wing', () =>
+      this.buildPartGeometry([
+        { size: [0.95, 0.08, 0.65], pos: [0.48, 0, 0], matIndex: 0 },
+        { size: [0.75, 0.06, 0.45], pos: [0.85, 0.02, -0.15], matIndex: 1 },
+      ])
+    );
+    const wL = this.createPartMesh(wingGeo, [palette.body, palette.accent], rig); wL.position.set(0.22, 0.12, 0); rig.wingL = wL; rig.torso.add(wL);
+    const wRGeo = wingGeo.clone().scale(-1, 1, 1);
+    const wR = this.createPartMesh(wRGeo, [palette.body, palette.accent], rig); wR.position.set(-0.22, 0.12, 0); rig.wingR = wR; rig.torso.add(wR);
+
+    rig.torso.position.y = 1.05;
+    root.add(rig.torso);
+    root.add(CreatureMaterialFactory.getContactShadowMesh(1.25));
+    root.userData.rig = rig;
+    return root;
+  }
+
+  public static buildGarudaKencana(variant: number = 0): THREE.Group {
+    const root = new THREE.Group();
+    const palette = CreatureMaterialFactory.getPalette('garuda_kencana', variant);
+    const rig: CreatureRig = {
+      modelType: 'garuda_kencana',
+      locomotion: 'flying',
+      root,
+      torso: new THREE.Group(),
+      head: new THREE.Group(),
+      wingL: new THREE.Group(),
+      wingR: new THREE.Group(),
+      tail: new THREE.Group(),
+      shadowBaseScale: 2.2,
+      animPhase: Math.random() * Math.PI * 2,
+      variantIndex: variant,
+      originalMaterials: new Map(),
+    };
+
+    const torsoGeo = EntityModelCache.getPartGeometry('garuda_kencana_torso', () =>
+      this.buildPartGeometry([
+        { size: [1.15, 0.95, 1.85], pos: [0, 0, 0], matIndex: 0 }, // royal crimson chest
+        { size: [1.22, 0.38, 1.55], pos: [0, 0.36, 0.08], matIndex: 1 }, // golden prada mantle & saddle
+        { size: [0.46, 0.46, 0.25], pos: [0, 0.08, 0.88], matIndex: 2 }, // glowing cyan Aether breastplate gem
+      ])
+    );
+    const torsoMesh = this.createPartMesh(torsoGeo, [palette.body, palette.accent, palette.belly!], rig);
+    rig.torso.add(torsoMesh);
+
+    const headGeo = EntityModelCache.getPartGeometry('garuda_kencana_head', () =>
+      this.buildPartGeometry([
+        { size: [0.68, 0.65, 0.72], pos: [0, 0, 0.25], matIndex: 1 }, // golden head
+        { size: [0.38, 0.34, 0.58], pos: [0, -0.08, 0.78], matIndex: 2 }, // hooked raptor beak
+        { size: [0.76, 0.45, 0.56], pos: [0, 0.48, 0.15], matIndex: 1 }, // Mahkota Candi crown
+        { size: [0.32, 0.52, 0.32], pos: [0, 0.85, 0.15], matIndex: 2 }, // Crown spire
+      ])
+    );
+    const headMesh = this.createPartMesh(headGeo, [palette.body, palette.accent, palette.horn!], rig);
+    headMesh.position.set(0, 0.65, 0.82);
+    rig.head = headMesh;
+    rig.torso.add(rig.head);
+
+    const wingGeo = EntityModelCache.getPartGeometry('garuda_kencana_wing', () =>
+      this.buildPartGeometry([
+        { size: [2.15, 0.16, 1.25], pos: [1.1, 0, 0], matIndex: 1 }, // inner gold wing
+        { size: [1.65, 0.12, 0.95], pos: [2.5, 0.08, -0.22], matIndex: 0 }, // outer crimson pinions
+      ])
+    );
+    const wL = this.createPartMesh(wingGeo, [palette.body, palette.accent], rig); wL.position.set(0.55, 0.28, 0.1); rig.wingL = wL; rig.torso.add(wL);
+    const wRGeo = wingGeo.clone().scale(-1, 1, 1);
+    const wR = this.createPartMesh(wRGeo, [palette.body, palette.accent], rig); wR.position.set(-0.55, 0.28, 0.1); rig.wingR = wR; rig.torso.add(wR);
+
+    const tailGeo = EntityModelCache.getPartGeometry('garuda_kencana_tail', () =>
+      this.buildPartGeometry([
+        { size: [1.35, 0.14, 1.45], pos: [0, 0.1, -0.72], rot: [0.18, 0, 0], matIndex: 1 },
+      ])
+    );
+    const tailMesh = this.createPartMesh(tailGeo, palette.accent, rig);
+    tailMesh.position.set(0, 0.08, -0.88);
+    rig.tail = tailMesh;
+    rig.torso.add(tailMesh);
+
+    rig.torso.position.y = 1.45;
+    root.add(rig.torso);
+    root.add(CreatureMaterialFactory.getContactShadowMesh(2.2));
+    root.userData.rig = rig;
+    return root;
+  }
+
+  public static buildButoIjoColossus(variant: number = 0): THREE.Group {
+    const root = new THREE.Group();
+    const palette = CreatureMaterialFactory.getPalette('buto_ijo_colossus', variant);
+    const rig: CreatureRig = {
+      modelType: 'buto_ijo_colossus',
+      locomotion: 'boss_colossus',
+      root,
+      torso: new THREE.Group(),
+      head: new THREE.Group(),
+      armL: new THREE.Group(),
+      armR: new THREE.Group(),
+      legFL: new THREE.Group(),
+      legFR: new THREE.Group(),
+      shadowBaseScale: 3.4,
+      animPhase: Math.random() * Math.PI * 2,
+      variantIndex: variant,
+      originalMaterials: new Map(),
+    };
+
+    // 1. Massive Emerald Raksasa Torso with Golden Kala Chestplate & Crimson Sash
+    const torsoGeo = EntityModelCache.getPartGeometry('buto_ijo_torso', () =>
+      this.buildPartGeometry([
+        { size: [1.95, 2.15, 1.25], pos: [0, 0, 0], matIndex: 0 }, // muscular emerald torso
+        { size: [2.05, 0.55, 1.32], pos: [0, -0.78, 0], matIndex: 2 }, // crimson-gold sabuk belt
+        { size: [1.55, 0.65, 0.25], pos: [0, 0.35, 0.58], matIndex: 1 }, // golden Kala breastplate relief
+        { size: [0.65, 0.45, 0.95], pos: [1.15, 0.85, 0], matIndex: 1 }, // golden shoulder pauldron L
+        { size: [0.65, 0.45, 0.95], pos: [-1.15, 0.85, 0], matIndex: 1 }, // golden shoulder pauldron R
+      ])
+    );
+    const torsoMesh = this.createPartMesh(torsoGeo, [palette.body, palette.accent, palette.belly!], rig);
+    rig.torso.add(torsoMesh);
+
+    // 2. Fierce Fanged Buto Ijo Head with Bulging Eyes & Golden Crown
+    const headGeo = EntityModelCache.getPartGeometry('buto_ijo_head', () =>
+      this.buildPartGeometry([
+        { size: [1.15, 1.05, 1.08], pos: [0, 0, 0.1], matIndex: 0 }, // giant emerald head
+        { size: [1.26, 0.42, 1.16], pos: [0, 0.62, 0.1], matIndex: 1 }, // golden Mahkota Kala
+        { size: [0.22, 0.46, 0.22], pos: [0.35, -0.32, 0.62], rot: [-0.25, 0, 0], matIndex: 1 }, // giant curved tusk L
+        { size: [0.22, 0.46, 0.22], pos: [-0.35, -0.32, 0.62], rot: [-0.25, 0, 0], matIndex: 1 }, // giant curved tusk R
+        { size: [0.24, 0.24, 0.14], pos: [0.32, 0.14, 0.62], matIndex: 2 }, // glowing eye L
+        { size: [0.24, 0.24, 0.14], pos: [-0.32, 0.14, 0.62], matIndex: 2 }, // glowing eye R
+      ])
+    );
+    const headMesh = this.createPartMesh(headGeo, [palette.body, palette.accent, palette.eye], rig);
+    headMesh.position.set(0, 1.55, 0.15);
+    rig.head = headMesh;
+    rig.torso.add(rig.head);
+
+    // 3. Left Arm with Golden Bracer
+    const armLGeo = EntityModelCache.getPartGeometry('buto_ijo_arm_l', () =>
+      this.buildPartGeometry([
+        { size: [0.62, 1.65, 0.62], pos: [0, -0.82, 0], matIndex: 0 },
+        { size: [0.68, 0.42, 0.68], pos: [0, -1.25, 0], matIndex: 1 },
+      ])
+    );
+    const aL = this.createPartMesh(armLGeo, [palette.body, palette.accent], rig);
+    aL.position.set(1.32, 0.75, 0);
+    rig.armL = aL;
+    rig.torso.add(aL);
+
+    // 4. Right Arm Wielding Giant Spiked Gada Gempa Club
+    const armRGeo = EntityModelCache.getPartGeometry('buto_ijo_arm_r_gada', () =>
+      this.buildPartGeometry([
+        { size: [0.62, 1.65, 0.62], pos: [0, -0.82, 0], matIndex: 0 },
+        { size: [0.68, 0.42, 0.68], pos: [0, -1.25, 0], matIndex: 1 },
+        // Gada handle & massive spiked mace head extending forward
+        { size: [0.26, 0.26, 2.45], pos: [0, -1.45, 1.15], matIndex: 2 },
+        { size: [0.95, 0.95, 1.15], pos: [0, -1.45, 2.15], matIndex: 2 },
+        { size: [1.25, 0.32, 0.32], pos: [0, -1.45, 2.15], matIndex: 1 }, // golden gada spikes X
+        { size: [0.32, 1.25, 0.32], pos: [0, -1.45, 2.15], matIndex: 1 }, // golden gada spikes Y
+      ])
+    );
+    const aR = this.createPartMesh(armRGeo, [palette.body, palette.accent, palette.horn!], rig);
+    aR.position.set(-1.32, 0.75, 0);
+    rig.armR = aR;
+    rig.torso.add(aR);
+
+    // 5. Heavy Stomping Pillars Legs
+    const legGeo = EntityModelCache.getPartGeometry('buto_ijo_leg', () =>
+      this.buildPartGeometry([
+        { size: [0.72, 1.45, 0.72], pos: [0, -0.72, 0], matIndex: 0 },
+        { size: [0.78, 0.32, 0.78], pos: [0, -1.25, 0.08], matIndex: 1 }, // golden anklet
+      ])
+    );
+    const lL = this.createPartMesh(legGeo, [palette.limb || palette.body, palette.accent], rig);
+    lL.position.set(0.58, -1.05, 0);
+    rig.legFL = lL;
+    rig.torso.add(lL);
+
+    const lR = this.createPartMesh(legGeo, [palette.limb || palette.body, palette.accent], rig);
+    lR.position.set(-0.58, -1.05, 0);
+    rig.legFR = lR;
+    rig.torso.add(lR);
+
+    rig.torso.position.y = 2.45;
+    root.add(rig.torso);
+    root.add(CreatureMaterialFactory.getContactShadowMesh(3.4));
     root.userData.rig = rig;
     return root;
   }

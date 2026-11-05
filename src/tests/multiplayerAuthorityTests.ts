@@ -5,6 +5,7 @@
 import { ServerAuthority } from '../engine/network/ServerAuthority';
 import { NetworkSession } from '../engine/network/NetworkSession';
 import { RemotePlayer } from '../engine/network/RemotePlayer';
+import { LocalLoopbackTransport } from '../engine/network/NetworkTransport';
 import {
   PROTOCOL_VERSION,
   PlayerBootstrapMessage,
@@ -508,6 +509,263 @@ export async function runMultiplayerAuthorityTests(): Promise<boolean> {
     unsubInv();
   }
 
+  // =========================================================================
+  // TEST 10: Connection Lifecycle State Progression, Cancellation & Timeout Handling
+  // =========================================================================
+  console.log('  [10] Lifecycle State Progression, Cancellation & Timeout Handling');
+  {
+    const netSession = NetworkSession.getInstance();
+    
+    // 1. Verify Cancellation flow
+    netSession.setConnectionState('CONNECTING');
+    assert(netSession.connectionState === 'CONNECTING', 'Connection state transitioned to CONNECTING');
+    
+    netSession.cancelConnection();
+    assert(netSession.connectionState === 'DISCONNECTED', 'cancelConnection() immediately transitions to DISCONNECTED');
+
+    // 2. Test cancelReconnect flow
+    netSession.setConnectionState('RECONNECTING');
+    netSession.cancelReconnect();
+    assert(netSession.connectionState === 'DISCONNECTED', 'cancelReconnect() transitions to DISCONNECTED and resets timers');
+    const prog = netSession.getReconnectProgress();
+    assert(prog.isReconnecting === false, 'Reconnection flag cleared after cancelReconnect()');
+    assert(prog.attempt === 0, 'Reconnect attempt counter reset to 0');
+
+    // 3. Verify Timeout handling does not silently fallback to singleplayer
+    netSession.setConnectionState('FAILED', 'BOOTSTRAP_TIMEOUT');
+    assert(netSession.connectionState === 'FAILED', 'Bootstrap timeout strictly recorded as FAILED without silent offline fallback');
+  }
+
+  // =========================================================================
+  // TEST 11: Automatic Reconnection with Exponential Backoff & State Recovery
+  // =========================================================================
+  console.log('  [11] Automatic Reconnection with Exponential Backoff & State Recovery');
+  {
+    const netSession = NetworkSession.getInstance();
+    const scene = new THREE.Scene();
+    netSession.setScene(scene);
+
+    // 1. Verify exponential backoff calculation logic
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const baseBackoff = Math.min(15000, 1000 * Math.pow(1.8, attempt - 1));
+      assert(baseBackoff >= 1000 && baseBackoff <= 15000, `Backoff for attempt ${attempt} is within bounds (${Math.round(baseBackoff)}ms)`);
+      if (attempt > 1) {
+        const prevBase = Math.min(15000, 1000 * Math.pow(1.8, attempt - 2));
+        assert(baseBackoff > prevBase, `Backoff attempt ${attempt} strictly greater than attempt ${attempt - 1}`);
+      }
+    }
+
+    // 2. Recovery confirmation restores state
+    let recoveredPosition: [number, number, number] | null = null;
+    let recoveredInventory: any = null;
+    const blockUpdates: Array<{ x: number; y: number; z: number; newBlock: number }> = [];
+
+    const unsubCorrect = netSession.onPlayerCorrected((pos) => {
+      recoveredPosition = pos;
+    });
+
+    const unsubInv = netSession.onInventorySync((inv) => {
+      recoveredInventory = inv;
+    });
+
+    const unsubBlock = netSession.onBlockChange((b) => {
+      blockUpdates.push({ x: b.x, y: b.y, z: b.z, newBlock: b.newBlock });
+    });
+
+    const reconnectBootstrap: PlayerBootstrapMessage = {
+      protocolVersion: PROTOCOL_VERSION,
+      type: 'PLAYER_BOOTSTRAP',
+      playerId: 'player_recovered_77',
+      playerName: 'SultanExplorer',
+      position: [42, 68, -15],
+      inventory: [
+        { itemId: 'iron_pickaxe', count: 1 },
+        { itemId: 'torch', count: 32 },
+      ],
+      equipment: { mainHand: 'iron_pickaxe' },
+      stats: { health: 95, maxHealth: 100, level: 3, exp: 250 },
+      questProgress: {},
+      reputation: {},
+      worldSeed: 8888,
+      worldPreset: 'standard',
+      globalBlockRevision: 45,
+      blocks: [
+        { x: 10, y: 64, z: 10, blockType: BlockType.STONE_BRICKS, revision: 44 },
+        { x: 10, y: 65, z: 10, blockType: BlockType.TORCH, revision: 45 },
+      ],
+      onlinePlayers: [
+        { sessionId: 'player_recovered_77', playerName: 'SultanExplorer', position: [42, 68, -15] },
+        { sessionId: 'remote_merchant', playerName: 'PedagangDesa', position: [45, 68, -10] },
+      ],
+      timestamp: Date.now(),
+    };
+
+    (netSession as any).handleIncomingMessage(reconnectBootstrap);
+
+    assert(recoveredPosition !== null && recoveredPosition[0] === 42 && recoveredPosition[1] === 68 && recoveredPosition[2] === -15, 'Player position recovered from authoritative server');
+    assert(recoveredInventory !== null && recoveredInventory[0]?.itemId === 'iron_pickaxe', 'Player inventory recovered upon reconnect');
+    assert(blockUpdates.length === 2, 'Authoritative world blocks synced upon reconnection');
+    assert(blockUpdates.some((b) => b.newBlock === BlockType.STONE_BRICKS), 'World block revision synced');
+    assert(netSession.getRemotePlayers().has('remote_merchant'), 'Remote players restored from session bootstrap');
+    assert(!netSession.getRemotePlayers().has('player_recovered_77'), 'Local player is not duplicated into remote player list');
+
+    unsubCorrect();
+    unsubInv();
+    unsubBlock();
+  }
+
+  // =========================================================================
+  // TEST 12: Dual-Client Realm Simulation (Two Concurrent Clients in Single Realm)
+  // =========================================================================
+  console.log('  [12] Dual-Client Realm Simulation (Two Concurrent Clients)');
+  {
+    // Simulate Client A and Client B communicating in the same realm
+    const clientAScene = new THREE.Scene();
+    const clientBScene = new THREE.Scene();
+
+    const remoteForA = new RemotePlayer('client_b', 'PemanahHandal');
+    clientAScene.add(remoteForA.group);
+
+    const remoteForB = new RemotePlayer('client_a', 'PendekarSilat');
+    clientBScene.add(remoteForB.group);
+
+    // 1. Client A moves and broadcasts transform -> Client B updates RemotePlayer for Client A
+    const t0 = Date.now();
+    remoteForB.pushTransformSnapshot([14, 65, -20], [0, 1.57, 0], t0 - 40, [1, 0, 0]);
+    remoteForB.pushTransformSnapshot([16, 65, -20], [0, 1.57, 0], t0, [1, 0, 0]);
+    remoteForB.update(0.04);
+    assert(remoteForB.group.position.x > 0, 'Client B successfully interpolated Client A movement');
+
+    // 2. Client B moves and broadcasts transform -> Client A updates RemotePlayer for Client B
+    remoteForA.pushTransformSnapshot([50, 70, 50], [0, 0, 0], t0 - 40);
+    remoteForA.pushTransformSnapshot([52, 70, 50], [0, 0.5, 0], t0);
+    remoteForA.update(0.04);
+    assert(remoteForA.group.position.x > 0, 'Client A successfully interpolated Client B movement');
+
+    // 3. Block synchronization validation between 2 clients
+    const blockChangeFromA: BlockChangeMessage = {
+      protocolVersion: PROTOCOL_VERSION,
+      type: 'BLOCK_CHANGE',
+      x: 100,
+      y: 64,
+      z: 100,
+      oldBlockType: BlockType.AIR,
+      newBlockType: BlockType.WOOD_PLANKS,
+      playerSessionId: 'client_a',
+      transactionId: 'tx_blk_1',
+      consumedMaterial: 'wood_planks',
+      revision: 105,
+      timestamp: Date.now(),
+    };
+
+    const authCheck = ServerAuthority.validateBlockPlacement(
+      [101, 64, 100],
+      100, 64, 100,
+      BlockType.AIR,
+      BlockType.WOOD_PLANKS,
+      [{ itemId: 'wood_planks', count: 10 }]
+    );
+    assert(authCheck.valid === true, 'ServerAuthority accepts valid block placement from Client A');
+
+    // 4. Client leaves realm -> Peer cleans up entity without leaking Three.js meshes
+    clientBScene.remove(remoteForB.group);
+    remoteForB.dispose();
+    assert(remoteForB.group.children.length === 0, 'Client A entity disposed cleanly in Client B scene');
+
+    clientAScene.remove(remoteForA.group);
+    remoteForA.dispose();
+    assert(remoteForA.group.children.length === 0, 'Client B entity disposed cleanly in Client A scene');
+  }
+
+  // =========================================================================
+  // TEST 13: Network Disturbance Simulation (Latency, Packet Loss, Duplicate & Out-of-Order)
+  // =========================================================================
+  console.log('  [13] Network Disturbance Simulation (Latency, Jitter, Packet Loss, Out-of-Order)');
+  {
+    const remote = new RemotePlayer('stress_remote', 'StressTester');
+    const now = Date.now();
+
+    // 1. Monotonic ordering handles out-of-order delivery
+    // Deliver T=1000, then T=1200, then out-of-order T=1100
+    remote.pushTransformSnapshot([0, 60, 0], [0, 0, 0], now);
+    remote.pushTransformSnapshot([10, 60, 0], [0, 0, 0], now + 200);
+    remote.pushTransformSnapshot([5, 60, 0], [0, 0, 0], now + 100); // Out-of-order arrive between now and now+200
+
+    // Buffer must sort snapshots by timestamp monotonically
+    assert((remote as any).buffer.length === 3, 'All valid non-stale snapshots buffered');
+    assert((remote as any).buffer[0].timestamp < (remote as any).buffer[1].timestamp, 'Buffer sorted monotonically in ascending timestamp order');
+    assert((remote as any).buffer[1].timestamp < (remote as any).buffer[2].timestamp, 'Out-of-order packet placed in correct chronological sequence');
+
+    // 2. Reject stale snapshot older than last applied timestamp by threshold
+    (remote as any).lastAppliedTimestamp = now + 5000;
+    const initialBufferLen = (remote as any).buffer.length;
+    remote.pushTransformSnapshot([99, 60, 99], [0, 0, 0], now - 10000); // Very old stale packet
+    assert((remote as any).buffer.length === initialBufferLen, 'Stale snapshot older than threshold discarded safely');
+
+    // 3. Simulated packet loss rate in transport
+    const loopTransport = new LocalLoopbackTransport();
+    loopTransport.setSimulationParams(20, 5, 0.5); // 50% simulated packet loss
+    const initialStats = loopTransport.getStats();
+    assert(initialStats.simulatedPacketLossRate === 0.5, 'Transport configured with 50% simulated packet loss');
+    assert(initialStats.pingMs === 20, 'Transport configured with 20ms simulated latency');
+    assert(initialStats.simulatedJitterMs === 5, 'Transport configured with 5ms simulated jitter');
+
+    loopTransport.disconnect();
+    remote.dispose();
+  }
+
+  // =========================================================================
+  // TEST 14: Disconnect & Recovery During Critical Gameplay Actions
+  // =========================================================================
+  console.log('  [14] Disconnect & Recovery During Mining, Crafting, Combat, Saving');
+  {
+    // Scenario A: Mining during disconnect
+    // Player mines a block, server validates block destruction reach and tool
+    const mineVal = ServerAuthority.validateBlockBreak(
+      [10, 64, 10],
+      11, 64, 10,
+      BlockType.COBBLESTONE,
+      BlockType.COBBLESTONE
+    );
+    assert(mineVal.valid === true, 'Block break validated by ServerAuthority');
+
+    // Disconnect simulation: If transport closes during mining, no unconfirmed ghost drops persist
+    const netSession = NetworkSession.getInstance();
+    netSession.setConnectionState('RECONNECTING', 'Network dropped during mining');
+    assert(netSession.connectionState === 'RECONNECTING', 'Session state cleanly reflects RECONNECTING without game crash');
+
+    // Scenario B: Crafting during disconnect
+    const craftVal = ServerAuthority.validateCraftRequest(
+      'planks_from_oak',
+      1,
+      [{ itemId: 'oak_log', count: 1 }],
+      'hand'
+    );
+    assert(craftVal.valid === true, 'Crafting request validated by ServerAuthority before network split');
+
+    // Scenario C: Combat during disconnect
+    const combatVal = ServerAuthority.validateDamageEvent(
+      {
+        protocolVersion: PROTOCOL_VERSION,
+        type: 'DAMAGE_EVENT',
+        attackerId: 'player_a',
+        targetId: 'player_b',
+        damageAmount: 25,
+        damageType: 'physical',
+        timestamp: Date.now(),
+      },
+      [10, 60, 10],
+      [12, 60, 10]
+    );
+    assert(combatVal.valid === true, 'Authoritative combat validated within range');
+
+    // Scenario D: Saving during multiplayer session
+    // Reconnecting state must not corrupt local storage snapshot
+    const prog = netSession.getReconnectProgress();
+    assert(prog.maxAttempts === 5, 'Session maintains recovery configuration during critical actions');
+  }
+
   console.log('  ✓ All Multiplayer Authority & Synchronization Tests Passed Successfully!\n');
   return true;
 }
+

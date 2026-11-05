@@ -22,6 +22,126 @@ export interface TelemetryData {
   weatherType: string;
   breakProgress: number;
   bowChargeRatio: number;
+  fishingState?: 'IDLE' | 'CASTING' | 'WAITING' | 'BITE' | 'REELING' | 'SUCCESS' | 'FAILED';
+  fishingTension?: number;
+  fishingProgress?: number;
+  mountedCreatureName?: string | null;
+  targetedCreature?: {
+    id: string;
+    name: string;
+    health: number;
+    maxHealth: number;
+    trustMeter: number;
+    isTamed: boolean;
+    command: string;
+    canMount: boolean;
+    isMounted: boolean;
+    preferredFoodHint: string;
+  } | null;
+  activeVessel?: {
+    id: string;
+    name: string;
+    type: 'perahu_cadik' | 'kapal_phinisi';
+    speedKnots: number;
+    maxSpeedKnots: number;
+    throttleRatio: number;
+    headingDeg: number;
+    seaFloorDepth: number;
+    trenchNearby: boolean;
+    health: number;
+    maxHealth: number;
+    isDivingAnchored: boolean;
+  } | null;
+  activeCataclysm?: {
+    type: string;
+    name: string;
+    remainingSeconds: number;
+    durationSeconds: number;
+    intensity: number;
+  } | null;
+  activeHologram?: {
+    id: string;
+    name: string;
+    region: string;
+    dimensions: [number, number, number];
+    rotationDeg: number;
+    blockCount: number;
+  } | null;
+  activeTreasureHint?: {
+    mapName: string;
+    distance: number;
+    bearing: string;
+    heat: 'COLD' | 'WARM' | 'HOT';
+    targetPos: [number, number, number];
+  } | null;
+  activeAerialFlight?: {
+    mode: 'garuda' | 'glider';
+    altitude: number;
+    inThermalUpdraft: boolean;
+    speed: number;
+  } | null;
+  activeVillageSiege?: {
+    active: boolean;
+    festivalActive: boolean;
+    settlementName: string;
+    wave: number;
+    maxWaves: number;
+    villageIntegrity: number;
+    invadersRemaining: number;
+    festivalTimer: number;
+  } | null;
+  nusantaraV46?: {
+    stanceId: 'HARIMAU' | 'BANGAU' | 'NAGA';
+    stanceName: string;
+    stanceSubtitle: string;
+    stanceIcon: string;
+    stanceColor: string;
+    stanceBonusText: string;
+    tenagaDalam: number;
+    ajianId: 'AJIAN_BRAJAMUSTI' | 'AJIAN_SERIBU_BAYANGAN' | 'AJIAN_PANCASONA';
+    ajianName: string;
+    ajianIcon: string;
+    ajianReady: boolean;
+    subakWheelCount: number;
+    subakTotalHarvested: number;
+    wayangActive: boolean;
+    wayangLakonId: 'LAKON_GATOTKACA' | 'LAKON_SRI_SEDANA' | 'LAKON_DEWA_RUCI';
+    wayangLakonName: string;
+    wayangLakonIcon: string;
+    wayangLakonTimer: number;
+    sanctumActive: boolean;
+    sanctumCenter: [number, number, number] | null;
+    sanctumBossAlive: boolean;
+  } | null;
+  mahakaryaV48?: {
+    submarineActive: boolean;
+    submarineDepth: number;
+    submarineSonarDist: number;
+    oceanCandiBuilt: boolean;
+    oceanCandiPos: [number, number, number] | null;
+    locomotiveActive: boolean;
+    locomotiveRiding: boolean;
+    locomotiveSpeed: number;
+    quarryCount: number;
+    quarryTotalMined: number;
+    gamelanStageBuilt: boolean;
+    gamelanScale: 'PELOG' | 'SLENDRO';
+    gamelanAutoSong: string | null;
+    gamelanBlessingTimer: number;
+    activeKhodamId: 'MACAN_PUTIH' | 'GARUDA_API' | 'NAGA_TIRTA' | null;
+    activeKhodamName: string | null;
+    arenaActive: boolean;
+    arenaWave: number;
+    arenaMaxWaves: number;
+    weatherEventId: 'CLEAR' | 'VOLCANIC_ERUPTION' | 'EQUATORIAL_THUNDERSTORM' | 'MYSTIC_CALDERA_MIST';
+    weatherEventName: string;
+    weatherEventTimer: number;
+    activeWardrobeId: 'BATIK_PARANG_KENCANA' | 'ZIRAH_SENOPATI_MAJAPAHIT' | 'JUBAH_PENDEKAR_SILIWANGI' | 'BUSANA_RAJA_SAMUDRA';
+    activeWardrobeName: string;
+    photoModeActive: boolean;
+    photoFov: number;
+    photoFrame: 'NONE' | 'UKIRAN_MAJAPAHIT' | 'WAYANG_KLASIK' | 'SINEMA_21_9';
+  } | null;
   profilerMetrics: { 
     activeChunks: number; 
     cachedChunks: number; 
@@ -76,6 +196,13 @@ export class TelemetryStore {
     timeOfDay: 8.0, weatherType: 'clear',
     breakProgress: 0,
     bowChargeRatio: 0,
+    fishingState: 'IDLE',
+    fishingTension: 0,
+    fishingProgress: 0,
+    mountedCreatureName: null,
+    targetedCreature: null,
+    activeVessel: null,
+    activeCataclysm: null,
     profilerMetrics: { 
       activeChunks: 0, 
       cachedChunks: 0, 

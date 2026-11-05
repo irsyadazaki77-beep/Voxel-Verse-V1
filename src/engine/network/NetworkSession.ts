@@ -51,6 +51,7 @@ export class NetworkSession {
   private networkTickInterval = 1000 / 20; // 20 Hz Network Tick Rate
   private currentSequence = 0;
   private lastKnownBlockRevision = 0;
+  private blockRevisions: Map<string, number> = new Map();
 
   // Reconnection & backoff tracking
   private reconnectAttempts = 0;
@@ -62,6 +63,11 @@ export class NetworkSession {
 
   // Callback for player position corrections from authoritative server
   private onPlayerCorrectedCallback: ((pos: [number, number, number], vel: [number, number, number]) => void) | null = null;
+
+  private lastSentPos: [number, number, number] = [0, 0, 0];
+  private lastSentYaw = 0;
+  private nextRetryDelayMs = 0;
+  private isConnectionCancelled = false;
 
   constructor() {
     this.localSessionId = `player_${Math.random().toString(36).substring(2, 8)}`;
@@ -148,6 +154,45 @@ export class NetworkSession {
     return this.connectionState === 'READY';
   }
 
+  public cancelConnection(): void {
+    this.isConnectionCancelled = true;
+    this.setConnectionState('DISCONNECTED', 'Connection cancelled by user');
+    if (this.transport) {
+      this.transport.disconnect();
+    }
+  }
+
+  public cancelReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.isReconnecting = false;
+    this.reconnectAttempts = 0;
+    this.nextRetryDelayMs = 0;
+    this.setConnectionState('DISCONNECTED', 'Reconnection cancelled by user');
+    this.transport.disconnect();
+  }
+
+  public retryNow(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.isReconnecting = false;
+    this.attemptReconnect();
+  }
+
+  public getReconnectProgress() {
+    return {
+      attempt: this.reconnectAttempts,
+      maxAttempts: this.maxReconnectAttempts,
+      isReconnecting: this.isReconnecting,
+      state: this.connectionState,
+      nextRetryDelayMs: this.nextRetryDelayMs,
+    };
+  }
+
   public async startSession(
     scene: THREE.Scene,
     isMultiplayer = false,
@@ -156,6 +201,7 @@ export class NetworkSession {
     serverAddress?: string
   ): Promise<boolean> {
     this.isDisposed = false;
+    this.isConnectionCancelled = false;
     this.sceneRef = scene;
     this.isMultiplayerActive = isMultiplayer;
     this.localPlayerName = playerName;
@@ -169,7 +215,7 @@ export class NetworkSession {
       return true;
     }
 
-    this.setConnectionState('CONNECTING');
+    this.setConnectionState('CONNECTING', 'Connecting to realm server...');
 
     let finalAddress = serverAddress;
     if (useWebSocket && this.sessionToken && serverAddress) {
@@ -187,13 +233,18 @@ export class NetworkSession {
     this.transport.onMessage((msg) => this.handleIncomingMessage(msg));
 
     const connected = await this.transport.connect(finalAddress);
-    if (!connected && useWebSocket) {
-      console.error('[NetworkSession] WebSocket server connection failed. Denying automatic loopback fallback.');
-      this.setConnectionState('FAILED', 'Initial Connection Failed');
+    if (this.isConnectionCancelled || this.isDisposed) {
+      this.setConnectionState('DISCONNECTED', 'Connection cancelled');
       return false;
     }
 
-    this.setConnectionState('AUTHENTICATING');
+    if (!connected) {
+      console.error('[NetworkSession] Server connection failed. Denying automatic singleplayer fallback.');
+      this.setConnectionState('FAILED', 'SERVER_UNREACHABLE');
+      return false;
+    }
+
+    this.setConnectionState('AUTHENTICATING', 'Authorizing player session...');
 
     // Announce join
     this.transport.send({
@@ -208,7 +259,7 @@ export class NetworkSession {
 
     this.setConnectionState('SYNCHRONIZING', 'Awaiting Authoritative Bootstrap');
 
-    // Await bootstrap synchronization with 8s timeout to guarantee readiness before allowing gameplay
+    // Await authoritative bootstrap synchronization with 8s timeout
     const bootstrapReceived = await new Promise<boolean>((resolve) => {
       let resolved = false;
       const timeout = setTimeout(() => {
@@ -229,18 +280,23 @@ export class NetworkSession {
       });
     });
 
+    if (this.isConnectionCancelled || this.isDisposed) {
+      this.setConnectionState('DISCONNECTED', 'Connection cancelled');
+      return false;
+    }
+
     if (bootstrapReceived) {
       this.setConnectionState('READY', 'Authoritative Bootstrap Applied');
       return true;
     } else {
-      console.warn('[NetworkSession] Bootstrap synchronization timed out');
-      this.setConnectionState('FAILED', 'Bootstrap Timeout');
+      console.warn('[NetworkSession] Authoritative bootstrap synchronization timed out');
+      this.setConnectionState('FAILED', 'BOOTSTRAP_TIMEOUT');
       return false;
     }
   }
 
   private handleTransportClosed(): void {
-    if (this.isDisposed || !this.isMultiplayerActive) {
+    if (this.isDisposed || !this.isMultiplayerActive || this.isConnectionCancelled) {
       this.setConnectionState('DISCONNECTED');
       return;
     }
@@ -254,28 +310,33 @@ export class NetworkSession {
   }
 
   public async attemptReconnect(): Promise<boolean> {
-    if (this.isReconnecting || this.isDisposed) return false;
+    if (this.isReconnecting || this.isDisposed || this.isConnectionCancelled) return false;
     this.isReconnecting = true;
     this.setConnectionState('RECONNECTING');
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('[NetworkSession] Maximum reconnection attempts exceeded.');
-      this.setConnectionState('FAILED', 'Max Reconnection Retries Exceeded');
+      this.setConnectionState('FAILED', 'RECONNECT_EXHAUSTED');
       this.isReconnecting = false;
+      this.nextRetryDelayMs = 0;
       return false;
     }
 
     this.reconnectAttempts++;
-    // Exponential backoff with jitter: backoff = min(10000, 1000 * 2^(attempt-1) + jitter)
-    const baseBackoff = Math.min(10000, 1000 * Math.pow(2, this.reconnectAttempts - 1));
+    // Exponential backoff with jitter: backoff = min(15000, 1000 * 1.8^(attempt-1) + jitter)
+    const baseBackoff = Math.min(15000, 1000 * Math.pow(1.8, this.reconnectAttempts - 1));
     const jitter = Math.floor(Math.random() * 500);
-    const delay = baseBackoff + jitter;
+    const delay = Math.round(baseBackoff + jitter);
+    this.nextRetryDelayMs = delay;
 
     console.log(`[NetworkSession] Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms...`);
 
-    await new Promise(r => setTimeout(r, delay));
+    await new Promise(r => {
+      this.reconnectTimer = setTimeout(r, delay);
+    });
+    this.reconnectTimer = null;
 
-    if (this.isDisposed) {
+    if (this.isDisposed || this.isConnectionCancelled) {
       this.isReconnecting = false;
       return false;
     }
@@ -320,10 +381,38 @@ export class NetworkSession {
       timestamp: Date.now(),
     });
 
-    this.reconnectAttempts = 0;
-    this.isReconnecting = false;
-    this.setConnectionState('READY', 'Session Recovery Complete');
-    return true;
+    // DO NOT mark READY until server confirms recovery by sending PLAYER_BOOTSTRAP!
+    const recoveryConfirmed = await new Promise<boolean>((resolve) => {
+      let resolved = false;
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          unsub();
+          resolve(false);
+        }
+      }, 8000);
+
+      const unsub = this.onBootstrap(() => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          unsub();
+          resolve(true);
+        }
+      });
+    });
+
+    if (recoveryConfirmed) {
+      this.reconnectAttempts = 0;
+      this.isReconnecting = false;
+      this.nextRetryDelayMs = 0;
+      this.setConnectionState('READY', 'Authoritative Recovery Confirmed');
+      return true;
+    } else {
+      console.warn('[NetworkSession] Authoritative recovery bootstrap timed out');
+      this.isReconnecting = false;
+      return this.attemptReconnect();
+    }
   }
 
   public update(deltaTime: number, localPlayerPos: THREE.Vector3, localPlayerYaw: number, localPlayerVelocity?: THREE.Vector3): void {
@@ -332,15 +421,25 @@ export class NetworkSession {
 
     if (!this.isMultiplayerActive || this.connectionState !== 'READY') return;
 
-    // Broadcast local player transform at 20 Hz
+    // Adaptive snapshot throttling: 20 Hz when active/moving, 1 Hz heartbeat when stationary
     const now = performance.now();
-    if (now - this.lastTransformBroadcast >= this.networkTickInterval) {
-      this.lastTransformBroadcast = now;
-      this.currentSequence++;
+    const velArr: [number, number, number] = localPlayerVelocity 
+      ? [localPlayerVelocity.x, localPlayerVelocity.y, localPlayerVelocity.z]
+      : [0, 0, 0];
 
-      const velArr: [number, number, number] = localPlayerVelocity 
-        ? [localPlayerVelocity.x, localPlayerVelocity.y, localPlayerVelocity.z]
-        : [0, 0, 0];
+    const isMoving = Math.abs(velArr[0]) > 0.05 || Math.abs(velArr[1]) > 0.05 || Math.abs(velArr[2]) > 0.05 ||
+      Math.abs(localPlayerPos.x - this.lastSentPos[0]) > 0.04 ||
+      Math.abs(localPlayerPos.y - this.lastSentPos[1]) > 0.04 ||
+      Math.abs(localPlayerPos.z - this.lastSentPos[2]) > 0.04 ||
+      Math.abs(localPlayerYaw - this.lastSentYaw) > 0.02;
+
+    const tickInterval = isMoving ? this.networkTickInterval : 1000;
+
+    if (now - this.lastTransformBroadcast >= tickInterval) {
+      this.lastTransformBroadcast = now;
+      this.lastSentPos = [localPlayerPos.x, localPlayerPos.y, localPlayerPos.z];
+      this.lastSentYaw = localPlayerYaw;
+      this.currentSequence++;
 
       const msg: TransformSnapshotMessage = {
         protocolVersion: PROTOCOL_VERSION,
@@ -350,7 +449,7 @@ export class NetworkSession {
         position: [localPlayerPos.x, localPlayerPos.y, localPlayerPos.z],
         rotation: [0, localPlayerYaw, 0],
         velocity: velArr,
-        animState: 'idle',
+        animState: isMoving ? 'walk' : 'idle',
         timestamp: Date.now(),
       };
 
@@ -385,7 +484,12 @@ export class NetworkSession {
     }
   }
 
-  public sendCraftRequest(recipeId: string, quantity = 1, stationContext?: string): void {
+  public sendCraftRequest(
+    recipeId: string,
+    quantity = 1,
+    stationContext?: string,
+    stationPos?: [number, number, number]
+  ): void {
     if (!this.isMultiplayerActive) return;
 
     const transactionId = `tx_craft_${this.localSessionId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -396,6 +500,7 @@ export class NetworkSession {
       recipeId,
       quantity,
       stationContext,
+      stationPos,
       transactionId,
       timestamp: Date.now(),
     };
@@ -492,14 +597,22 @@ export class NetworkSession {
           this.localSessionId = bootstrap.playerId;
         }
 
-        // Apply authoritative block modifications from bootstrap
+        if (typeof bootstrap.globalBlockRevision === 'number') {
+          this.lastKnownBlockRevision = Math.max(this.lastKnownBlockRevision, bootstrap.globalBlockRevision);
+        }
+
+        // Apply authoritative block modifications from bootstrap in strict causal revision order
         if (Array.isArray(bootstrap.blocks)) {
-          bootstrap.blocks.forEach((b) => {
-            if (b.revision && b.revision > this.lastKnownBlockRevision) {
-              this.lastKnownBlockRevision = b.revision;
+          const sortedBlocks = [...bootstrap.blocks].sort((a, b) => (a.revision || 0) - (b.revision || 0));
+          sortedBlocks.forEach((b) => {
+            const key = `${b.x},${b.y},${b.z}`;
+            const rev = typeof b.revision === 'number' ? b.revision : 1;
+            this.blockRevisions.set(key, rev);
+            if (rev > this.lastKnownBlockRevision) {
+              this.lastKnownBlockRevision = rev;
             }
             this.blockChangeListeners.forEach(cb =>
-              cb({ x: b.x, y: b.y, z: b.z, oldBlock: 0, newBlock: b.blockType, revision: b.revision })
+              cb({ x: b.x, y: b.y, z: b.z, oldBlock: 0, newBlock: b.blockType, state: b.state, revision: rev })
             );
           });
         }
@@ -552,13 +665,20 @@ export class NetworkSession {
       case 'BLOCK_CHUNK_DELTA': {
         const delta = msg as any;
         if (Array.isArray(delta.blocks)) {
-          delta.blocks.forEach((b: any) => {
-            if (b.revision && b.revision > this.lastKnownBlockRevision) {
-              this.lastKnownBlockRevision = b.revision;
+          const sortedDeltas = [...delta.blocks].sort((a, b) => (a.revision || 0) - (b.revision || 0));
+          sortedDeltas.forEach((b: any) => {
+            const key = `${b.x},${b.y},${b.z}`;
+            const prevRev = this.blockRevisions.get(key) || 0;
+            const rev = typeof b.revision === 'number' ? b.revision : prevRev + 1;
+            if (rev >= prevRev) {
+              this.blockRevisions.set(key, rev);
+              if (rev > this.lastKnownBlockRevision) {
+                this.lastKnownBlockRevision = rev;
+              }
+              this.blockChangeListeners.forEach(cb =>
+                cb({ x: b.x, y: b.y, z: b.z, oldBlock: 0, newBlock: b.blockType, state: b.state, revision: rev })
+              );
             }
-            this.blockChangeListeners.forEach(cb =>
-              cb({ x: b.x, y: b.y, z: b.z, oldBlock: 0, newBlock: b.blockType, revision: b.revision })
-            );
           });
         }
         break;
@@ -596,15 +716,18 @@ export class NetworkSession {
             this.sceneRef.add(rp.group);
           }
           if (rp) {
-            rp.pushTransformSnapshot(msg.position, msg.rotation, msg.timestamp);
+            rp.pushTransformSnapshot(msg.position, msg.rotation, msg.timestamp, msg.velocity);
           }
         }
         break;
       }
 
       case 'BLOCK_CHANGE': {
-        if (msg.revision && msg.revision > this.lastKnownBlockRevision) {
-          this.lastKnownBlockRevision = msg.revision;
+        if (typeof msg.revision === 'number') {
+          this.blockRevisions.set(`${msg.x},${msg.y},${msg.z}`, msg.revision);
+          if (msg.revision > this.lastKnownBlockRevision) {
+            this.lastKnownBlockRevision = msg.revision;
+          }
         }
         this.blockChangeListeners.forEach(cb =>
           cb({ x: msg.x, y: msg.y, z: msg.z, oldBlock: msg.oldBlockType, newBlock: msg.newBlockType, state: (msg as any).state, revision: msg.revision })
@@ -627,6 +750,11 @@ export class NetworkSession {
       }
 
       case 'CHAT_MESSAGE': {
+        if (msg.senderName === 'SERVER_SECURITY' && (msg.text.includes('Invalid, expired or missing session token') || msg.text.includes('Access Denied'))) {
+          console.warn('[NetworkSession] Server security rejection:', msg.text);
+          this.cancelReconnect();
+          this.setConnectionState('FAILED', 'SESSION_EXPIRED');
+        }
         this.chatListeners.forEach(cb =>
           cb({ senderName: msg.senderName, text: msg.text, timestamp: msg.timestamp })
         );

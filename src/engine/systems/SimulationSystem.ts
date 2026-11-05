@@ -1,11 +1,21 @@
-import * as THREE from 'three';
 import { GameSystem } from './GameSystem';
 import type { GameRuntime } from '../core/GameRuntime';
-import { BlockType } from '../../types';
+import { BlockType, EntityState } from '../../types';
 import { GameEventBus } from '../events/GameEventBus';
 import { QuestManager } from '../progression/QuestManager';
 import { AetherNetworkManager } from '../engineering/AetherNetworkManager';
 import { SETTLEMENT_REGISTRY } from '../settlement/SettlementManager';
+import { FishingSystem } from './FishingSystem';
+import { LivestockSystem } from './LivestockSystem';
+import { MaritimeVesselSystem } from './MaritimeVesselSystem';
+import { VernacularHologramSystem } from './VernacularHologramSystem';
+import { CataclysmVisualEngine } from '../environment/CataclysmVisualEngine';
+import { AerialFlightAndSiegeSystem } from './AerialFlightAndSiegeSystem';
+import { NusantaraSanctumSilatSubakSystem } from './NusantaraSanctumSilatSubakSystem';
+import { MahakaryaNusantaraSystem } from './MahakaryaNusantaraSystem';
+import { ITEM_DEFS } from '../items/ItemRegistry';
+import { NotificationManager } from '../ui/NotificationManager';
+import { SoundSynthesizer } from '../audio/SoundSynthesizer';
 
 export class SimulationSystem implements GameSystem {
   public readonly name = 'SimulationSystem';
@@ -14,6 +24,7 @@ export class SimulationSystem implements GameSystem {
   private lastBiomeId: string = '';
   private visitedSettlements: Set<string> = new Set();
   private settlementCheckTimer: number = 0;
+  private livestockCheckTimer: number = 0;
   public readonly fixedDt: number = 1 / 60; // 60Hz fixed simulation timestep
   public readonly maxCatchUpSteps: number = 5;
 
@@ -51,6 +62,22 @@ export class SimulationSystem implements GameSystem {
     if ((player as any).pendingStaminaDeduction > 0) {
       stats.stamina = Math.max(0, stats.stamina - (player as any).pendingStaminaDeduction);
       (player as any).pendingStaminaDeduction = 0;
+    }
+
+    // 1b. Trigger Material-Aware Footstep & Landing Audio Feedback
+    if (player.pendingLandingEvent) {
+      const { blockId, fallDist } = player.pendingLandingEvent;
+      player.pendingLandingEvent = null;
+      const surfaceType = SoundSynthesizer.resolveSurfaceFootstepType(blockId, player.isSwimming);
+      audio.playLandingThud(surfaceType, fallDist);
+    }
+    if (player.pendingStepSurfaceBlock !== null) {
+      const stepBlockId = player.pendingStepSurfaceBlock;
+      player.pendingStepSurfaceBlock = null;
+      if (!MaritimeVesselSystem.activeVesselId) {
+        const surfaceType = SoundSynthesizer.resolveSurfaceFootstepType(stepBlockId, player.isSwimming);
+        audio.playFootstep(surfaceType, player.isSprinting);
+      }
     }
 
     // 2. Underwater & Submerged Checks
@@ -153,11 +180,168 @@ export class SimulationSystem implements GameSystem {
       });
     }
 
-    // 5. Update Aether Engineering Network
+    // 5. Sync Mounted Companion & Livestock Production
+    if (this.runtime.entities) {
+      let mountedFound = false;
+      const tamedStates: EntityState[] = [];
+
+      this.runtime.entities.entities.forEach((entity) => {
+        if (entity.state.isTamed) {
+          tamedStates.push(entity.state);
+        }
+        if (player.mountedEntityId && entity.state.id === player.mountedEntityId) {
+          if (entity.state.health > 0) {
+            mountedFound = true;
+            entity.state.position[0] = player.position.x;
+            entity.state.position[1] = player.position.y - 0.5;
+            entity.state.position[2] = player.position.z;
+            entity.mesh.position.set(player.position.x, player.position.y - 0.5, player.position.z);
+            entity.mesh.rotation.y = player.yaw;
+          }
+        }
+      });
+
+      if (player.mountedEntityId && !mountedFound) {
+        player.dismountEntity();
+      }
+
+      this.livestockCheckTimer += dt;
+      if (this.livestockCheckTimer >= 2.0 && tamedStates.length > 0) {
+        this.livestockCheckTimer = 0;
+        const produced = LivestockSystem.processLivestockProduction(
+          tamedStates,
+          Math.floor(Date.now() / 1000)
+        );
+        for (const prod of produced) {
+          this.runtime.addItemToInventory(prod.itemId, prod.count);
+          const itemDef = ITEM_DEFS[prod.itemId];
+          NotificationManager.push({
+            title: 'Hasil Ternak Nusantara',
+            message: `Satwa jinak menghasilkan ${prod.count}x ${itemDef?.name || prod.itemId}`,
+            priority: 'NORMAL',
+            colorTheme: 'emerald',
+            durationMs: 2600,
+          });
+        }
+      }
+    }
+
+    // 6. Update Maritime Vessels (Perahu Cadik & Kapal Phinisi) & Sync Player Helm Position
+    if (MaritimeVesselSystem.vessels.size > 0) {
+      if (MaritimeVesselSystem.activeVesselId && player.keys.crouch) {
+        const dismounted = MaritimeVesselSystem.dismountActiveVessel();
+        if (dismounted) {
+          player.position.y = dismounted.position.y + 1.1;
+          NotificationManager.push({
+            title: 'Turun dari Kemudi Kapal',
+            message: `${dismounted.name} telah membuang jangkar di perairan ini.`,
+            priority: 'NORMAL',
+            colorTheme: 'sky',
+            durationMs: 2200,
+          });
+        }
+      }
+
+      MaritimeVesselSystem.update(
+        dt,
+        world,
+        player.position,
+        player.keys,
+        this.runtime.particles,
+        audio
+      );
+
+      if (MaritimeVesselSystem.activeVesselId) {
+        const activeVessel = MaritimeVesselSystem.vessels.get(MaritimeVesselSystem.activeVesselId);
+        if (activeVessel) {
+          const deckHeightOffset = activeVessel.vesselType === 'kapal_phinisi' ? 1.35 : 0.72;
+          player.position.set(
+            activeVessel.position.x,
+            activeVessel.position.y + deckHeightOffset,
+            activeVessel.position.z
+          );
+          player.velocity.set(0, 0, 0);
+          player.isGrounded = true;
+          player.highestFallY = player.position.y;
+          if (player.cameraMotion) {
+            player.cameraMotion.setVesselWaveSway(
+              activeVessel.mesh.rotation.x,
+              activeVessel.mesh.rotation.z
+            );
+          }
+        }
+      }
+    }
+
+    // 7. Update Mythic Cataclysm Visual Engine (3D Falling Meteors, Crater Impacts & Ash/Eclipse Spores)
+    CataclysmVisualEngine.update(
+      dt,
+      world,
+      player.position,
+      this.runtime.particles,
+      audio,
+      (shake) => player.applyScreenShake(shake)
+    );
+
+    // 7b. Update 3D Hologram Vernacular Architecture Preview
+    const activeHotbarItem = this.runtime.getActiveHotbarItem();
+    VernacularHologramSystem.update(
+      dt,
+      world,
+      player.position,
+      player.yaw,
+      activeHotbarItem?.itemId || null
+    );
+
+    // 7c. Update Aerial Flight (Garuda Kencana 3D & Dragon Kite Glider), Village Siege & Sky Lanterns
+    AerialFlightAndSiegeSystem.update(
+      dt,
+      world,
+      this.runtime.entities,
+      player,
+      this.runtime.particles,
+      audio,
+      stats,
+      (itemId, count) => this.runtime.addItemToInventory(itemId, count)
+    );
+
+    // 7d. Update VoxelVerse v4.6.0: Underground Candi Traps, Silat Tenaga Dalam & Ajian Shockwaves, 3D Subak Waterwheels & Wayang Kulit Stage
+    NusantaraSanctumSilatSubakSystem.update(
+      dt,
+      world,
+      this.runtime.entities,
+      player,
+      this.runtime.particles,
+      audio,
+      stats,
+      (itemId, count) => this.runtime.addItemToInventory(itemId, count)
+    );
+
+    // 7e. Update VoxelVerse v4.8.0: 3D Submarine & Ocean Candi, Steam Locomotive & Auto-Quarry, 3D Gamelan, Khodam & Arena, Volcanic Weather & Free-Cam
+    MahakaryaNusantaraSystem.update(
+      dt,
+      world,
+      this.runtime.entities,
+      player,
+      this.runtime.camera,
+      this.runtime.particles,
+      audio,
+      stats,
+      (itemId, count) => this.runtime.addItemToInventory(itemId, count)
+    );
+
+    // 8. Update Aether Engineering Network
     AetherNetworkManager.getInstance().update(dt);
   }
 
   public dispose(): void {
     this.accumulator = 0;
+    FishingSystem.reset();
+    MaritimeVesselSystem.reset();
+    CataclysmVisualEngine.reset();
+    AerialFlightAndSiegeSystem.reset();
+    NusantaraSanctumSilatSubakSystem.reset();
+    MahakaryaNusantaraSystem.reset();
   }
 }
+

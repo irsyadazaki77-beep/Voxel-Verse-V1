@@ -560,12 +560,27 @@ export class NPCScheduleManager {
   }
 
   /**
-   * Get active schedule details for a specific role and time.
+   * Get active schedule details for a specific role and time, dynamically enriched
+   * by active Nusantara cultural events (Gamelan Ensemble, Wayang Kulit, or Village Siege).
    */
   public static getActiveSchedule(role: NPCRoleType, timeOfDay: number): ScheduleActivity {
     const phase = this.getSchedulePhase(timeOfDay);
     const def = NPC_ROLE_SCHEDULES[role] || NPC_ROLE_SCHEDULES.farmer;
-    return def.schedules[phase];
+    const baseActivity = def.schedules[phase];
+
+    // Dynamic Evening Cultural Gathering (Pendopo Gamelan 3D / Panggung Wayang Kulit)
+    if (phase === 'evening' && role !== 'guard') {
+      return {
+        ...baseActivity,
+        activityName: `${baseActivity.activityName} & Harmoni Pendopo`,
+        activityDescription:
+          'Berkumpul di Pendopo menikmati tabuhan Gamelan Pelog/Slendro dan pertunjukan Wayang Kulit desa.',
+        targetLandmark: 'pendopo',
+        animationState: 'gather',
+      };
+    }
+
+    return baseActivity;
   }
 
   /**
@@ -597,9 +612,78 @@ export class NPCScheduleManager {
         } else if (active.targetLandmark === 'farm') {
           const farm = structs.find(s => s.category === 'farm');
           if (farm) return farm.originPos;
+        } else if (active.targetLandmark === 'pendopo' || active.targetLandmark === 'shrine') {
+          const sanctum = structs.find(s => s.category === 'sanctum' || s.category === 'leyline_hub');
+          if (sanctum) return sanctum.originPos;
         }
       }
     }
     return settlementOrigin;
   }
+
+  /**
+   * Generates dynamic circular offsets for villagers gathering around the Pendopo / Gamelan in the evening.
+   * Prevents crowding and forms a natural semi-circular gathering circle.
+   */
+  public static getPendopoGatheringTarget(
+    _role: NPCRoleType,
+    centerOrigin: [number, number, number],
+    npcIndex: number = 0
+  ): [number, number, number] {
+    const totalGatherers = 8;
+    const angle = (npcIndex % totalGatherers) * ((Math.PI * 1.8) / totalGatherers) + 0.2;
+    const radius = 3.6 + (npcIndex % 2) * 1.4;
+    return [
+      centerOrigin[0] + Math.cos(angle) * radius,
+      centerOrigin[1],
+      centerOrigin[2] + Math.sin(angle) * radius,
+    ];
+  }
+
+  /**
+   * Generates realistic patrol waypoints for village guards on night watch.
+   * Cycles between the settlement gates, palisades, and observation towers.
+   */
+  public static getGuardPatrolWaypoints(
+    origin: [number, number, number]
+  ): [number, number, number][] {
+    return [
+      [origin[0] + 16, origin[1], origin[2] + 2],    // Gapura Utama (East Gate)
+      [origin[0] + 12, origin[1], origin[2] + 14],   // Pos Pantau Menara Utara (North Tower)
+      [origin[0] - 12, origin[1], origin[2] + 12],   // Pagar Batas Barat (West Palisade)
+      [origin[0] - 16, origin[1], origin[2] - 4],    // Gerbang Samping (South Gate)
+      [origin[0] - 4, origin[1], origin[2] - 14],    // Pos Sudut Selatan (South Watchpost)
+      [origin[0] + 10, origin[1], origin[2] - 10],   // Pos Jalur Sawah (Terrace Sentry)
+    ];
+  }
+
+  /**
+   * Computes evening village cultural harmony score and morale buff.
+   */
+  public static getCulturalGatheringBuff(
+    settlementId?: string
+  ): { moraleBonus: number; prosperityTitle: string; eveningGatheringBonus: boolean } {
+    const sId = settlementId || 'haven_camp';
+    const state = SettlementManager.getSettlementState(sId);
+    const level = state?.level || 1;
+    const structs = SettlementManager.getRecognizedStructures(sId);
+    const hasSanctumOrPendopo = structs.some(
+      s => s.category === 'sanctum' || s.category === 'leyline_hub' || s.hasWorkstation
+    );
+
+    const morale = 15 + level * 5 + (hasSanctumOrPendopo ? 10 : 0);
+    const prosperityTitle =
+      morale >= 35
+        ? 'Nagari Makmur Sentosa (Harmoni Sempurna)'
+        : morale >= 25
+        ? 'Dusun Guyub Rukun (Gotong Royong)'
+        : 'Permukiman Perintis';
+
+    return {
+      moraleBonus: morale,
+      prosperityTitle,
+      eveningGatheringBonus: true,
+    };
+  }
 }
+

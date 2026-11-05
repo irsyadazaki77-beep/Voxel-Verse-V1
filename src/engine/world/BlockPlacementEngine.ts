@@ -17,6 +17,15 @@ export interface PlacementResult {
 export class BlockPlacementEngine {
   // Container storage map: "x,y,z" -> (ItemStack | null)[] (27 slots for chest)
   public static containers: Map<string, (ItemStack | null)[]> = new Map();
+  // Coordinates that have already been opened, placed by player, or destroyed so they don't regenerate procedural loot
+  public static openedOrClearedContainers: Set<string> = new Set();
+
+  // Initialize an empty container for player-placed chests
+  public static initializeEmptyContainer(pos: [number, number, number]): void {
+    const key = `${pos[0]},${pos[1]},${pos[2]}`;
+    this.openedOrClearedContainers.add(key);
+    this.containers.set(key, new Array(27).fill(null));
+  }
 
   // Validate and determine proper block type, orientation, and multi-block structure
   public static evaluatePlacement(
@@ -147,9 +156,10 @@ export class BlockPlacementEngine {
       }
     }
 
-    // Clean container data if chest is broken
-    if (blockType === BlockType.CHEST) {
+    // Clean container data if chest is broken and record that this coordinate has been cleared
+    if (blockType === BlockType.CHEST || blockType === BlockType.RICE_STORAGE_CHEST) {
       const key = `${x},${y},${z}`;
+      this.openedOrClearedContainers.add(key);
       this.containers.delete(key);
     }
 
@@ -243,7 +253,6 @@ export class BlockPlacementEngine {
     for (const item of lootTable) {
       if (Math.random() <= item.chance && slotIdx < 27) {
         const count = item.min + Math.floor(Math.random() * (item.max - item.min + 1));
-        // Distribute loosely in chest slots
         const targetSlot = Math.min(26, slotIdx * 2 + Math.floor(Math.random() * 2));
         if (!slots[targetSlot]) {
           slots[targetSlot] = { itemId: item.itemId, count };
@@ -261,8 +270,13 @@ export class BlockPlacementEngine {
   public static getContainer(pos: [number, number, number]): (ItemStack | null)[] {
     const key = `${pos[0]},${pos[1]},${pos[2]}`;
     if (!this.containers.has(key)) {
-      const generated = this.generateProceduralLoot(pos);
-      this.containers.set(key, generated);
+      if (this.openedOrClearedContainers.has(key)) {
+        this.containers.set(key, new Array(27).fill(null));
+      } else {
+        this.openedOrClearedContainers.add(key);
+        const generated = this.generateProceduralLoot(pos);
+        this.containers.set(key, generated);
+      }
     }
     return this.containers.get(key)!;
   }
@@ -270,16 +284,18 @@ export class BlockPlacementEngine {
   // Update container storage
   public static setContainer(pos: [number, number, number], items: (ItemStack | null)[]): void {
     const key = `${pos[0]},${pos[1]},${pos[2]}`;
+    this.openedOrClearedContainers.add(key);
     this.containers.set(key, [...items]);
   }
 
-  // Serialize all containers for save data
+  // Serialize all containers for save data (including opened/empty state so loot doesn't respawn)
   public static serializeContainers(): { [posKey: string]: (ItemStack | null)[] } {
     const result: { [posKey: string]: (ItemStack | null)[] } = {};
+    this.openedOrClearedContainers.forEach((key) => {
+      result[key] = this.containers.get(key) || new Array(27).fill(null);
+    });
     this.containers.forEach((items, key) => {
-      if (items.some(slot => slot !== null)) {
-        result[key] = items;
-      }
+      result[key] = items;
     });
     return result;
   }
@@ -287,8 +303,10 @@ export class BlockPlacementEngine {
   // Deserialize containers from save data
   public static deserializeContainers(data?: { [posKey: string]: (ItemStack | null)[] }): void {
     this.containers.clear();
+    this.openedOrClearedContainers.clear();
     if (data) {
       Object.entries(data).forEach(([key, items]) => {
+        this.openedOrClearedContainers.add(key);
         if (Array.isArray(items)) {
           this.containers.set(key, items);
         }
@@ -296,3 +314,4 @@ export class BlockPlacementEngine {
     }
   }
 }
+

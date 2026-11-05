@@ -50,7 +50,8 @@ export type GameEventType =
   | 'PLAYER_DIED'
   | 'INVENTORY_OPENED'
   | 'MAP_OPENED'
-  | 'NOTIFICATION_SHOW';
+  | 'NOTIFICATION_SHOW'
+  | 'AUTOSAVE_STATUS';
 
 export interface GameEventPayloads {
   BLOCK_MINED: { blockType: number; pos: [number, number, number]; toolUsed?: string };
@@ -104,6 +105,7 @@ export interface GameEventPayloads {
   INVENTORY_OPENED: Record<string, unknown>;
   MAP_OPENED: Record<string, unknown>;
   NOTIFICATION_SHOW: { title: string; message: string; type?: 'info' | 'warning' | 'danger' | 'success'; durationMs?: number };
+  AUTOSAVE_STATUS: { saving?: boolean; saved?: boolean; status?: 'saving' | 'saved' | 'error'; text?: string; timestamp?: number };
 }
 
 type EventCallback<T extends GameEventType> = (payload: GameEventPayloads[T]) => void;

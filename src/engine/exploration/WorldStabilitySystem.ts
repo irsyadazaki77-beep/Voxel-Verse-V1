@@ -197,6 +197,14 @@ export class WorldStabilitySystem {
     GameEventBus.emit('STABILITY_CHANGED', { stability: this.stability });
   }
 
+  public static modifyStability(delta: number, _reason?: string): void {
+    if (delta >= 0) {
+      this.increaseStability(delta);
+    } else {
+      this.decreaseStability(-delta);
+    }
+  }
+
   public static activateMonolith(monolithId: string): boolean {
     const mono = this.monoliths.find((m) => m.id === monolithId);
     if (mono && !mono.activated) {

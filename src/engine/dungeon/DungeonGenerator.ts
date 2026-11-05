@@ -59,6 +59,12 @@ export class DungeonGenerator {
       pillarBlock = BlockType.AETHER_STONE;
       accentBlock = BlockType.MECHANUM_PLATE;
       lightBlock = BlockType.AETHER_LAMP;
+    } else if (theme === 'candi_ruins') {
+      wallBlock = BlockType.CARVED_ANDESITE_STONE;
+      floorBlock = BlockType.VOLCANIC_BRICK;
+      pillarBlock = BlockType.STONE_ALANG_PILLAR;
+      accentBlock = BlockType.TERRACOTTA_ROOF_TILE;
+      lightBlock = BlockType.AETHER_LANTERN;
     }
 
     // 1. Entrance Room (7x5x7)
@@ -164,9 +170,26 @@ export class DungeonGenerator {
       blocks.push({ wx: cx, wy: originY + 6, wz: cz, block: BlockType.LANTERN });
     });
 
-    // Central Treasure Chest & Boss Loot Dais
-    blocks.push({ wx: originX, wy: originY, wz: originZ + 30, block: BlockType.STONE_BRICKS });
+    // Central Treasure Chest, Boss Loot Dais & Sacred Lingga Summoning Altar
+    blocks.push({ wx: originX, wy: originY, wz: originZ + 30, block: BlockType.CARVED_ANDESITE_STONE });
     blocks.push({ wx: originX, wy: originY + 1, wz: originZ + 30, block: BlockType.CHEST });
+    blocks.push({ wx: originX, wy: originY, wz: originZ + 28, block: BlockType.ANCIENT_RUNE_STONE });
+    blocks.push({ wx: originX, wy: originY + 1, wz: originZ + 28, block: BlockType.AETHER_ALTAR_CORE });
+
+    // Add Trap Hazards along Main Corridor & Combat Room edges
+    blocks.push({ wx: originX - 2, wy: originY, wz: originZ + 18, block: BlockType.AETHER_SPIKE });
+    blocks.push({ wx: originX + 2, wy: originY, wz: originZ + 22, block: BlockType.FLAME_VENT });
+
+    // Carve open non-secret doorways between connected rooms so corridors are walkable
+    for (const room of rooms) {
+      if (room.type === 'secret') continue;
+      for (const door of room.doors) {
+        // Keep the East secret room entrance sealed with breakable cobblestone
+        if (door.x === originX + 5 && door.z === originZ + 20) continue;
+        blocks.push({ wx: door.x, wy: door.y + 1, wz: door.z, block: BlockType.AIR });
+        blocks.push({ wx: door.x, wy: door.y + 2, wz: door.z, block: BlockType.AIR });
+      }
+    }
 
     const dungeonDef: DungeonDef = {
       id: `dungeon_${theme}_${originX}_${originZ}`,
@@ -175,7 +198,7 @@ export class DungeonGenerator {
       tier,
       originPos: [originX, originY, originZ],
       rooms,
-      bossId: `boss_${theme}_${seed}`,
+      bossId: theme === 'candi_ruins' ? `boss_naga_antaboga_${seed}` : `boss_${theme}_${seed}`,
       completed: false
     };
 
@@ -223,6 +246,7 @@ export class DungeonGenerator {
       case 'crystal': return 'Aetherial Crystal Labyrinth';
       case 'corrupted': return 'Void-Touched Ruined Citadel';
       case 'volcanic': return 'Magma-Veined Catacombs';
+      case 'candi_ruins': return 'Reruntuhan Candi Bawah Tanah Saptapatala';
       default: return 'Ancient Subterranean Dungeon';
     }
   }

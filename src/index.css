@@ -130,22 +130,20 @@
   animation: hitFlashRed 0.3s ease-out forwards;
 }
 
-/* Stylized Voxel UI Panel Utilities */
+/* Stylized Voxel UI Panel Utilities (Compositor-Safe Over Active WebGL Canvas) */
 .voxel-panel {
-  background: var(--panel-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(11, 15, 23, 0.94);
   border: 1px solid var(--panel-border);
-  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   border-radius: 1.25rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .voxel-panel-subtle {
-  background: var(--panel-bg-subtle);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(16, 22, 33, 0.90);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 1rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .voxel-slot {

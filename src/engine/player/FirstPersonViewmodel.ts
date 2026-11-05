@@ -25,6 +25,7 @@ export class FirstPersonViewmodel {
   private swingProgress: number = 0;
   private isSwinging: boolean = false;
   private swingType: 'mine' | 'slash' | 'place' | 'eat' = 'mine';
+  private slashComboStep: number = 0;
 
   // Smooth Interpolation Offsets
   private currentOffset = new THREE.Vector3(0.32, -0.28, -0.55);
@@ -97,7 +98,38 @@ export class FirstPersonViewmodel {
     let newMesh: THREE.Object3D;
 
     // Build stylized 3D representation based on category
-    if (itemDef.category === 'tool' || itemDef.category === 'weapon') {
+    if (item.itemId.includes('rod') || itemDef.toolType === 'fishing_rod') {
+      const rodGroup = new THREE.Group();
+      const isAether = item.itemId.includes('aether');
+      // Tapered rod shaft
+      const shaftGeo = new THREE.CylinderGeometry(0.008, 0.022, 0.62, 8);
+      const shaftMat = new THREE.MeshStandardMaterial({
+        color: isAether ? 0x38bdf8 : 0x925f2b,
+        roughness: isAether ? 0.3 : 0.75,
+        metalness: isAether ? 0.6 : 0.1,
+        emissive: new THREE.Color(isAether ? 0x0284c7 : 0x000000),
+        emissiveIntensity: isAether ? 0.35 : 0,
+      });
+      const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+      shaft.position.set(0, 0.24, -0.06);
+      shaft.rotation.x = -0.35;
+      rodGroup.add(shaft);
+
+      // Brass/Gold spinning reel
+      const reelGeo = new THREE.CylinderGeometry(0.032, 0.032, 0.028, 10);
+      reelGeo.rotateZ(Math.PI / 2);
+      const reelMat = new THREE.MeshStandardMaterial({
+        color: 0xf59e0b,
+        roughness: 0.25,
+        metalness: 0.85,
+      });
+      const reel = new THREE.Mesh(reelGeo, reelMat);
+      reel.position.set(0.022, 0.08, 0.02);
+      rodGroup.add(reel);
+
+      rodGroup.rotation.set(0.25, -0.3, -0.1);
+      newMesh = rodGroup;
+    } else if (itemDef.category === 'tool' || itemDef.category === 'weapon') {
       const toolGroup = new THREE.Group();
       // Handle
       const handleGeo = new THREE.BoxGeometry(0.04, 0.35, 0.04);
@@ -141,10 +173,8 @@ export class FirstPersonViewmodel {
         emissiveIntensity = 0.5;
       }
 
-      const isSword = itemDef.category === 'weapon' || item.itemId.includes('sword');
-      const headGeo = isSword 
-        ? new THREE.BoxGeometry(0.06, 0.40, 0.03) 
-        : new THREE.BoxGeometry(0.22, 0.08, 0.08);
+      const isKeris = item.itemId.includes('keris') || item.itemId.includes('dagger');
+      const isSword = itemDef.category === 'weapon' || item.itemId.includes('sword') || isKeris;
       const headMat = new THREE.MeshStandardMaterial({ 
         color: headColor, 
         roughness, 
@@ -152,9 +182,30 @@ export class FirstPersonViewmodel {
         emissive: new THREE.Color(emissive),
         emissiveIntensity
       });
-      const head = new THREE.Mesh(headGeo, headMat);
-      head.position.set(0, 0.30, 0);
-      toolGroup.add(head);
+
+      if (isKeris) {
+        // Wavy Luk-5 Keris Blade & Crossguard (Ganja)
+        const ganja = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.025, 0.045), headMat);
+        ganja.position.set(0, 0.16, 0);
+        toolGroup.add(ganja);
+
+        for (let luk = 0; luk < 5; luk++) {
+          const seg = new THREE.Mesh(
+            new THREE.BoxGeometry(0.042 - luk * 0.005, 0.068, 0.024),
+            headMat
+          );
+          seg.position.set((luk % 2 === 0 ? 1 : -1) * 0.012, 0.2 + luk * 0.058, 0);
+          seg.rotation.z = (luk % 2 === 0 ? 1 : -1) * 0.18;
+          toolGroup.add(seg);
+        }
+      } else {
+        const headGeo = isSword 
+          ? new THREE.BoxGeometry(0.06, 0.40, 0.03) 
+          : new THREE.BoxGeometry(0.22, 0.08, 0.08);
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.set(0, 0.30, 0);
+        toolGroup.add(head);
+      }
 
       toolGroup.rotation.set(0.3, -0.4, -0.2);
       newMesh = toolGroup;
@@ -201,12 +252,19 @@ export class FirstPersonViewmodel {
     this.itemHolder.add(newMesh);
   }
 
-  public triggerSwing(type: 'mine' | 'slash' | 'place' | 'eat' = 'mine'): void {
+  private hitStopRemaining: number = 0;
+
+  public triggerHitStop(durationSec: number = 0.048): void {
+    this.hitStopRemaining = Math.max(this.hitStopRemaining, durationSec);
+  }
+
+  public triggerSwing(type: 'mine' | 'slash' | 'place' | 'eat' = 'mine', comboStep: number = 0): void {
     if (this.isSwinging && this.swingType === type && type === 'mine') {
       return;
     }
     this.isSwinging = true;
     this.swingType = type;
+    this.slashComboStep = comboStep % 3;
     this.swingProgress = 0;
   }
 
@@ -268,24 +326,53 @@ export class FirstPersonViewmodel {
       rotY -= 0.3 * bowDrawRatio;
     }
 
-    // 4. Action Animations (Mining, Slashing, Placing)
-    if (this.isSwinging) {
-      const speed = this.swingType === 'slash' ? 8.5 : this.swingType === 'place' ? 9.0 : 6.5;
+    // 4. Action Animations (Mining, Slashing, Placing) with Micro Hit-Stop Support
+    if (this.hitStopRemaining > 0) {
+      this.hitStopRemaining -= dt;
+      // Freeze frame: preserve current weapon strike pose during hit-stop
+    } else if (this.isSwinging) {
+      const speed =
+        this.swingType === 'slash'
+          ? (this.slashComboStep === 1 ? 9.8 : this.slashComboStep === 2 ? 8.0 : 8.8)
+          : this.swingType === 'place'
+          ? 9.0
+          : 6.5;
       this.swingProgress += dt * speed;
 
       if (this.swingProgress >= 1.0) {
         this.swingProgress = 0;
         this.isSwinging = false;
       }
+    }
 
+    if (this.isSwinging) {
       const t = this.swingProgress;
       if (this.swingType === 'slash') {
         const slashAngle = Math.sin(t * Math.PI);
-        rotX -= slashAngle * 1.4;
-        rotY += slashAngle * 0.8;
-        rotZ -= slashAngle * 0.4;
-        basePosX -= slashAngle * 0.08;
-        basePosZ -= slashAngle * 0.12;
+        if (this.slashComboStep === 0) {
+          // Tahap 1: Sabetan Cepat Kiri-Kanan (Horizontal Slash with Blade Tilt)
+          rotX -= slashAngle * 1.45;
+          rotY += slashAngle * 1.15;
+          rotZ -= slashAngle * 0.55;
+          basePosX -= slashAngle * 0.14;
+          basePosZ -= slashAngle * 0.12;
+        } else if (this.slashComboStep === 1) {
+          // Tahap 2: Sabetan Silang Bawah-Atas (Ascending Cross-Slash with Speed Boost)
+          rotX -= slashAngle * 1.25;
+          rotY -= slashAngle * 1.25;
+          rotZ += slashAngle * 0.85;
+          basePosX += slashAngle * 0.12;
+          basePosY += slashAngle * 0.12;
+          basePosZ -= slashAngle * 0.16;
+        } else {
+          // Tahap 3: Tusukan Pamungkas Keris (Finisher Thrust with Forward Reach & Spiral Rotation)
+          rotX -= slashAngle * 1.85;
+          rotY += Math.sin(t * Math.PI * 2) * 0.75;
+          rotZ -= slashAngle * 1.05;
+          basePosX -= slashAngle * 0.08;
+          basePosY += slashAngle * 0.08;
+          basePosZ -= slashAngle * 0.32; // Deep forward weapon lunge
+        }
       } else if (this.swingType === 'place') {
         const punch = Math.sin(t * Math.PI);
         basePosZ -= punch * 0.14;

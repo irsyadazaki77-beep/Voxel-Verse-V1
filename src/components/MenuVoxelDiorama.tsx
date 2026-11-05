@@ -31,7 +31,10 @@ export const MenuVoxelDiorama: React.FC = () => {
         failIfMajorPerformanceCaveat: false,
       });
       renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.12;
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFShadowMap;
     } catch (e) {
@@ -39,9 +42,9 @@ export const MenuVoxelDiorama: React.FC = () => {
       return;
     }
 
-    // 2. Scene & Fog (Atmospheric Dark Navy matching UI background)
+    // 2. Scene & Fog (Clear Atmospheric Dark Navy matching UI background)
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x04060c, 0.018);
+    scene.fog = new THREE.FogExp2(0x04060c, 0.0085);
 
     // 3. Perspective Camera
     let currentWidth = window.innerWidth;

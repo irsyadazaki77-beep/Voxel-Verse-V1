@@ -10,6 +10,17 @@ export type ConnectionState =
   | 'RECONNECTING'
   | 'FAILED';
 
+export type MultiplayerErrorReason =
+  | 'TIMEOUT'
+  | 'AUTH_FAILED'
+  | 'SESSION_EXPIRED'
+  | 'RECONNECT_EXHAUSTED'
+  | 'PROTOCOL_MISMATCH'
+  | 'SERVER_UNREACHABLE'
+  | 'BOOTSTRAP_TIMEOUT'
+  | 'USER_CANCELLED'
+  | 'UNKNOWN';
+
 export type NetworkMessageType =
   | 'PLAYER_JOIN'
   | 'PLAYER_LEAVE'
@@ -27,7 +38,9 @@ export type NetworkMessageType =
   | 'INVENTORY_SNAPSHOT'
   | 'TRANSACTION_REJECT'
   | 'BLOCK_CHUNK_DELTA'
-  | 'RECONNECT_REQUEST';
+  | 'RECONNECT_REQUEST'
+  | 'HEARTBEAT_PING'
+  | 'HEARTBEAT_PONG';
 
 export interface BaseNetworkMessage {
   protocolVersion: string;
@@ -99,6 +112,7 @@ export interface CraftRequestMessage extends BaseNetworkMessage {
   recipeId: string;
   quantity?: number;
   stationContext?: string;
+  stationPos?: [number, number, number];
   transactionId?: string;
 }
 
@@ -129,7 +143,7 @@ export interface BlockChunkDeltaMessage extends BaseNetworkMessage {
   type: 'BLOCK_CHUNK_DELTA';
   chunkX: number;
   chunkZ: number;
-  blocks: Array<{ x: number; y: number; z: number; blockType: number; revision: number }>;
+  blocks: Array<{ x: number; y: number; z: number; blockType: number; state?: any; revision: number }>;
 }
 
 export interface ReconnectRequestMessage extends BaseNetworkMessage {
@@ -157,7 +171,8 @@ export interface PlayerBootstrapMessage extends BaseNetworkMessage {
   reputation: Record<string, number>;
   worldSeed: number;
   worldPreset: string;
-  blocks: Array<{ x: number; y: number; z: number; blockType: number; revision: number }>;
+  globalBlockRevision?: number;
+  blocks: Array<{ x: number; y: number; z: number; blockType: number; state?: any; revision: number }>;
   onlinePlayers: Array<{
     sessionId: string;
     playerName: string;
@@ -200,6 +215,17 @@ export interface EntitySnapshotMessage extends BaseNetworkMessage {
   }>;
 }
 
+export interface HeartbeatPingMessage extends BaseNetworkMessage {
+  type: 'HEARTBEAT_PING';
+  clientTimestamp: number;
+}
+
+export interface HeartbeatPongMessage extends BaseNetworkMessage {
+  type: 'HEARTBEAT_PONG';
+  clientTimestamp: number;
+  serverTimestamp: number;
+}
+
 export type NetworkMessagePayload =
   | PlayerJoinMessage
   | PlayerLeaveMessage
@@ -217,7 +243,9 @@ export type NetworkMessagePayload =
   | DamageEventMessage
   | ChatMessageMessage
   | EntitySnapshotMessage
-  | ServerStateSnapshotMessage;
+  | ServerStateSnapshotMessage
+  | HeartbeatPingMessage
+  | HeartbeatPongMessage;
 
 export class NetworkSerializer {
   public static serialize(msg: NetworkMessagePayload): string {

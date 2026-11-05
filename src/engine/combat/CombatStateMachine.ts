@@ -6,6 +6,7 @@ import { ITEM_DEFS } from '../items/ItemRegistry';
 import { WeaponArchetypes, WeaponProfile } from './WeaponArchetypes';
 import { PoiseSystem } from './PoiseSystem';
 import { ArtifactSynergyManager } from '../artifacts/ArtifactSynergyManager';
+import { NusantaraSanctumSilatSubakSystem } from '../systems/NusantaraSanctumSilatSubakSystem';
 
 export type CombatState =
   | 'IDLE'
@@ -166,7 +167,10 @@ export class CombatStateMachine {
 
     const itemDef = heldItem ? ITEM_DEFS[heldItem.itemId] : null;
     const profile = WeaponArchetypes.getProfile(heldItem);
-    const baseSpeed = itemDef?.attackSpeed || (1.0 / (profile.windupTime + profile.activeTime + profile.recoveryTime));
+    const stance = NusantaraSanctumSilatSubakSystem.getActiveStanceDef();
+    const baseSpeed =
+      (itemDef?.attackSpeed || 1.0 / (profile.windupTime + profile.activeTime + profile.recoveryTime)) *
+      stance.attackSpeedMultiplier;
 
     // Scale animation timings based on weapon profile & speed
     const cycleTime = 1.0 / Math.max(0.5, baseSpeed);
@@ -197,17 +201,21 @@ export class CombatStateMachine {
     const itemDef = heldItem ? ITEM_DEFS[heldItem.itemId] : null;
     const profile = WeaponArchetypes.getProfile(heldItem);
     const synergy = ArtifactSynergyManager.getCombinedBonuses();
+    const stance = NusantaraSanctumSilatSubakSystem.getActiveStanceDef();
+    const lakonBonus = NusantaraSanctumSilatSubakSystem.activeLakon === 'LAKON_GATOTKACA' ? 1.25 : 1.0;
+    const mods = heldItem?.modifiers;
 
-    let baseDamage = itemDef?.attackDamage || 1.0;
-    baseDamage *= synergy.damageMultiplier;
+    let baseDamage = (itemDef?.attackDamage || 1.0) + (mods?.damageBonus || 0);
+    baseDamage *= synergy.damageMultiplier * lakonBonus;
 
     // Combo multiplier: Step 0 (1.0x), Step 1 (1.15x), Step 2 Finisher (1.45x)
     let comboMultiplier = 1.0;
     if (this.comboStep === 1) comboMultiplier = 1.15;
     else if (this.comboStep === 2) comboMultiplier = 1.45;
 
-    // Critical Hit condition: Falling jump attack OR sweet-spot spacing OR staggered foe
-    let isCritical = isFallingOrJumping || Math.random() < synergy.critChanceBonus;
+    // Critical Hit condition: Falling jump attack OR sweet-spot spacing OR staggered foe OR Pamor/Mustika/Silat Stance crit bonus
+    const totalCritChance = (synergy.critChanceBonus || 0) + (mods?.critChanceBonus || 0) + stance.critChanceBonus;
+    let isCritical = isFallingOrJumping || Math.random() < totalCritChance;
     let isRiposte = isTargetStaggered;
 
     let critMultiplier = isCritical ? 1.5 : 1.0;
@@ -218,8 +226,11 @@ export class CombatStateMachine {
 
     const totalDamage = Math.round((baseDamage * comboMultiplier * critMultiplier) * 10) / 10;
 
-    // Poise damage calculation
-    let totalPoiseDamage = profile.poiseDamage * synergy.poiseDamageBonus;
+    // Poise damage calculation (including Pamor, Mustika & Silat Stance poise break bonus)
+    let totalPoiseDamage =
+      (profile.poiseDamage + (mods?.poiseDamageBonus || 0)) *
+      synergy.poiseDamageBonus *
+      stance.poiseDamageMultiplier;
     if (this.comboStep === 2) totalPoiseDamage *= 1.4; // Finisher deals heavy poise break
 
     // Knockback force calculation
@@ -235,7 +246,7 @@ export class CombatStateMachine {
       poiseDamage: Math.round(totalPoiseDamage),
       knockback: new THREE.Vector3(0, 0, knockbackStrength),
       comboIndex: this.comboStep,
-      damageType: itemDef?.category === 'weapon' ? 'physical' : 'physical',
+      damageType: mods?.pamorElement === 'surya_api' ? 'fire' : mods?.pamorElement ? 'magic' : 'physical',
       weaponProfile: profile,
     };
   }

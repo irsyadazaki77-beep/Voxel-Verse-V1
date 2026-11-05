@@ -61,7 +61,13 @@ export class FarmingManager {
       return false;
     }
 
-    if (seedItemId === 'seeds_wheat') {
+    if (
+      seedItemId === 'seeds_wheat' ||
+      seedItemId === 'beras_wangi' ||
+      seedItemId === 'subak_terrace_rice' ||
+      seedItemId === 'black_mountain_rice' ||
+      seedItemId === 'dryland_maize'
+    ) {
       plot.cropType = 'wheat';
       plot.growthStage = 0;
       plot.maxGrowthStage = 3;
@@ -71,7 +77,7 @@ export class FarmingManager {
       return true;
     }
 
-    if (seedItemId === 'wild_carrot') {
+    if (seedItemId === 'wild_carrot' || seedItemId === 'potato' || seedItemId === 'valley_sweet_potato') {
       plot.cropType = 'carrot';
       plot.growthStage = 0;
       plot.maxGrowthStage = 1;
@@ -81,7 +87,7 @@ export class FarmingManager {
       return true;
     }
 
-    if (seedItemId === 'crop_herb') {
+    if (seedItemId === 'crop_herb' || seedItemId === 'rendang_spices') {
       plot.cropType = 'herb';
       plot.growthStage = 0;
       plot.maxGrowthStage = 1;
@@ -94,7 +100,7 @@ export class FarmingManager {
     return false;
   }
 
-  // Accelerate growth using bone meal
+  // Accelerate growth using bone meal or bio-fertilizer
   public static applyFertilizer(farmlandPos: [number, number, number], world: VoxelWorld): boolean {
     const [x, y, z] = posToCoord(farmlandPos);
     const key = `${x},${y},${z}`;
@@ -102,7 +108,7 @@ export class FarmingManager {
     if (!plot || !plot.cropType) return false;
 
     if (plot.growthStage < plot.maxGrowthStage) {
-      plot.growthStage = Math.min(plot.maxGrowthStage, plot.growthStage + 1 + (Math.random() > 0.5 ? 1 : 0));
+      plot.growthStage = Math.min(plot.maxGrowthStage, plot.growthStage + 1 + (Math.random() > 0.4 ? 1 : 0));
       plot.growthProgress = 0;
       this.syncCropBlock(plot, world);
       return true;
@@ -113,53 +119,96 @@ export class FarmingManager {
   // Harvest ripe crop from farmland
   public static harvestCrop(
     farmlandPos: [number, number, number],
-    world: VoxelWorld
-  ): { success: boolean; drops: ItemStack[] } {
+    world: VoxelWorld,
+    inventory?: (ItemStack | null)[]
+  ): { success: boolean; drops: ItemStack[]; inventoryFull?: boolean; isSubakBonus?: boolean } {
     const [x, y, z] = posToCoord(farmlandPos);
     const key = `${x},${y},${z}`;
     const plot = this.plots.get(key);
+    const cropBlockAbove = world.getBlock(x, y + 1, z);
 
-    if (!plot || !plot.cropType) {
+    let cropType = plot?.cropType || null;
+    let isMature = plot ? plot.growthStage >= plot.maxGrowthStage : false;
+
+    if (!cropType) {
+      if (cropBlockAbove === BlockType.CROP_WHEAT_3) {
+        cropType = 'wheat';
+        isMature = true;
+      } else if (cropBlockAbove === BlockType.CROP_WHEAT_0 || cropBlockAbove === BlockType.CROP_WHEAT_1 || cropBlockAbove === BlockType.CROP_WHEAT_2) {
+        cropType = 'wheat';
+        isMature = false;
+      } else if (cropBlockAbove === BlockType.CROP_CARROT) {
+        cropType = 'carrot';
+        isMature = true;
+      } else if (cropBlockAbove === BlockType.CROP_HERB) {
+        cropType = 'herb';
+        isMature = true;
+      }
+    }
+
+    if (!cropType) {
       return { success: false, drops: [] };
     }
 
     const drops: ItemStack[] = [];
-    const isMature = plot.growthStage >= plot.maxGrowthStage;
+    const isSubakBonus = isMature && this.checkSubakNearby(x, y, z, world);
 
-    if (plot.cropType === 'wheat') {
+    if (cropType === 'wheat') {
       if (isMature) {
         const wheatCount = 1 + Math.floor(Math.random() * 2); // 1-2 wheat
         const seedCount = 1 + Math.floor(Math.random() * 3); // 1-3 seeds
-        drops.push(InventoryManager.createStack('crop_wheat', wheatCount)!);
-        drops.push(InventoryManager.createStack('seeds_wheat', seedCount)!);
+        const wheatStack = InventoryManager.createStack('crop_wheat', wheatCount) || InventoryManager.createStack('wheat', wheatCount);
+        if (wheatStack) drops.push(wheatStack);
+        const seedStack = InventoryManager.createStack('seeds_wheat', seedCount);
+        if (seedStack) drops.push(seedStack);
         // Subak terrace sacred rice bonus
-        if (this.checkSubakNearby(x, y, z, world)) {
-          drops.push(InventoryManager.createStack('beras_wangi', 1)!);
+        if (isSubakBonus) {
+          const berasStack = InventoryManager.createStack('beras_wangi', 2);
+          if (berasStack) drops.push(berasStack);
         }
       } else {
-        drops.push(InventoryManager.createStack('seeds_wheat', 1)!);
+        const seedStack = InventoryManager.createStack('seeds_wheat', 1);
+        if (seedStack) drops.push(seedStack);
       }
-    } else if (plot.cropType === 'carrot') {
+    } else if (cropType === 'carrot') {
       if (isMature) {
-        drops.push(InventoryManager.createStack('wild_carrot', 2 + Math.floor(Math.random() * 3))!);
+        const carrotStack = InventoryManager.createStack('wild_carrot', 2 + Math.floor(Math.random() * 3));
+        if (carrotStack) drops.push(carrotStack);
+        if (isSubakBonus) {
+          const ubiStack = InventoryManager.createStack('valley_sweet_potato', 1);
+          if (ubiStack) drops.push(ubiStack);
+        }
       } else {
-        drops.push(InventoryManager.createStack('wild_carrot', 1)!);
+        const carrotStack = InventoryManager.createStack('wild_carrot', 1);
+        if (carrotStack) drops.push(carrotStack);
       }
-    } else if (plot.cropType === 'herb') {
+    } else if (cropType === 'herb') {
       if (isMature) {
-        drops.push(InventoryManager.createStack('crop_herb', 2 + Math.floor(Math.random() * 2))!);
+        const herbStack = InventoryManager.createStack('crop_herb', 2 + Math.floor(Math.random() * 2));
+        if (herbStack) drops.push(herbStack);
+        if (isSubakBonus) {
+          const spiceStack = InventoryManager.createStack('rendang_spices', 1);
+          if (spiceStack) drops.push(spiceStack);
+        }
       } else {
-        drops.push(InventoryManager.createStack('crop_herb', 1)!);
+        const herbStack = InventoryManager.createStack('crop_herb', 1);
+        if (herbStack) drops.push(herbStack);
       }
+    }
+
+    if (inventory && !InventoryManager.canFitItems(inventory, drops)) {
+      return { success: false, drops: [], inventoryFull: true };
     }
 
     // Clear crop block above
     world.setBlock(x, y + 1, z, BlockType.AIR);
-    plot.cropType = null;
-    plot.growthStage = 0;
-    plot.growthProgress = 0;
+    if (plot) {
+      plot.cropType = null;
+      plot.growthStage = 0;
+      plot.growthProgress = 0;
+    }
 
-    return { success: true, drops };
+    return { success: true, drops, isSubakBonus };
   }
 
   // Main growth update loop

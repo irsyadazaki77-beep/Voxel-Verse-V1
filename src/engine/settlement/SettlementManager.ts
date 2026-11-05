@@ -516,6 +516,13 @@ export class SettlementManager {
     }
 
     const lines = [...activeSchedule.dialoguePool];
+    const phase = NPCScheduleManager.getSchedulePhase(timeOfDay);
+    if (phase === 'evening' && role !== 'guard') {
+      const buff = NPCScheduleManager.getCulturalGatheringBuff(sId);
+      lines.unshift(`Harmoni senja sedang berlangsung di Pendopo! (${buff.prosperityTitle}). Nikmati alunan kidung dan tabuhan gamelan bersama warga.`);
+    } else if (phase === 'night' && role === 'guard') {
+      lines.unshift('Ronda malam berjalan tertib. Pos gerbang dan pagar batas luar terpantau aman terkendali dari gangguan makhluk bayangan.');
+    }
     
     // Check player-built structures and Leyline power for dynamic dialogue
     const bonuses = this.getSettlementBonus(sId);

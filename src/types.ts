@@ -135,6 +135,21 @@ export enum BlockType {
   BATIK_CARPET_BLOCK = 129,
   STONE_ALANG_PILLAR = 130,
   AETHER_ALTAR_CORE = 131,
+  STARFALL_ORE = 132,
+  BIOLUMINESCENT_CORAL = 133,
+  PEARL_CLAM_BLOCK = 134,
+
+  // Engineering & Automation aliases
+  SENTINEL_TURRET = 91,
+  AUTO_HARVESTER = 88,
+  RESONANCE_NEXUS = 90,
+
+  // Nusantara Candi & Sacred Blocks
+  ANDESITE_CANDI_STONE = 135,
+  MOSSY_CANDI_STONE = 136,
+  CARVED_CANDI_RELIEF = 137,
+  PRISMATIC_CRYSTAL = 138,
+  ANCIENT_ALTAR = 139,
 }
 
 // Nusantara Architecture & Settlement Grammar Styles
@@ -238,7 +253,7 @@ export interface ItemDef {
   iconColor: string;
   description: string;
   blockType?: BlockType;
-  toolType?: 'pickaxe' | 'axe' | 'shovel' | 'hoe' | 'hammer';
+  toolType?: 'pickaxe' | 'axe' | 'shovel' | 'hoe' | 'hammer' | 'fishing_rod' | 'tool';
   tier?: number; // 0: Wood/Stone, 1: Copper/Bronze, 2: Iron/Ferrite, 3: Mythril, 4: Aurum/Aetherium, 5: Ancient
   miningEfficiency?: number;
   attackDamage?: number;
@@ -264,11 +279,20 @@ export interface ItemDef {
   baseValue?: number; // economy credit / barter trade value
 }
 
+export type PamorElement = 'surya_api' | 'bajra_petir' | 'tirta_beku';
+
 export interface ItemModifiers {
   damageBonus?: number;
   miningSpeedBonus?: number;
   defenseBonus?: number;
   durabilityBonus?: number;
+  pamorElement?: PamorElement;
+  pamorName?: string;
+  pamorTier?: number;
+  socketedMustika?: string;
+  mustikaName?: string;
+  critChanceBonus?: number;
+  poiseDamageBonus?: number;
 }
 
 export interface ItemMetadata {
@@ -312,7 +336,8 @@ export type StatusEffectType =
   | 'strength'
   | 'weakness'
   | 'well_fed'
-  | 'heat_exhaustion';
+  | 'heat_exhaustion'
+  | 'water_breathing';
 
 export interface StatusEffect {
   id: StatusEffectType;
@@ -415,7 +440,7 @@ export interface EntityState {
   maxHealth: number;
   damage: number;
   speed: number;
-  aiState: 'idle' | 'wander' | 'roam' | 'alert' | 'investigate' | 'chase' | 'attack' | 'flee' | 'sleep' | 'return' | 'returnHome' | 'dead';
+  aiState: 'idle' | 'wander' | 'roam' | 'alert' | 'investigate' | 'chase' | 'attack' | 'flee' | 'sleep' | 'return' | 'returnHome' | 'patrol' | 'dead';
   targetEntityId?: string;
   targetPos?: [number, number, number];
   faction?: 'player' | 'wildlife' | 'predator' | 'hostile' | 'villager' | 'ancient';
@@ -449,7 +474,7 @@ export interface EntityState {
 }
 
 export interface WeatherState {
-  type: 'clear' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'fog';
+  type: 'clear' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'fog' | 'monsoon_rain' | 'rimba_mist' | 'aether_aurora' | 'volcanic_ash';
   intensity: number; // 0 - 1
   windAngle: number;
   windSpeed: number;
@@ -568,6 +593,7 @@ export interface WorldSaveData {
     machines?: Record<string, any>;
     blueprints?: any[];
   };
+  characterProgression?: any;
 }
 
 // ==========================================
@@ -755,7 +781,7 @@ export interface Waypoint {
   icon?: string;
 }
 
-export type DungeonTheme = 'mine' | 'crypt' | 'crystal' | 'corrupted' | 'volcanic' | 'aether_temple';
+export type DungeonTheme = 'mine' | 'crypt' | 'crystal' | 'corrupted' | 'volcanic' | 'aether_temple' | 'candi_ruins';
 
 export type DungeonRoomType = 'entrance' | 'hallway' | 'combat' | 'puzzle' | 'treasure' | 'secret' | 'boss';
 

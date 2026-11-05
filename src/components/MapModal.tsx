@@ -244,25 +244,66 @@ export const MapModal: React.FC<MapModalProps> = ({
             className="w-full h-full cursor-grab active:cursor-grabbing"
           />
 
+          {/* Floating Layer Filter Bar */}
+          <div className="absolute top-4 left-4 flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-zinc-900/95 border border-zinc-800 shadow-lg text-xs max-w-[82%]">
+            <span className="px-2 py-1 text-amber-300 font-semibold whitespace-nowrap">
+              Prasasti Fast Travel Candi & Desa:
+            </span>
+            {MapManager.getLandmarks().map((lm) => {
+              const dist = Math.round(
+                Math.hypot(lm.pos[0] - playerPos[0], lm.pos[2] - playerPos[2])
+              );
+              return (
+                <button
+                  key={lm.name}
+                  onClick={() => {
+                    const rt = (window as any).__voxelRuntime;
+                    if (rt && rt.player) {
+                      const safeY = rt.world
+                        ? rt.world.getSpawnHeight(lm.pos[0], lm.pos[2]) + 2
+                        : lm.pos[1];
+                      rt.player.position.set(lm.pos[0], safeY, lm.pos[2]);
+                      rt.player.velocity.set(0, 0, 0);
+                      rt.audio?.playAncientGong?.();
+                      rt.particles?.emitBlockBreak?.(
+                        rt.player.position.clone(),
+                        '#fbbf24',
+                        'crystal'
+                      );
+                      onClose();
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 border border-amber-400/30 text-amber-200 font-medium transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                  title={`Teleportasi Instan ke ${lm.name} [${lm.pos[0]}, ${lm.pos[2]}]`}
+                >
+                  <span>{lm.name}</span>
+                  <span className="text-[10px] font-mono tabular-nums text-amber-400/90">
+                    {dist}m
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Floating Map Controls */}
           <div className="absolute top-4 right-4 flex flex-col gap-2 bg-zinc-900/90 border border-zinc-800 p-1.5 rounded-xl shadow-lg">
             <button
               onClick={() => setZoom(prev => Math.min(2.5, prev + 0.25))}
-              className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white"
+              className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
               title="Zoom In"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
             <button
               onClick={() => setZoom(prev => Math.max(0.5, prev - 0.25))}
-              className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white"
+              className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
               title="Zoom Out"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
             <button
               onClick={centerOnPlayer}
-              className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white"
+              className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
               title="Center on Player"
             >
               <RotateCcw className="w-4 h-4" />
@@ -270,33 +311,64 @@ export const MapModal: React.FC<MapModalProps> = ({
           </div>
 
           {/* Coordinates HUD Tag */}
-          <div className="absolute bottom-4 left-4 bg-zinc-900/90 border border-zinc-800 px-3 py-1.5 rounded-lg text-xs font-mono text-zinc-300">
-            Player Pos: <span className="text-cyan-400 font-bold">[{Math.round(playerPos[0])}, {Math.round(playerPos[1])}, {Math.round(playerPos[2])}]</span>
+          <div className="absolute bottom-4 left-4 bg-zinc-900/90 border border-zinc-800 px-3 py-1.5 rounded-lg text-xs font-mono tabular-nums text-zinc-300">
+            Posisi Pemain: <span className="text-cyan-400 font-bold">[{Math.round(playerPos[0])}, {Math.round(playerPos[1])}, {Math.round(playerPos[2])}]</span>
           </div>
         </div>
 
         {/* Waypoint Tray Footer */}
-        <div className="border-t border-zinc-800 bg-zinc-950/80 px-6 py-3 flex items-center justify-between overflow-x-auto">
+        <div className="border-t border-zinc-800 bg-zinc-950/90 px-6 py-3 flex items-center justify-between overflow-x-auto">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Active Beacons:</span>
-            {waypoints.map(wp => (
-              <div
-                key={wp.id}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-zinc-700/60 text-xs"
-              >
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: wp.color }} />
-                <span className="text-zinc-200">{wp.name}</span>
-                <span className="font-mono text-zinc-500 text-[10px]">({Math.round(wp.pos[0])},{Math.round(wp.pos[2])})</span>
-                {wp.id !== 'wp_0' && (
+            <span className="text-xs font-semibold text-zinc-400 whitespace-nowrap">
+              Waypoint Prasasti & Fast Travel:
+            </span>
+            {waypoints.map(wp => {
+              const wpDist = Math.round(
+                Math.hypot(wp.pos[0] - playerPos[0], wp.pos[2] - playerPos[2])
+              );
+              return (
+                <div
+                  key={wp.id}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-zinc-700/60 text-xs whitespace-nowrap"
+                >
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: wp.color }} />
                   <button
-                    onClick={() => MapManager.removeWaypoint(wp.id)}
-                    className="text-zinc-500 hover:text-rose-400 ml-1"
+                    onClick={() => {
+                      const rt = (window as any).__voxelRuntime;
+                      if (rt && rt.player) {
+                        const safeY = rt.world
+                          ? Math.max(wp.pos[1] + 1, rt.world.getSpawnHeight(wp.pos[0], wp.pos[2]) + 1.5)
+                          : wp.pos[1] + 1;
+                        rt.player.position.set(wp.pos[0], safeY, wp.pos[2]);
+                        rt.player.velocity.set(0, 0, 0);
+                        rt.audio?.playAncientGong?.();
+                        rt.particles?.emitBlockBreak?.(
+                          rt.player.position.clone(),
+                          wp.color || '#38bdf8',
+                          'crystal'
+                        );
+                        onClose();
+                      }
+                    }}
+                    className="text-zinc-200 hover:text-amber-300 font-medium cursor-pointer"
+                    title="Klik untuk Fast Travel ke Waypoint Prasasti ini"
                   >
-                    <Trash2 className="w-3 h-3" />
+                    {wp.name}
                   </button>
-                )}
-              </div>
-            ))}
+                  <span className="font-mono tabular-nums text-zinc-400 text-[10px]">
+                    ({Math.round(wp.pos[0])},{Math.round(wp.pos[2])} · {wpDist}m)
+                  </span>
+                  {wp.id !== 'wp_0' && (
+                    <button
+                      onClick={() => MapManager.removeWaypoint(wp.id)}
+                      className="text-zinc-500 hover:text-rose-400 ml-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 

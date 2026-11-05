@@ -2,6 +2,12 @@ import * as THREE from 'three';
 import { GameRuntime } from '../core/GameRuntime';
 import { GraphicsSettings } from '../ui/SettingsManager';
 
+export type DevicePerformanceProfile =
+  | 'desktop_high'
+  | 'laptop_balanced'
+  | 'mobile_touch'
+  | 'software_webgl';
+
 export class RenderQualityManager {
   private runtime: GameRuntime;
 
@@ -9,6 +15,11 @@ export class RenderQualityManager {
   public targetResolution = { width: 0, height: 0 };
   public currentDpr = 1.0;
   public dynamicScaleMultiplier = 1.0;
+
+  // Multi-Stage Smart Quality Governor state
+  public deviceProfile: DevicePerformanceProfile = 'desktop_high';
+  public qualityStage: 0 | 1 | 2 | 3 = 0;
+  public shadowCadence: number = 3;
 
   // Profiler state
   public isCpuBound = false;
@@ -18,30 +29,72 @@ export class RenderQualityManager {
     return this.dynamicScaleMultiplier;
   }
 
-  public get state(): { bottleneck: 'CPU' | 'GPU' | 'BALANCED' } {
+  public get state(): {
+    bottleneck: 'CPU' | 'GPU' | 'BALANCED';
+    qualityStage: number;
+    deviceProfile: DevicePerformanceProfile;
+  } {
     let bottleneck: 'CPU' | 'GPU' | 'BALANCED' = 'BALANCED';
     if (this.isGpuBound) bottleneck = 'GPU';
     else if (this.isCpuBound) bottleneck = 'CPU';
-    return { bottleneck };
+    return {
+      bottleneck,
+      qualityStage: this.qualityStage,
+      deviceProfile: this.deviceProfile,
+    };
   }
 
-  private lastFrameTimesMs: number[] = [];
-  private lastRenderTimesMs: number[] = [];
+  // Zero-GC fixed-size Float32Array ring buffers for frame & render times
   private readonly frameTimeWindowSize = 30;
+  private readonly frameTimesRing = new Float32Array(30);
+  private readonly renderTimesRing = new Float32Array(30);
+  private ringCursor = 0;
+  private ringCount = 0;
 
   private lastScaleChangeTime = 0;
   private lastEvaluationTime = 0;
   private readonly evaluationIntervalMs = 600; // Evaluate every 600ms
-  private readonly cooldownMs = 2000; // Wait 2.0s between dynamic resolution changes to prevent flickering
+  private readonly cooldownMs = 1800; // Wait 1.8s between dynamic quality transitions to prevent flickering
 
   // Hysteresis counters
   private consecutiveGpuStressCycles = 0;
   private consecutiveHeadroomCycles = 0;
-  private readonly requiredGpuStressCycles = 3; // Must be GPU-bound for 3 consecutive checks (1.8s) before dropping resolution
-  private readonly requiredHeadroomCycles = 3;   // Must have clean headroom for 3 consecutive checks before scaling back up
+  private readonly requiredGpuStressCycles = 2; // 2 consecutive checks (~1.2s) before stepping down stage
+  private readonly requiredHeadroomCycles = 3;  // 3 consecutive checks (~1.8s) before recovering stage
 
   constructor(runtime: GameRuntime) {
     this.runtime = runtime;
+    this.deviceProfile = this.detectDeviceProfile();
+    this.shadowCadence = this.getBaseShadowCadence();
+  }
+
+  private detectDeviceProfile(): DevicePerformanceProfile {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      return 'desktop_high';
+    }
+    if ((window as any).__voxelSoftwareRenderer) {
+      return 'software_webgl';
+    }
+    const isTouchDevice =
+      (navigator.maxTouchPoints && navigator.maxTouchPoints > 1) ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+    if (isTouchDevice) {
+      return 'mobile_touch';
+    }
+    const cores = navigator.hardwareConcurrency || 4;
+    const deviceMem = (navigator as any).deviceMemory || 8;
+    const dpr = window.devicePixelRatio || 1;
+    if (cores <= 6 || deviceMem <= 4 || dpr >= 2.0) {
+      return 'laptop_balanced';
+    }
+    return 'desktop_high';
+  }
+
+  private getBaseShadowCadence(): number {
+    if (this.deviceProfile === 'software_webgl') return 6;
+    if (this.deviceProfile === 'mobile_touch') return 4;
+    if (this.deviceProfile === 'laptop_balanced') return 3;
+    return 2;
   }
 
   public calculatePixelBudget(
@@ -89,34 +142,42 @@ export class RenderQualityManager {
     let calculatedDpr = 1.0;
 
     if (useDirectPixels) {
-      // desiredPixels / viewportPixels => effective scale
       const desiredPixels = desiredWidth * desiredHeight;
       calculatedDpr = Math.sqrt(desiredPixels / viewportPixels);
     } else {
-      // Native or Auto: base on devicePixelRatio capped by preset
       calculatedDpr = deviceDpr;
     }
 
-    // DPR clamps per preset
-    let minDpr = 0.5;
+    // Device & Preset-aware DPR clamps
+    let minDpr = 0.55;
     let maxDpr = 2.0;
 
     if (settings.preset === 'low') {
       minDpr = 0.5;
       maxDpr = 1.0;
     } else if (settings.preset === 'medium') {
-      minDpr = 0.75;
+      minDpr = 0.7;
       maxDpr = 1.25;
     } else if (settings.preset === 'high') {
-      minDpr = 0.9;
-      maxDpr = 2.0;
+      minDpr = 0.85;
+      maxDpr = 1.75;
     } else if (settings.preset === 'ultra') {
-      minDpr = 1.0;
+      minDpr = 0.9;
       maxDpr = 2.0;
     }
 
+    // Cap high-DPR mobile/Retina screens in auto mode so fill-rate never bottlenecks 60 FPS
+    if (resMode === 'auto') {
+      if (this.deviceProfile === 'mobile_touch') {
+        maxDpr = Math.min(maxDpr, 1.25);
+      } else if (this.deviceProfile === 'laptop_balanced') {
+        maxDpr = Math.min(maxDpr, 1.5);
+      }
+    }
+
     const customScale = settings.renderScale || 1.0;
-    const finalRawDpr = calculatedDpr * customScale * this.dynamicScaleMultiplier;
+    const turboMultiplier = settings.turboFpsMode ? 0.92 : 1.0;
+    const finalRawDpr = calculatedDpr * customScale * this.dynamicScaleMultiplier * turboMultiplier;
     const finalDpr = Math.max(minDpr, Math.min(maxDpr, finalRawDpr));
 
     return {
@@ -128,6 +189,10 @@ export class RenderQualityManager {
 
   public updateQualitySettings(settings: GraphicsSettings) {
     if (!this.runtime.renderer) return;
+
+    if ((window as any).__voxelSoftwareRenderer) {
+      this.deviceProfile = 'software_webgl';
+    }
 
     const winW = typeof window !== 'undefined' ? window.innerWidth : 1920;
     const winH = typeof window !== 'undefined' ? window.innerHeight : 1080;
@@ -142,15 +207,41 @@ export class RenderQualityManager {
       this.runtime.renderer.outputColorSpace = THREE.SRGBColorSpace;
     }
 
+    // Sync adaptive shadow cadence with SkyEnvironment
+    const effectiveCadence = settings.turboFpsMode
+      ? Math.max(4, this.shadowCadence + 1)
+      : this.shadowCadence;
+    this.runtime.sky?.setShadowCadence(effectiveCadence);
+
     if (this.runtime.renderPipeline) {
-      this.runtime.renderPipeline.updateSettings(settings, winW, winH);
+      // Multi-stage Smart Quality Governor:
+      // Stage 0: Full native quality
+      // Stage 1: Throttled shadow cadence + reduced bloom buffer
+      // Stage 2+: Sub-native DPR + boosted Contrast-Adaptive Sharpening (CAS) so edges remain razor-sharp
+      const isScaledDown = this.dynamicScaleMultiplier < 0.98 || settings.turboFpsMode;
+      const scaleDeficit = Math.max(0, 1.0 - this.dynamicScaleMultiplier);
+      const effectiveSettings: GraphicsSettings = isScaledDown
+        ? {
+            ...settings,
+            sharpening: true,
+            sharpenStrength: Math.min(
+              0.5,
+              (settings.sharpenStrength ?? 0.26) +
+                scaleDeficit * 0.48 +
+                (settings.turboFpsMode ? 0.08 : 0)
+            ),
+          }
+        : settings;
+      this.runtime.renderPipeline.updateSettings(effectiveSettings, winW, winH);
     }
   }
 
   public trackFrameTime(totalFrameMs: number, renderMs: number, settings: GraphicsSettings): void {
     if (!settings.dynamicResolution) {
-      if (this.dynamicScaleMultiplier !== 1.0) {
+      if (this.dynamicScaleMultiplier !== 1.0 || this.qualityStage !== 0) {
         this.dynamicScaleMultiplier = 1.0;
+        this.qualityStage = 0;
+        this.shadowCadence = this.getBaseShadowCadence();
         this.updateQualitySettings(settings);
       }
       this.isCpuBound = false;
@@ -158,35 +249,46 @@ export class RenderQualityManager {
       return;
     }
 
-    this.lastFrameTimesMs.push(totalFrameMs);
-    this.lastRenderTimesMs.push(renderMs);
-    if (this.lastFrameTimesMs.length > this.frameTimeWindowSize) {
-      this.lastFrameTimesMs.shift();
-      this.lastRenderTimesMs.shift();
+    this.frameTimesRing[this.ringCursor] = totalFrameMs;
+    this.renderTimesRing[this.ringCursor] = renderMs;
+    this.ringCursor = (this.ringCursor + 1) % this.frameTimeWindowSize;
+    if (this.ringCount < this.frameTimeWindowSize) {
+      this.ringCount++;
     }
 
     const now = performance.now();
     if (now - this.lastEvaluationTime < this.evaluationIntervalMs) return;
     this.lastEvaluationTime = now;
 
-    if (this.lastFrameTimesMs.length < 15) return;
+    if (this.ringCount < 15) return;
 
-    const avgTotal = this.lastFrameTimesMs.reduce((a, b) => a + b, 0) / this.lastFrameTimesMs.length;
-    const avgRender = this.lastRenderTimesMs.reduce((a, b) => a + b, 0) / this.lastRenderTimesMs.length;
+    let sumTotal = 0;
+    let sumRender = 0;
+    for (let i = 0; i < this.ringCount; i++) {
+      sumTotal += this.frameTimesRing[i];
+      sumRender += this.renderTimesRing[i];
+    }
+    const avgTotal = sumTotal / this.ringCount;
+    const avgRender = sumRender / this.ringCount;
     const cpuSimMs = Math.max(0, avgTotal - avgRender);
     const targetFps = settings.targetFps || 60;
     const targetBudgetMs = 1000 / targetFps;
 
     // Accurate CPU vs GPU bottleneck categorization
-    // If CPU simulation dominates total time, reducing render scale does not fix FPS and harms visuals
-    this.isCpuBound = avgTotal > targetBudgetMs * 1.08 && (cpuSimMs > avgRender * 1.15 || cpuSimMs > targetBudgetMs * 0.45);
-    this.isGpuBound = avgRender > targetBudgetMs * 0.70 && avgRender >= cpuSimMs;
+    this.isCpuBound =
+      avgTotal > targetBudgetMs * 1.08 &&
+      (cpuSimMs > avgRender * 1.15 || cpuSimMs > targetBudgetMs * 0.45);
+    this.isGpuBound = avgRender > targetBudgetMs * 0.68 && avgRender >= cpuSimMs;
 
     // Update hysteresis streak counters
-    if (avgTotal > targetBudgetMs * 1.12 && this.isGpuBound && !this.isCpuBound) {
+    if (avgTotal > targetBudgetMs * 1.1 && (this.isGpuBound || avgTotal > targetBudgetMs * 1.25)) {
       this.consecutiveGpuStressCycles++;
       this.consecutiveHeadroomCycles = 0;
-    } else if (avgTotal < targetBudgetMs * 0.82 && avgRender < targetBudgetMs * 0.52 && this.dynamicScaleMultiplier < 1.0) {
+    } else if (
+      avgTotal < targetBudgetMs * 0.82 &&
+      avgRender < targetBudgetMs * 0.52 &&
+      (this.dynamicScaleMultiplier < 1.0 || this.qualityStage > 0)
+    ) {
       this.consecutiveHeadroomCycles++;
       this.consecutiveGpuStressCycles = 0;
     } else {
@@ -194,34 +296,55 @@ export class RenderQualityManager {
       this.consecutiveHeadroomCycles = Math.max(0, this.consecutiveHeadroomCycles - 1);
     }
 
-    // Cooldown check to prevent rapid flickering / oscillation
     if (now - this.lastScaleChangeTime < this.cooldownMs) return;
 
-    let scaleDelta = 0;
+    const baseCadence = this.getBaseShadowCadence();
 
-    // Only scale down if verified GPU stress persists over multiple evaluation cycles (hysteresis)
+    // Multi-stage step-down: first throttle shadow update cadence (Stage 1) before sacrificing pixel resolution (Stages 2-3)
     if (this.consecutiveGpuStressCycles >= this.requiredGpuStressCycles) {
-      scaleDelta = -0.05;
       this.consecutiveGpuStressCycles = 0;
-    } else if (this.consecutiveHeadroomCycles >= this.requiredHeadroomCycles) {
-      scaleDelta = +0.02; // Smooth gradual recovery
-      this.consecutiveHeadroomCycles = 0;
-    }
 
-    if (scaleDelta !== 0) {
-      // Preset-aware floor for minimum scale to preserve High visual fidelity
-      let minScale = 0.60;
-      if (settings.preset === 'high') minScale = 0.85;
-      else if (settings.preset === 'ultra') minScale = 0.90;
-      else if (settings.preset === 'medium') minScale = 0.75;
-      else if (settings.preset === 'low') minScale = 0.60;
-
-      const newScale = Math.max(minScale, Math.min(1.0, this.dynamicScaleMultiplier + scaleDelta));
-      if (Math.abs(newScale - this.dynamicScaleMultiplier) >= 0.015) {
-        this.dynamicScaleMultiplier = newScale;
+      if (this.qualityStage === 0) {
+        this.qualityStage = 1;
+        this.shadowCadence = Math.min(6, baseCadence + 2);
         this.lastScaleChangeTime = now;
         this.updateQualitySettings(settings);
+        return;
       }
+
+      this.qualityStage = Math.min(3, this.qualityStage + 1) as 0 | 1 | 2 | 3;
+      this.shadowCadence = Math.min(6, baseCadence + this.qualityStage);
+
+      let minScale = 0.65;
+      if (settings.preset === 'ultra') minScale = 0.88;
+      else if (settings.preset === 'high') minScale = 0.82;
+      else if (settings.preset === 'medium') minScale = 0.74;
+      else if (settings.preset === 'low') minScale = 0.62;
+
+      const newScale = Math.max(minScale, this.dynamicScaleMultiplier - 0.05);
+      if (Math.abs(newScale - this.dynamicScaleMultiplier) >= 0.015) {
+        this.dynamicScaleMultiplier = newScale;
+      }
+      this.lastScaleChangeTime = now;
+      this.updateQualitySettings(settings);
+    } else if (this.consecutiveHeadroomCycles >= this.requiredHeadroomCycles) {
+      this.consecutiveHeadroomCycles = 0;
+
+      if (this.dynamicScaleMultiplier < 1.0) {
+        const newScale = Math.min(1.0, this.dynamicScaleMultiplier + 0.025);
+        this.dynamicScaleMultiplier = newScale;
+        if (newScale >= 0.99) {
+          this.dynamicScaleMultiplier = 1.0;
+          this.qualityStage = 1;
+        }
+      } else if (this.qualityStage > 0) {
+        this.qualityStage = Math.max(0, this.qualityStage - 1) as 0 | 1 | 2 | 3;
+      }
+
+      this.shadowCadence =
+        this.qualityStage === 0 ? baseCadence : Math.min(6, baseCadence + this.qualityStage);
+      this.lastScaleChangeTime = now;
+      this.updateQualitySettings(settings);
     }
   }
 

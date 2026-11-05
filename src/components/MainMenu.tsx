@@ -495,9 +495,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
                   {/* Nusantara Heritage Mode */}
                   <button
                     onClick={onEnterHeritageMode}
-                    className="group w-full py-3.5 bg-sky-950/40 hover:bg-sky-900/60 text-sky-300 rounded-2xl font-bold text-sm border border-sky-400/30 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] hover:-translate-y-0.5 shadow-lg shadow-sky-500/10 hover:shadow-sky-400/20 animate-pulse"
+                    className="group w-full py-3.5 bg-sky-950/35 hover:bg-sky-900/50 text-sky-300 rounded-2xl font-bold text-sm border border-sky-400/20 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] hover:-translate-y-0.5 shadow-lg shadow-black/20"
                   >
-                    <Compass className="w-4 h-4 text-sky-400 animate-spin-slow" />
+                    <Compass className="w-4 h-4 text-sky-400 transition-transform group-hover:rotate-45" />
                     <span className="tracking-wide">Nusantara Heritage Mode</span>
                   </button>
 

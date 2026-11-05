@@ -708,6 +708,72 @@ export class CreatureMaterialFactory {
         };
       }
 
+      case 'naga_antaboga': {
+        return {
+          body: new THREE.MeshStandardMaterial({ color: 0x047857, roughness: 0.35, metalness: 0.45 }), // emerald dragon scales
+          accent: new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.2, metalness: 0.85, emissive: 0xb45309, emissiveIntensity: 0.65 }), // sacred golden prada crown & dorsal crest
+          belly: new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.2, metalness: 0.55, emissive: 0xe11d48, emissiveIntensity: 0.95 }), // magma-aether glowing underbelly
+          horn: new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.2, metalness: 0.85 }), // golden meru horns & whiskers
+          eye: new THREE.MeshBasicMaterial({ color: 0x34d399 }), // luminous jade dragon eyes
+          limb: new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.45, metalness: 0.35 }),
+        };
+      }
+
+      case 'harimau_sumatera': {
+        return {
+          body: new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.72, metalness: 0.1 }), // vibrant Sumatran orange coat
+          accent: new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85, metalness: 0.05 }), // bold black tiger stripes
+          belly: new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.8, metalness: 0.05 }), // cream underbelly & cheek ruff
+          horn: new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3, metalness: 0.6 }), // golden collar & fangs
+          eye: new THREE.MeshBasicMaterial({ color: 0xfbbf24 }), // piercing amber eyes
+          limb: new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.75, metalness: 0.1 }),
+        };
+      }
+
+      case 'komodo_purba': {
+        return {
+          body: new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.88, metalness: 0.18 }), // rugged volcanic basalt scales
+          accent: new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.35, metalness: 0.4, emissive: 0x047857, emissiveIntensity: 0.45 }), // emerald osteoderm ridge scutes
+          belly: new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.9, metalness: 0.1 }),
+          horn: new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.3, metalness: 0.2, emissive: 0xbe123c, emissiveIntensity: 0.5 }), // forked sensory tongue & claws
+          eye: new THREE.MeshBasicMaterial({ color: 0xf59e0b }),
+          limb: new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.9, metalness: 0.15 }),
+        };
+      }
+
+      case 'cenderawasih_emas': {
+        return {
+          body: new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.35, metalness: 0.4, emissive: 0xd97706, emissiveIntensity: 0.35 }), // luminous golden plumage
+          accent: new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.25, metalness: 0.5, emissive: 0x059669, emissiveIntensity: 0.5 }), // iridescent emerald throat & tail plumes
+          belly: new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.5, metalness: 0.2 }), // crimson breast band
+          horn: new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.6 }), // sky-blue beak
+          eye: new THREE.MeshBasicMaterial({ color: 0xfef08a }),
+          limb: new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5, metalness: 0.3 }),
+        };
+      }
+
+      case 'garuda_kencana': {
+        return {
+          body: new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.4, metalness: 0.35 }), // royal crimson chest & mantle
+          accent: new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.22, metalness: 0.85, emissive: 0xd97706, emissiveIntensity: 0.45 }), // golden prada wings & mahkota
+          belly: new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.15, metalness: 0.9, emissive: 0x0284c7, emissiveIntensity: 0.8 }), // aether heart gem
+          horn: new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.2, metalness: 0.85 }), // golden raptor beak & talons
+          eye: new THREE.MeshBasicMaterial({ color: 0x38bdf8 }),
+          limb: new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.75 }),
+        };
+      }
+
+      case 'buto_ijo_colossus': {
+        return {
+          body: new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.65, metalness: 0.2 }), // emerald jade giant skin
+          accent: new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.22, metalness: 0.85, emissive: 0xb45309, emissiveIntensity: 0.55 }), // golden Kala crown & armbands
+          belly: new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.45, metalness: 0.3, emissive: 0x991b1b, emissiveIntensity: 0.45 }), // royal crimson Poleng腰 sash & core
+          horn: new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5, metalness: 0.75 }), // dark spiked iron Gada Gempa club
+          eye: new THREE.MeshBasicMaterial({ color: 0xfef08a }), // bulging golden-red raksasa eyes
+          limb: new THREE.MeshStandardMaterial({ color: 0x047857, roughness: 0.7, metalness: 0.18 }),
+        };
+      }
+
       default:
         return this.createPaletteForType('stag', variant);
     }

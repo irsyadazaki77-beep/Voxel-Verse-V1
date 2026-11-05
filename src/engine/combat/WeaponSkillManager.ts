@@ -4,6 +4,9 @@ import { GameEventBus } from '../events/GameEventBus';
 import type { GameRuntime } from '../core/GameRuntime';
 import * as THREE from 'three';
 import { PoiseSystem } from './PoiseSystem';
+import { NusantaraSanctumSilatSubakSystem } from '../systems/NusantaraSanctumSilatSubakSystem';
+import { CharacterProgressionManager } from '../progression/CharacterProgressionManager';
+import { WeaponArchetypes } from './WeaponArchetypes';
 
 export interface WeaponSkillDef {
   id: string;
@@ -55,6 +58,18 @@ export class WeaponSkillManager {
         staminaCost: 22,
         icon: '⚡',
         color: '#38bdf8',
+      };
+    }
+
+    if (id.includes('gada_pusaka_buto_ijo') || id.includes('gada')) {
+      return {
+        id: 'gada_gempa_buto_ijo',
+        name: 'Hantaman Gada Gempa',
+        description: 'Menghantamkan gada raksasa Buto Ijo ke bumi, menciptakan gelombang kejut 360° penghancur Poise.',
+        cooldownMax: 5.5,
+        staminaCost: 26,
+        icon: '👹',
+        color: '#10b981',
       };
     }
 
@@ -117,6 +132,21 @@ export class WeaponSkillManager {
     const player = runtime.player;
     if (!player) return false;
 
+    // If Tenaga Dalam is at 100%, pressing [R] unleashes the active Ajian Sakti Pusaka first!
+    if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100 && runtime.stats) {
+      const unleashed = NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
+        runtime.entities,
+        player,
+        runtime.stats,
+        runtime.audio,
+        runtime.particles
+      );
+      if (unleashed) {
+        player.triggerSwing();
+        return true;
+      }
+    }
+
     const activeItem = runtime.getActiveHotbarItem();
     const skill = this.getSkillForWeapon(activeItem);
 
@@ -134,9 +164,13 @@ export class WeaponSkillManager {
       runtime.stats.stamina -= skill.staminaCost;
     }
 
-    // Set cooldown
-    this.cooldownRemaining = skill.cooldownMax;
+    const weaponCat = WeaponArchetypes.getProfile(activeItem).category;
+    const progBonuses = CharacterProgressionManager.getComputedBonuses(weaponCat);
+
+    // Set cooldown scaled by Karsa & Jawara Keystone
+    this.cooldownRemaining = Math.max(1.2, skill.cooldownMax * progBonuses.skillCooldownMultiplier);
     this.activeSkill = skill;
+    CharacterProgressionManager.addWeaponMasteryXp(weaponCat, 18);
 
     // Trigger visual and auditory feedback
     player.triggerSwing();
@@ -152,10 +186,10 @@ export class WeaponSkillManager {
       // Radial sweep attack on nearby hostiles
       const radius = 6.0;
       let hitCount = 0;
+      const dmg = Math.round(45 * progBonuses.skillDamageMultiplier);
       runtime.entities.entities.forEach((entity, id) => {
         const dist = player.position.distanceTo(entity.mesh.position);
         if (dist <= radius) {
-          const dmg = 45;
           runtime.entities.attackEntity(id, dmg, player.position, true, 2, 1.4, 60);
           hitCount++;
         }
@@ -185,22 +219,25 @@ export class WeaponSkillManager {
         message: 'Tusukan kilat melesat menembus barisan pertahanan!',
         type: 'info',
       });
-    } else if (skill.id === 'axe_badai_remuk') {
+    } else if (skill.id === 'axe_badai_remuk' || skill.id === 'gada_gempa_buto_ijo') {
       runtime.audio.playBlockHit('stone');
+      runtime.audio.playAncientGong();
       runtime.audio.playTone(320, 0.25);
-      player.applyScreenShake(0.65);
+      player.applyScreenShake(0.75);
       // Ground slam
-      const radius = 5.5;
+      const radius = skill.id === 'gada_gempa_buto_ijo' ? 7.2 : 5.5;
+      const dmg = skill.id === 'gada_gempa_buto_ijo' ? 88 : 62;
       runtime.entities.entities.forEach((entity, id) => {
         const dist = player.position.distanceTo(entity.mesh.position);
         if (dist <= radius) {
-          runtime.entities.attackEntity(id, 62, player.position, true, 0, 1.2, 90);
-          PoiseSystem.applyPoiseDamage(id, 90);
+          runtime.entities.attackEntity(id, dmg, player.position, true, 0, 1.4, 115);
+          PoiseSystem.applyPoiseDamage(id, 115);
         }
       });
+      NusantaraSanctumSilatSubakSystem.addTenagaDalam(20);
       GameEventBus.emit('NOTIFICATION_SHOW', {
-        title: `🔥 ${skill.name}`,
-        message: 'Hantaman tanah meremukkan poise dan perisai musuh!',
+        title: `👹 ${skill.name}`,
+        message: 'Gelombang gempa meremukkan tanah dan menghancurkan Poise musuh di sekitar!',
         type: 'danger',
       });
     } else {

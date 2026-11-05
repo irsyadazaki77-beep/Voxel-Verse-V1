@@ -9,6 +9,11 @@ export interface TransportStats {
   pingMs: number;
   simulatedJitterMs: number;
   simulatedPacketLossRate: number;
+  bytesPerSecondSent?: number;
+  bytesPerSecondReceived?: number;
+  packetsPerSecondSent?: number;
+  packetsPerSecondReceived?: number;
+  packetLossPercent?: number;
 }
 
 export interface NetworkTransport {
@@ -35,6 +40,11 @@ export class LocalLoopbackTransport implements NetworkTransport {
     pingMs: 15,
     simulatedJitterMs: 5,
     simulatedPacketLossRate: 0,
+    bytesPerSecondSent: 0,
+    bytesPerSecondReceived: 0,
+    packetsPerSecondSent: 0,
+    packetsPerSecondReceived: 0,
+    packetLossPercent: 0,
   };
 
   public async connect(address = 'local://loopback'): Promise<boolean> {
@@ -79,6 +89,17 @@ export class LocalLoopbackTransport implements NetworkTransport {
 
       const deserialized = NetworkSerializer.deserialize(json);
       if (deserialized) {
+        if (deserialized.type === 'HEARTBEAT_PING') {
+          const pongMsg: NetworkMessagePayload = {
+            protocolVersion: deserialized.protocolVersion,
+            type: 'HEARTBEAT_PONG',
+            clientTimestamp: deserialized.clientTimestamp,
+            serverTimestamp: Date.now(),
+            timestamp: Date.now(),
+          };
+          this.messageListeners.forEach(cb => cb(pongMsg));
+          return;
+        }
         this.messageListeners.forEach(cb => cb(deserialized));
       }
     }, Math.max(0, delay));

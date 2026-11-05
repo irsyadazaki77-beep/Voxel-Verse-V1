@@ -1,7 +1,7 @@
 // Priority-Driven Centralized Game Notification Engine
 import { GameEventBus, GameEventType, GameEventPayloads } from '../events/GameEventBus';
 
-export type NotificationPriority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+export type NotificationPriority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'NORMAL' | 'LOW';
 
 export interface GameNotification {
   id: string;
@@ -231,7 +231,7 @@ export class NotificationManager {
     this.notifications.unshift(newNotif);
     if (this.notifications.length > 5) {
       this.notifications.sort((a, b) => {
-        const pOrder: Record<NotificationPriority, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+        const pOrder: Record<NotificationPriority, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, NORMAL: 2, LOW: 1 };
         return pOrder[b.priority] - pOrder[a.priority];
       });
       this.notifications = this.notifications.slice(0, 5);

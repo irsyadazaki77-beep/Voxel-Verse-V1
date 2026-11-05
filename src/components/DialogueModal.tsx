@@ -2,9 +2,11 @@
 import React, { useState } from 'react';
 import { EntityState, ItemStack } from '../types';
 import { CraftingSystem } from '../engine/items/CraftingSystem';
+import { InventoryManager } from '../engine/items/InventoryManager';
 import { ITEM_DEFS } from '../engine/items/ItemRegistry';
 import { SettlementManager } from '../engine/settlement/SettlementManager';
 import { NPCScheduleManager, NPCRoleType } from '../engine/settlement/NPCScheduleManager';
+import { NotificationManager } from '../engine/ui/NotificationManager';
 
 interface DialogueModalProps {
   entity: EntityState;
@@ -54,16 +56,66 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
     scheduleDescription = sched.activityDescription;
   }
 
+  // Enrich Floating Market (boat_trader) & Merchant with Jamu, Prasasti & Lontar Arsitek offers
+  const enrichedTrades = [...trades];
+  if (npcRole === 'boat_trader' || npcRole === 'merchant') {
+    if (!enrichedTrades.some((t) => t.receive.itemId === 'jamu_kunyit_asam')) {
+      enrichedTrades.push({
+        give: { itemId: 'wheat', count: 2 },
+        receive: { itemId: 'jamu_kunyit_asam', count: 2 },
+      });
+    }
+    if (!enrichedTrades.some((t) => t.receive.itemId === 'rendang_pusaka_minang')) {
+      enrichedTrades.push({
+        give: { itemId: 'cooked_meat', count: 2 },
+        receive: { itemId: 'rendang_pusaka_minang', count: 2 },
+      });
+    }
+    if (!enrichedTrades.some((t) => t.receive.itemId === 'prasasti_harta_nusantara')) {
+      enrichedTrades.push({
+        give: { itemId: 'coastal_pearl', count: 1 },
+        receive: { itemId: 'prasasti_harta_nusantara', count: 1 },
+      });
+    }
+  }
+
+  const [isRecruited, setIsRecruited] = useState<boolean>(!!(entity as any).isRecruitedGuard);
+  const [companionCmd, setCompanionCmd] = useState<'FOLLOW' | 'STAY'>((entity.command as any) === 'STAY' ? 'STAY' : 'FOLLOW');
+
+  const handleRecruitToggle = (cmd: 'FOLLOW' | 'STAY') => {
+    const rt = (window as any).__voxelRuntime;
+    const liveEntry = rt?.entities?.entities?.get(entity.id);
+    const targetState = liveEntry ? liveEntry.state : entity;
+    (targetState as any).isRecruitedGuard = true;
+    targetState.isTamed = true;
+    targetState.command = cmd;
+    targetState.damage = Math.max(targetState.damage || 0, 26);
+    targetState.speed = Math.max(targetState.speed || 1.5, 3.8);
+    setIsRecruited(true);
+    setCompanionCmd(cmd);
+    rt?.audio?.playGamelanSaron(4);
+    NotificationManager.push({
+      title: cmd === 'FOLLOW' ? `🛡️ ${npcName} Direkrut Mengawal!` : `📍 ${npcName} Berjaga di Pos`,
+      message:
+        cmd === 'FOLLOW'
+          ? `${npcName} kini mengikuti Anda dan otomatis menyerang monster atau Boss di sekitar!`
+          : `${npcName} akan berjaga mempertahankan titik ini dari serangan monster.`,
+      priority: 'HIGH',
+      colorTheme: 'emerald',
+      durationMs: 3400,
+    });
+  };
+
   const handleTrade = (trade: { give: { itemId: string; count: number }; receive: { itemId: string; count: number } }) => {
     // Check if player has required give item
     const userCount = inventory.reduce(
-      (acc, s) => (s && s.itemId === trade.give.itemId ? acc + s.count : acc),
+      (acc, s) => (acc + (s && s.itemId === trade.give.itemId ? s.count : 0)),
       0
     );
     if (userCount < trade.give.count) return;
 
-    // Deduct give item
-    const newInv = [...inventory];
+    // Deep-clone inventory slots for atomic transaction
+    const newInv = inventory.map((s) => (s ? { ...s } : null));
     let rem = trade.give.count;
     for (let i = 0; i < newInv.length; i++) {
       const slot = newInv[i];
@@ -76,8 +128,18 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
       }
     }
 
-    // Add receive item
-    CraftingSystem.addItem(newInv, trade.receive.itemId, trade.receive.count);
+    if (rem > 0) return;
+
+    // Verify and add receive item without overflow loss
+    if (!InventoryManager.canFitItems(newInv, [{ itemId: trade.receive.itemId, count: trade.receive.count }])) {
+      return;
+    }
+    const stack = InventoryManager.createStack(trade.receive.itemId, trade.receive.count);
+    if (!stack) return;
+    const addRes = InventoryManager.addItem(newInv, stack);
+    if (addRes.remainingCount > 0) {
+      return;
+    }
     setInventory(newInv);
   };
 
@@ -232,15 +294,61 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
           )}
         </div>
 
+        {/* NPC Companion / Guard Recruitment Panel */}
+        <div className="p-3.5 bg-emerald-500/10 rounded-xl border border-emerald-500/25 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🛡️</span>
+              <div>
+                <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider block">
+                  Pengawal & Pendamping Ekspedisi Desa
+                </span>
+                <span className="text-[10px] text-white/60">
+                  {isRecruited
+                    ? `Status Aktif: ${companionCmd === 'FOLLOW' ? 'Mengawal & Menyerang Musuh (DMG 26)' : 'Berjaga di Titik Ini'}`
+                    : 'Ajak warga/prajurit ini mengawal perjalanan & membantu melawan Boss Naga'}
+                </span>
+              </div>
+            </div>
+            {isRecruited && (
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
+                DIREKRUT
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleRecruitToggle('FOLLOW')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                isRecruited && companionCmd === 'FOLLOW'
+                  ? 'bg-emerald-500 text-slate-950 shadow-lg'
+                  : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/30'
+              }`}
+            >
+              ⚔️ Rekrut & Ikuti Saya
+            </button>
+            <button
+              onClick={() => handleRecruitToggle('STAY')}
+              className={`py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                isRecruited && companionCmd === 'STAY'
+                  ? 'bg-amber-500 text-slate-950 shadow-lg'
+                  : 'bg-white/5 hover:bg-white/15 text-white/80 border border-white/10'
+              }`}
+            >
+              📍 Jaga Area Ini
+            </button>
+          </div>
+        </div>
+
         {/* Trade Offers Section */}
-        {repLevel !== 'hostile' && trades.length > 0 && (
+        {repLevel !== 'hostile' && enrichedTrades.length > 0 && (
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-[10px] uppercase font-bold text-white/40 tracking-wider">Tawaran Barter Komoditas Lokal</span>
+              <span className="text-[10px] uppercase font-bold text-white/40 tracking-wider">Tawaran Barter Komoditas & Pasar Terapung</span>
               <span className="text-[10px] text-white/40 font-mono">Transaksi Sah Adat</span>
             </div>
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {trades.map((trade, idx) => {
+              {enrichedTrades.map((trade, idx) => {
                 const giveDef = ITEM_DEFS[trade.give.itemId];
                 const recDef = ITEM_DEFS[trade.receive.itemId];
                 const userCount = inventory.reduce(

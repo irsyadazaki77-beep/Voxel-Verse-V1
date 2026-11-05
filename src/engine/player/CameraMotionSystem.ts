@@ -1,6 +1,5 @@
 // Centralized Camera Physics & Screen Motion Feedback System
-// Handles walking view bob, sprint acceleration tilt, jump reaction, landing dip, damage tilt, attack recoil & screen shake
-import * as THREE from 'three';
+// Handles walking view bob, sprint acceleration tilt, jump reaction, landing dip, damage tilt, attack recoil, harmonic trauma shake & vessel wave sway
 import { SettingsManager } from '../ui/SettingsManager';
 
 export interface CameraMotionState {
@@ -11,14 +10,24 @@ export interface CameraMotionState {
   shakeOffsetX: number;
   shakeOffsetY: number;
   recoilPitch: number;
+  vesselWavePitch: number;
+  vesselWaveRoll: number;
 }
 
 export class CameraMotionSystem {
   private bobTimer: number = 0;
+  private shakePhase: number = 0;
   private landingDipAmount: number = 0;
   private damageTiltAmount: number = 0;
   private screenShakeAmount: number = 0;
   private recoilPitchAmount: number = 0;
+  private vesselWavePitch: number = 0;
+  private vesselWaveRoll: number = 0;
+
+  public setVesselWaveSway(pitch: number, roll: number): void {
+    this.vesselWavePitch = pitch;
+    this.vesselWaveRoll = roll;
+  }
 
   public update(
     deltaTime: number,
@@ -44,18 +53,32 @@ export class CameraMotionSystem {
     const bobRoll = Math.cos(this.bobTimer * 0.5) * 0.008 * bobMult;
 
     // 2. Landing Impact Dip Recovery
-    this.landingDipAmount = Math.max(0, this.landingDipAmount - dt * 2.2);
+    this.landingDipAmount = Math.max(0, this.landingDipAmount - dt * 2.4);
 
     // 3. Damage Tilt Decay
-    this.damageTiltAmount = Math.max(0, this.damageTiltAmount - dt * 1.2);
+    this.damageTiltAmount = Math.max(0, this.damageTiltAmount - dt * 1.4);
 
     // 4. Attack / Combat Recoil Pitch Decay
-    this.recoilPitchAmount = Math.max(0, this.recoilPitchAmount - dt * 8.0);
+    this.recoilPitchAmount = Math.max(0, this.recoilPitchAmount - dt * 8.5);
 
-    // 5. Screen Shake Vibration Decay
-    this.screenShakeAmount = Math.max(0, this.screenShakeAmount - dt * 4.5);
-    const shakeX = (Math.random() * 2 - 1) * this.screenShakeAmount * 0.07 * shakeMult;
-    const shakeY = (Math.random() * 2 - 1) * this.screenShakeAmount * 0.07 * shakeMult;
+    // 5. Harmonic Trauma Screen Shake (Smooth multi-frequency wave instead of harsh white noise)
+    this.screenShakeAmount = Math.max(0, this.screenShakeAmount - dt * 4.2);
+    this.shakePhase += dt * 42.0;
+    const trauma = this.screenShakeAmount * this.screenShakeAmount; // Non-linear trauma feel
+    const shakeX =
+      (Math.sin(this.shakePhase * 1.1) * 0.65 + Math.cos(this.shakePhase * 2.3) * 0.35) *
+      trauma *
+      0.085 *
+      shakeMult;
+    const shakeY =
+      (Math.cos(this.shakePhase * 1.4) * 0.65 + Math.sin(this.shakePhase * 2.9) * 0.35) *
+      trauma *
+      0.085 *
+      shakeMult;
+
+    // 6. Decay vessel wave sway smoothly if not actively updated
+    this.vesselWavePitch *= Math.max(0, 1 - dt * 5.0);
+    this.vesselWaveRoll *= Math.max(0, 1 - dt * 5.0);
 
     return {
       bobOffset,
@@ -65,21 +88,30 @@ export class CameraMotionSystem {
       shakeOffsetX: shakeX,
       shakeOffsetY: shakeY,
       recoilPitch: this.recoilPitchAmount,
+      vesselWavePitch: motionReduced ? 0 : this.vesselWavePitch * 0.35,
+      vesselWaveRoll: motionReduced ? 0 : this.vesselWaveRoll * 0.45,
     };
   }
 
   public triggerLandingImpact(velocityDown: number, fallDist: number): void {
     const rawDip = Math.min(0.28, Math.abs(velocityDown) * 0.02 + fallDist * 0.03);
     this.landingDipAmount = Math.max(this.landingDipAmount, rawDip);
+    if (fallDist > 3.2) {
+      this.triggerScreenShake(Math.min(0.65, (fallDist - 2.5) * 0.08));
+    }
   }
 
   public triggerDamageTilt(amount: number = 0.14): void {
     this.damageTiltAmount = amount;
-    this.triggerScreenShake(0.35);
+    this.triggerScreenShake(0.38);
   }
 
   public triggerAttackRecoil(amount: number = 0.04): void {
     this.recoilPitchAmount = amount;
+    if (amount >= 0.06) {
+      // Finisher / Critical strike punchy directional camera trauma
+      this.triggerScreenShake(amount * 2.2);
+    }
   }
 
   public triggerScreenShake(amount: number = 0.5): void {

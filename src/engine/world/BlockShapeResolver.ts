@@ -441,13 +441,46 @@ export class BlockShapeResolver {
     return Boolean(def.solid);
   }
 
+  // Pre-allocated canonical AABB arrays to eliminate 60Hz physics loop GC churn
+  private static readonly EMPTY_BOXES: BlockAABB[] = [];
+  private static readonly FULL_CUBE_BOXES: BlockAABB[] = [
+    { minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 },
+  ];
+  private static readonly BOTTOM_SLAB_BOXES: BlockAABB[] = [
+    { minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 0.5, maxZ: 1 },
+  ];
+  private static readonly TOP_SLAB_BOXES: BlockAABB[] = [
+    { minX: 0, minY: 0.5, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 },
+  ];
+  private static readonly CARPET_BOXES: BlockAABB[] = [
+    { minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 0.0625, maxZ: 1 },
+  ];
+  private static readonly FARMLAND_BOXES: BlockAABB[] = [
+    { minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 0.9375, maxZ: 1 },
+  ];
+  private static readonly BED_BOXES: BlockAABB[] = [
+    { minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 0.5625, maxZ: 1 },
+  ];
+
   // Single Canonical Source of Truth for Collision Boxes
   public static getCollisionBoxes(blockType: BlockType, state?: BlockState): BlockAABB[] {
     const def = BLOCK_DEFS[blockType];
-    if (!def) return [];
+    if (!def) return BlockShapeResolver.EMPTY_BOXES;
     if (def.solid === false && !BlockShapeResolver.isDoor(blockType) && !BlockShapeResolver.isTrapdoor(blockType)) {
       // Non-solid blocks have zero collision
-      return [];
+      return BlockShapeResolver.EMPTY_BOXES;
+    }
+
+    // Zero-allocation fast path for standard full solid blocks without custom state
+    if (
+      !state &&
+      !BlockShapeResolver.isSlab(blockType) &&
+      !BlockShapeResolver.isStairs(blockType) &&
+      !BlockShapeResolver.isDoor(blockType) &&
+      !BlockShapeResolver.isTrapdoor(blockType) &&
+      !BlockShapeResolver.isFence(blockType)
+    ) {
+      return BlockShapeResolver.FULL_CUBE_BOXES;
     }
 
     const s = state ?? BlockStateUtils.createDefaultState(blockType);
@@ -455,21 +488,21 @@ export class BlockShapeResolver {
     // 1. Slabs
     if (BlockShapeResolver.isSlab(blockType)) {
       if (s.customData?.double) {
-        return [{ minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 }];
+        return BlockShapeResolver.FULL_CUBE_BOXES;
       }
       if (blockType === BlockType.BATIK_CARPET_BLOCK) {
-        return [{ minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 0.0625, maxZ: 1 }];
+        return BlockShapeResolver.CARPET_BOXES;
       }
       if (blockType === BlockType.FARMLAND) {
-        return [{ minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 0.9375, maxZ: 1 }];
+        return BlockShapeResolver.FARMLAND_BOXES;
       }
       if (blockType === BlockType.BED_FOOT || blockType === BlockType.BED_HEAD) {
-        return [{ minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 0.5625, maxZ: 1 }];
+        return BlockShapeResolver.BED_BOXES;
       }
       if (s.half === 'top') {
-        return [{ minX: 0, minY: 0.5, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 }];
+        return BlockShapeResolver.TOP_SLAB_BOXES;
       }
-      return [{ minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 0.5, maxZ: 1 }];
+      return BlockShapeResolver.BOTTOM_SLAB_BOXES;
     }
 
     // 2. Stairs
@@ -617,7 +650,7 @@ export class BlockShapeResolver {
     // 4. Trapdoors / Shutters
     if (BlockShapeResolver.isTrapdoor(blockType)) {
       if (s.open) {
-        return [];
+        return BlockShapeResolver.EMPTY_BOXES;
       }
       const thickness = 0.1875;
       const isTop = s.half === 'top';
@@ -643,7 +676,7 @@ export class BlockShapeResolver {
     }
 
     // 5. Default full solid cube
-    return [{ minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 }];
+    return BlockShapeResolver.FULL_CUBE_BOXES;
   }
 
   // Single Canonical Source of Truth for Selection / Outline Boxes

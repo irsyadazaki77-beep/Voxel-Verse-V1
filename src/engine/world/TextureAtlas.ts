@@ -157,6 +157,9 @@ export class TextureAtlas {
     batik_carpet: [6, 8],
     stone_alang_pillar: [7, 8],
     aether_altar_core: [8, 8],
+    starfall_ore: [9, 8],
+    bioluminescent_coral: [10, 8],
+    pearl_clam_block: [11, 8],
 
     // Row 15: Special System Fallback
     missing_texture: [15, 15],
@@ -291,9 +294,85 @@ export class TextureAtlas {
       }
     });
 
-    // 8. Clay
+    // 8. Clay [7, 0]
     drawTile(7, 0, (c, ox, oy) => {
       fillBg(ox, oy, '#969da8');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 5 + y * 7) % 11 === 0) setPx(ox, oy, x, y, '#828994');
+          else if ((x * 3 + y * 13) % 17 === 0) setPx(ox, oy, x, y, '#abb2bd');
+        }
+      }
+    });
+
+    // 8b. Snow [8, 0], Snow Side [9, 0], Ice [10, 0], Obsidian [11, 0], Basalt [12, 0], Magma Rock [13, 0], Moss Stone [14, 0], Coral Block [15, 0]
+    drawTile(8, 0, (c, ox, oy) => {
+      fillBg(ox, oy, '#f1f5f9');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 7 + y * 11) % 13 === 0) setPx(ox, oy, x, y, '#e2e8f0');
+          else if ((x + y * 3) % 19 === 0) setPx(ox, oy, x, y, '#ffffff');
+        }
+      }
+    });
+    drawTile(9, 0, (c, ox, oy) => {
+      fillBg(ox, oy, '#60422c');
+      for (let x = 0; x < 16; x++) {
+        const hang = 3 + (x % 3);
+        for (let y = 0; y <= hang; y++) setPx(ox, oy, x, y, y === hang ? '#cbd5e1' : '#f8fafc');
+      }
+    });
+    drawTile(10, 0, (c, ox, oy) => {
+      fillBg(ox, oy, '#7dd3fc');
+      for (let i = 0; i < 16; i++) {
+        setPx(ox, oy, i, (i + 3) % 16, '#bae6fd');
+        setPx(ox, oy, i, (15 - i) % 16, '#38bdf8');
+      }
+    });
+    drawTile(11, 0, (c, ox, oy) => {
+      fillBg(ox, oy, '#1a1126');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 3 + y * 5) % 9 === 0) setPx(ox, oy, x, y, '#2e1d44');
+          else if ((x * 7 + y) % 17 === 0) setPx(ox, oy, x, y, '#4c1d95');
+        }
+      }
+    });
+    drawTile(12, 0, (c, ox, oy) => {
+      fillBg(ox, oy, '#33363b');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if (x % 4 === 0) setPx(ox, oy, x, y, '#222428');
+          else if ((x + y) % 5 === 0) setPx(ox, oy, x, y, '#464a52');
+        }
+      }
+    });
+    drawTile(13, 0, (c, ox, oy) => {
+      fillBg(ox, oy, '#3b1d16');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 2 + y * 3) % 7 === 0) setPx(ox, oy, x, y, '#ea580c');
+          else if ((x + y * 2) % 11 === 0) setPx(ox, oy, x, y, '#facc15');
+        }
+      }
+    });
+    drawTile(14, 0, (c, ox, oy) => {
+      fillBg(ox, oy, '#686c73');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 3 + y * 2) % 5 === 0) setPx(ox, oy, x, y, '#3f6212');
+          else if ((x + y) % 7 === 0) setPx(ox, oy, x, y, '#4d7c0f');
+        }
+      }
+    });
+    drawTile(15, 0, (c, ox, oy) => {
+      fillBg(ox, oy, '#f43f5e');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 3 + y) % 4 === 0) setPx(ox, oy, x, y, '#fb7185');
+          else if ((x + y * 5) % 9 === 0) setPx(ox, oy, x, y, '#be123c');
+        }
+      }
     });
 
     // 9. Oak Log Side
@@ -361,7 +440,7 @@ export class TextureAtlas {
       }
     });
 
-    // 15. Crystal Log Side
+    // 15. Crystal Log Side [6, 1], Crystal Log Top [7, 1], Crystal Leaves [8, 1]
     drawTile(6, 1, (c, ox, oy) => {
       fillBg(ox, oy, '#16384a');
       for (let x = 0; x < 16; x++) {
@@ -370,9 +449,14 @@ export class TextureAtlas {
         }
       }
     });
-
-    // 16. Crystal Leaves
     drawTile(7, 1, (c, ox, oy) => {
+      fillBg(ox, oy, '#16384a');
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(ox + 3, oy + 3, 10, 10);
+      ctx.fillStyle = '#cffafe';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+    drawTile(8, 1, (c, ox, oy) => {
       fillBg(ox, oy, '#18829c');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
@@ -381,7 +465,7 @@ export class TextureAtlas {
       }
     });
 
-    // 17. Wood Planks
+    // 17. Wood Planks [9, 1]
     drawTile(9, 1, (c, ox, oy) => {
       fillBg(ox, oy, '#946d42');
       for (let y = 0; y < 16; y++) {
@@ -397,7 +481,7 @@ export class TextureAtlas {
       }
     });
 
-    // 18. Stone Bricks
+    // 18. Stone Bricks [10, 1]
     drawTile(10, 1, (c, ox, oy) => {
       fillBg(ox, oy, '#757980');
       for (let y = 0; y < 16; y += 4) {
@@ -413,7 +497,7 @@ export class TextureAtlas {
       }
     });
 
-    // 18b. Stone Pillar Top
+    // 18b. Stone Pillar Top [11, 1] & Side [12, 1]
     drawTile(11, 1, (c, ox, oy) => {
       fillBg(ox, oy, '#80848a');
       ctx.fillStyle = '#5c6066';
@@ -421,8 +505,6 @@ export class TextureAtlas {
       ctx.fillStyle = '#9ca3af';
       ctx.fillRect(ox + 4, oy + 4, 8, 8);
     });
-
-    // 18c. Stone Pillar Side
     drawTile(12, 1, (c, ox, oy) => {
       fillBg(ox, oy, '#80848a');
       ctx.fillStyle = '#5c6066';
@@ -431,63 +513,100 @@ export class TextureAtlas {
       ctx.fillRect(ox + 4, oy + 0, 8, 16);
     });
 
-    // 19. Glass
+    // 19. Glass [13, 1], Bookshelf [14, 1], Farmland [15, 1]
     drawTile(13, 1, (c, ox, oy) => {
       c.clearRect(ox, oy, 16, 16);
       ctx.fillStyle = 'rgba(210, 240, 255, 0.45)';
       ctx.fillRect(ox, oy, 16, 16);
-      // Border frame
       ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
       ctx.strokeRect(ox + 0.5, oy + 0.5, 15, 15);
-      // Glint streak
       setPx(ox, oy, 3, 3, '#ffffff');
       setPx(ox, oy, 4, 3, '#ffffff');
       setPx(ox, oy, 3, 4, '#ffffff');
     });
+    drawTile(14, 1, (c, ox, oy) => {
+      fillBg(ox, oy, '#78502b');
+      ctx.fillStyle = '#291c10';
+      ctx.fillRect(ox + 1, oy + 2, 14, 5);
+      ctx.fillRect(ox + 1, oy + 9, 14, 5);
+      const colors = ['#ef4444', '#3b82f6', '#10b981', '#eab308', '#a855f7'];
+      for (let i = 0; i < 6; i++) {
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(ox + 2 + i * 2, oy + 3, 2, 4);
+        ctx.fillStyle = colors[(i + 2) % colors.length];
+        ctx.fillRect(ox + 2 + i * 2, oy + 10, 2, 4);
+      }
+    });
+    drawTile(15, 1, (c, ox, oy) => {
+      fillBg(ox, oy, '#5c3c24');
+      for (let y = 1; y < 16; y += 3) {
+        ctx.fillStyle = '#3d2614';
+        ctx.fillRect(ox + 1, oy + y, 14, 1);
+      }
+    });
 
-    // 20. Copper Ore
+    // 20-25. Ores & Mineral Blocks (Row 2)
     drawTile(0, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[3, 4], [4, 4], [4, 5], [10, 8], [11, 8], [10, 9], [7, 12], [8, 12]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#e07646');
     });
-
-    // 21. Iron Ore
     drawTile(1, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[4, 3], [5, 3], [5, 4], [11, 7], [12, 7], [11, 8], [6, 11], [7, 11]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#d4a885');
     });
-
-    // 22. Gold Ore
     drawTile(2, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[3, 3], [4, 3], [10, 6], [11, 6], [7, 10], [8, 10], [12, 12]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#f6c938');
     });
-
-    // 23. Mythril Ore
     drawTile(3, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[3, 3], [4, 3], [4, 4], [10, 7], [11, 7], [8, 11], [9, 11]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#38bdf8');
     });
-
-    // 24. Aether Crystal Ore
     drawTile(4, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#4a4855');
       const specks = [[4, 4], [5, 4], [5, 5], [10, 8], [11, 8], [7, 12]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#c084fc');
     });
-
-    // 25. Coal Ore
     drawTile(5, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#787c82');
       const specks = [[3, 4], [4, 4], [4, 5], [10, 8], [11, 8], [6, 12], [7, 12]];
       for (const [x, y] of specks) setPx(ox, oy, x, y, '#232428');
     });
-
-    // 26. Water
+    drawTile(6, 2, (c, ox, oy) => {
+      fillBg(ox, oy, '#c25e35');
+      ctx.fillStyle = '#e07a52';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+    });
+    drawTile(7, 2, (c, ox, oy) => {
+      fillBg(ox, oy, '#cbd5e1');
+      ctx.fillStyle = '#94a3b8';
+      ctx.strokeRect(ox + 1, oy + 1, 14, 14);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(ox + 3, oy + 3, 10, 10);
+    });
+    drawTile(8, 2, (c, ox, oy) => {
+      fillBg(ox, oy, '#f59e0b');
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+    });
+    drawTile(9, 2, (c, ox, oy) => {
+      fillBg(ox, oy, '#0284c7');
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#bae6fd';
+      ctx.fillRect(ox + 5, oy + 5, 6, 6);
+    });
+    drawTile(10, 2, (c, ox, oy) => {
+      fillBg(ox, oy, '#334155');
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 4, oy + 4, 8, 8);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
     drawTile(11, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#246cb8');
       for (let x = 0; x < 16; x++) {
@@ -496,8 +615,6 @@ export class TextureAtlas {
         }
       }
     });
-
-    // 27. Lava
     drawTile(12, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#e24816');
       for (let x = 0; x < 16; x++) {
@@ -506,8 +623,20 @@ export class TextureAtlas {
         }
       }
     });
-
-    // 28. Glowstone Crystal
+    drawTile(13, 2, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(ox + 6, oy + 4, 4, 12);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(ox + 6, oy + 0, 4, 4);
+    });
+    drawTile(14, 2, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(ox + 4, oy + 2, 8, 12);
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(ox + 5, oy + 3, 6, 10);
+    });
     drawTile(15, 2, (c, ox, oy) => {
       fillBg(ox, oy, '#fde047');
       for (let x = 0; x < 16; x++) {
@@ -517,9 +646,14 @@ export class TextureAtlas {
       }
     });
 
-    // 29. Flowers & Grass foliage
-    drawTile(7, 3, (c, ox, oy) => {
-      // Blue flower
+    // Row 3: Vegetation, Flowers, Crops, Doors, Bed, Anvil, Moist Farmland
+    drawTile(0, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      for (let x = 2; x < 14; x += 3) {
+        for (let y = 4 + (x % 2) * 2; y < 16; y++) setPx(ox, oy, x, y, '#4c8c36');
+      }
+    });
+    drawTile(1, 3, (c, ox, oy) => {
       c.clearRect(ox, oy, 16, 16);
       for (let y = 6; y < 16; y++) setPx(ox, oy, 8, y, '#38782a');
       setPx(ox, oy, 8, 4, '#38bdf8');
@@ -528,38 +662,285 @@ export class TextureAtlas {
       setPx(ox, oy, 8, 6, '#38bdf8');
       setPx(ox, oy, 8, 5, '#fde047');
     });
+    drawTile(2, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      for (let y = 6; y < 16; y++) setPx(ox, oy, 8, y, '#38782a');
+      setPx(ox, oy, 8, 4, '#ef4444');
+      setPx(ox, oy, 7, 5, '#ef4444');
+      setPx(ox, oy, 9, 5, '#ef4444');
+      setPx(ox, oy, 8, 6, '#ef4444');
+      setPx(ox, oy, 8, 5, '#fde047');
+    });
+    drawTile(3, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      for (let y = 6; y < 16; y++) setPx(ox, oy, 8, y, '#4d7c0f');
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(ox + 6, oy + 3, 5, 4);
+      setPx(ox, oy, 8, 5, '#f97316');
+    });
+    drawTile(4, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(ox + 7, oy + 9, 2, 7);
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(ox + 4, oy + 6, 8, 3);
+      ctx.fillRect(ox + 5, oy + 4, 6, 2);
+    });
+    drawTile(5, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#65a30d';
+      for (let x = 3; x < 14; x += 3) ctx.fillRect(ox + x, oy + 12, 1, 4);
+    });
+    drawTile(6, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#84cc16';
+      for (let x = 3; x < 14; x += 3) ctx.fillRect(ox + x, oy + 9, 1, 7);
+    });
+    drawTile(7, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#a3e635';
+      for (let x = 3; x < 14; x += 3) ctx.fillRect(ox + x, oy + 5, 1, 11);
+    });
+    drawTile(8, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#eab308';
+      for (let x = 2; x < 15; x += 3) {
+        ctx.fillRect(ox + x, oy + 3, 2, 13);
+        setPx(ox, oy, x, 2, '#fde047');
+      }
+    });
+    drawTile(9, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#22c55e';
+      for (let x = 4; x < 13; x += 4) {
+        ctx.fillRect(ox + x, oy + 6, 2, 6);
+        ctx.fillStyle = '#f97316';
+        ctx.fillRect(ox + x, oy + 12, 2, 4);
+        ctx.fillStyle = '#22c55e';
+      }
+    });
+    drawTile(10, 3, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#14b8a6';
+      for (let x = 3; x < 14; x += 3) {
+        ctx.fillRect(ox + x, oy + 6, 2, 10);
+        setPx(ox, oy, x, 5, '#5eead4');
+      }
+    });
+    drawTile(11, 3, (c, ox, oy) => {
+      fillBg(ox, oy, '#784e2c');
+      ctx.fillStyle = '#5c381c';
+      ctx.strokeRect(ox + 1, oy + 1, 14, 14);
+      setPx(ox, oy, 12, 2, '#fbbf24');
+    });
+    drawTile(12, 3, (c, ox, oy) => {
+      fillBg(ox, oy, '#784e2c');
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 3, oy + 3, 4, 6);
+      ctx.fillRect(ox + 9, oy + 3, 4, 6);
+    });
+    drawTile(13, 3, (c, ox, oy) => {
+      fillBg(ox, oy, '#ef4444');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(ox, oy, 16, 6);
+    });
+    drawTile(14, 3, (c, ox, oy) => {
+      fillBg(ox, oy, '#475569');
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+    });
+    drawTile(15, 3, (c, ox, oy) => {
+      fillBg(ox, oy, '#3b2414');
+      for (let y = 1; y < 16; y += 3) {
+        ctx.fillStyle = '#26160b';
+        ctx.fillRect(ox + 1, oy + y, 14, 1);
+      }
+    });
 
-    // 30. Crafting Bench Top & Side
-    drawTile(2, 5, (c, ox, oy) => {
+    // Row 4: Containers, Utility & Logic Runes
+    drawTile(0, 4, (c, ox, oy) => {
       fillBg(ox, oy, '#a4784a');
       ctx.fillStyle = '#654321';
       ctx.strokeRect(ox + 1.5, oy + 1.5, 13, 13);
-      // 3x3 grid
       for (let i = 5; i <= 11; i += 3) {
         ctx.fillRect(ox + i, oy + 2, 1, 12);
         ctx.fillRect(ox + 2, oy + i, 12, 1);
       }
     });
-
-    drawTile(3, 5, (c, ox, oy) => {
+    drawTile(1, 4, (c, ox, oy) => {
       fillBg(ox, oy, '#855d36');
-      // Hammer / saw silhouette
-      setPx(ox, oy, 4, 5, '#3a3a3a');
-      setPx(ox, oy, 5, 6, '#3a3a3a');
-      setPx(ox, oy, 6, 7, '#d4a885');
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(ox, oy, 16, 4);
+      setPx(ox, oy, 4, 7, '#3a3a3a');
+      setPx(ox, oy, 5, 8, '#3a3a3a');
+      setPx(ox, oy, 6, 9, '#d4a885');
     });
-
-    // 31. Furnace Front
-    drawTile(4, 5, (c, ox, oy) => {
+    drawTile(2, 4, (c, ox, oy) => {
       fillBg(ox, oy, '#60646a');
       ctx.fillStyle = '#222326';
       ctx.fillRect(ox + 4, oy + 7, 8, 7);
       ctx.fillStyle = '#ff7315';
       ctx.fillRect(ox + 6, oy + 9, 4, 3);
     });
+    drawTile(3, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#60646a');
+      ctx.fillStyle = '#474b50';
+      ctx.strokeRect(ox + 1, oy + 1, 14, 14);
+    });
+    drawTile(4, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#92400e');
+      ctx.fillStyle = '#78350f';
+      ctx.strokeRect(ox + 1, oy + 1, 14, 14);
+    });
+    drawTile(5, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#b45309');
+      ctx.fillStyle = '#d97706';
+      ctx.fillRect(ox + 7, oy + 6, 2, 4);
+    });
+    drawTile(6, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 4, oy + 4, 8, 8);
+      ctx.fillStyle = '#e0f2fe';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+    drawTile(7, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e1b4b');
+      ctx.fillStyle = '#8b5cf6';
+      ctx.fillRect(ox + 3, oy + 3, 10, 10);
+      ctx.fillStyle = '#f472b6';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+    drawTile(8, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#0f172a');
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 6, oy, 4, 16);
+    });
+    drawTile(9, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(ox + 5, oy + 2, 6, 12);
+    });
+    drawTile(10, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#a855f7';
+      ctx.fillRect(ox + 3, oy + 6, 10, 4);
+      ctx.fillRect(ox + 6, oy + 3, 4, 10);
+    });
+    drawTile(11, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(ox + 3, oy + 7, 10, 2);
+      ctx.fillRect(ox + 10, oy + 5, 2, 6);
+    });
+    drawTile(12, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#10b981';
+      ctx.strokeRect(ox + 4, oy + 4, 8, 8);
+    });
+    drawTile(13, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#ec4899';
+      ctx.fillRect(ox + 4, oy + 4, 3, 8);
+      ctx.fillRect(ox + 9, oy + 4, 3, 8);
+    });
+    drawTile(14, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#334155');
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(ox + 2, oy + 0, 12, 4);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 6, oy + 6, 4, 8);
+    });
+    drawTile(15, 4, (c, ox, oy) => {
+      fillBg(ox, oy, '#334155');
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(ox + 2, oy + 2, 12, 4);
+      ctx.fillRect(ox + 5, oy + 6, 6, 8);
+    });
 
-    // --- AETHER EXPANSE TEXTURES ---
-    
+    // Row 5: Engineering & Advanced Technology [0..11, 5]
+    drawTile(0, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#38bdf8';
+      ctx.strokeRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+    drawTile(1, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#10b981';
+      ctx.fillRect(ox + 3, oy + 3, 10, 10);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+    drawTile(2, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e3a8a');
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 4, oy + 4, 8, 8);
+    });
+    drawTile(3, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#312e81');
+      ctx.fillStyle = '#c084fc';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+    drawTile(4, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(ox + 4, oy + 4, 8, 8);
+      ctx.fillStyle = '#fca5a5';
+      ctx.fillRect(ox + 7, oy + 7, 2, 2);
+    });
+    drawTile(5, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#334155');
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(ox + 6, oy + 2, 4, 12);
+    });
+    drawTile(6, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e293b');
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 3, oy + 3, 10, 10);
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+    drawTile(7, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#3f1d1d');
+      ctx.fillStyle = '#f97316';
+      ctx.fillRect(ox + 4, oy + 4, 8, 8);
+    });
+    drawTile(8, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#0f172a');
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#fef9c3';
+      ctx.fillRect(ox + 5, oy + 5, 6, 6);
+    });
+    drawTile(9, 5, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#78350f';
+      for (let y = 1; y < 16; y += 4) ctx.fillRect(ox + 2, oy + y, 12, 2);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 3, oy, 2, 16);
+      ctx.fillRect(ox + 11, oy, 2, 16);
+    });
+    drawTile(10, 5, (c, ox, oy) => {
+      c.clearRect(ox, oy, 16, 16);
+      ctx.fillStyle = '#78350f';
+      for (let y = 1; y < 16; y += 4) ctx.fillRect(ox + 2, oy + y, 12, 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(ox + 3, oy, 2, 16);
+      ctx.fillRect(ox + 11, oy, 2, 16);
+    });
+    drawTile(11, 5, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e1b4b');
+      ctx.fillStyle = '#22d3ee';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
+    });
+
+    // --- AETHER EXPANSE TEXTURES (Row 6) ---
     // aether_stone [0, 6]
     drawTile(0, 6, (c, ox, oy) => {
       fillBg(ox, oy, '#2d4059');
@@ -583,6 +964,51 @@ export class TextureAtlas {
       setPx(ox, oy, 3, 3, '#c084fc');
       setPx(ox, oy, 4, 3, '#c084fc');
       setPx(ox, oy, 3, 4, '#c084fc');
+    });
+
+    // crystal_brick [2, 6], mechanum_plate [3, 6], skyroot_log_side [4, 6], skyroot_log_top [5, 6], skyroot_leaves [6, 6], skyroot_planks [7, 6]
+    drawTile(2, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e3a5f');
+      ctx.fillStyle = '#38bdf8';
+      ctx.strokeRect(ox + 1, oy + 1, 14, 6);
+      ctx.strokeRect(ox + 1, oy + 9, 14, 6);
+    });
+    drawTile(3, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#334155');
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#f59e0b';
+      setPx(ox, oy, 3, 3, '#f59e0b');
+      setPx(ox, oy, 12, 3, '#f59e0b');
+      setPx(ox, oy, 3, 12, '#f59e0b');
+      setPx(ox, oy, 12, 12, '#f59e0b');
+    });
+    drawTile(4, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#3b2f4a');
+      for (let y = 0; y < 16; y++) {
+        setPx(ox, oy, 4, y, '#2a2036');
+        setPx(ox, oy, 11, y, '#524166');
+      }
+    });
+    drawTile(5, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#3b2f4a');
+      ctx.fillStyle = '#6d598a';
+      ctx.fillRect(ox + 3, oy + 3, 10, 10);
+    });
+    drawTile(6, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#0f766e');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 3 + y * 5) % 7 === 0) setPx(ox, oy, x, y, '#2dd4bf');
+        }
+      }
+    });
+    drawTile(7, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#584770');
+      for (let y = 0; y < 16; y += 4) {
+        ctx.fillStyle = '#3b2f4a';
+        ctx.fillRect(ox, oy + y, 16, 1);
+      }
     });
 
     // aether_grass_top [8, 6]
@@ -614,6 +1040,15 @@ export class TextureAtlas {
           if ((x + y) % 2 === 0) setPx(ox, oy, x, y, '#334155');
         }
       }
+    });
+
+    // aether_gate_frame [11, 6]
+    drawTile(11, 6, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e1b4b');
+      ctx.fillStyle = '#38bdf8';
+      ctx.strokeRect(ox + 2, oy + 2, 12, 12);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(ox + 6, oy + 6, 4, 4);
     });
     
     // aether_portal [12, 6]
@@ -899,47 +1334,47 @@ export class TextureAtlas {
       ctx.fillRect(ox + 7, oy + 7, 2, 2);
     });
 
-    
-    // 33. Gold Block
-    drawTile(8, 2, (c, ox, oy) => {
-      fillBg(ox, oy, '#fcd34d');
-      ctx.fillStyle = '#f59e0b';
-      ctx.fillRect(ox, oy, 16, 16);
-      ctx.fillStyle = '#fde047';
-      ctx.fillRect(ox + 2, oy + 2, 12, 12);
-    });
-
-    // 34. Torch & Lantern
-    drawTile(13, 2, (c, ox, oy) => {
-      fillBg(ox, oy, 'rgba(0,0,0,0)');
-      ctx.fillStyle = '#78350f';
-      ctx.fillRect(ox + 6, oy + 4, 4, 12);
+    // starfall_ore [9, 8]
+    drawTile(9, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#1e1b4b');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x * 5 + y * 3) % 7 === 0) setPx(ox, oy, x, y, '#312e81');
+        }
+      }
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 3, oy + 4, 4, 4);
+      ctx.fillRect(ox + 9, oy + 8, 4, 4);
       ctx.fillStyle = '#fbbf24';
-      ctx.fillRect(ox + 6, oy + 0, 4, 4);
-    });
-    drawTile(14, 2, (c, ox, oy) => {
-      fillBg(ox, oy, 'rgba(0,0,0,0)');
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(ox + 4, oy + 2, 8, 12);
-      ctx.fillStyle = '#fde047';
-      ctx.fillRect(ox + 5, oy + 3, 6, 10);
+      ctx.fillRect(ox + 4, oy + 5, 2, 2);
+      ctx.fillRect(ox + 10, oy + 9, 2, 2);
+      ctx.fillRect(ox + 6, oy + 11, 2, 2);
     });
 
-    // 35. Chest & Crafting
-    drawTile(4, 4, (c, ox, oy) => { fillBg(ox, oy, '#92400e'); ctx.fillStyle = '#78350f'; ctx.strokeRect(ox+1, oy+1, 14, 14); });
-    drawTile(5, 4, (c, ox, oy) => { fillBg(ox, oy, '#b45309'); ctx.fillStyle = '#d97706'; ctx.fillRect(ox+7, oy+6, 2, 4); });
-    drawTile(0, 4, (c, ox, oy) => { fillBg(ox, oy, '#d97706'); ctx.fillStyle = '#78350f'; ctx.fillRect(ox, oy, 16, 4); });
-    drawTile(1, 4, (c, ox, oy) => { fillBg(ox, oy, '#92400e'); ctx.fillStyle = '#78350f'; ctx.fillRect(ox+2, oy+2, 12, 12); });
+    // bioluminescent_coral [10, 8]
+    drawTile(10, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#083344');
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          if ((x + y) % 3 === 0) setPx(ox, oy, x, y, '#06b6d4');
+          if ((x * 3 + y) % 5 === 0) setPx(ox, oy, x, y, '#67e8f9');
+          if ((x + y * 2) % 7 === 0) setPx(ox, oy, x, y, '#34d399');
+        }
+      }
+    });
 
-    // 36. Anvil & Bed
-    drawTile(14, 3, (c, ox, oy) => { fillBg(ox, oy, '#475569'); ctx.fillStyle = '#334155'; ctx.fillRect(ox+2, oy+2, 12, 12); });
-    drawTile(13, 3, (c, ox, oy) => { fillBg(ox, oy, '#ef4444'); ctx.fillStyle = '#ffffff'; ctx.fillRect(ox, oy, 16, 6); });
+    // pearl_clam_block [11, 8]
+    drawTile(11, 8, (c, ox, oy) => {
+      fillBg(ox, oy, '#475569');
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(ox + 2, oy + 3, 12, 10);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(ox + 5, oy + 5, 6, 6);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(ox + 7, oy + 7, 2, 2);
+    });
 
-    // 37. Aether Core Adv & Ley Conduit
-    drawTile(7, 4, (c, ox, oy) => { fillBg(ox, oy, '#1e1b4b'); ctx.fillStyle = '#8b5cf6'; ctx.fillRect(ox+4, oy+4, 8, 8); });
-    drawTile(8, 4, (c, ox, oy) => { fillBg(ox, oy, '#0f172a'); ctx.fillStyle = '#38bdf8'; ctx.fillRect(ox+6, oy, 4, 16); });
-
-    // 32. Missing Texture Checkerboard (15, 15)
+    // Missing Texture Checkerboard (15, 15)
     drawTile(15, 15, (c, ox, oy) => {
       fillBg(ox, oy, '#ff00ff');
       ctx.fillStyle = '#000000';
@@ -953,6 +1388,7 @@ export class TextureAtlas {
     });
 
     const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
     texture.wrapS = THREE.ClampToEdgeWrapping;
@@ -1234,6 +1670,36 @@ export class TextureAtlas {
         return 'stone_alang_pillar';
       case BlockType.AETHER_ALTAR_CORE:
         return 'aether_altar_core';
+      case BlockType.STARFALL_ORE:
+        return 'starfall_ore';
+      case BlockType.BIOLUMINESCENT_CORAL:
+        return 'bioluminescent_coral';
+      case BlockType.PEARL_CLAM_BLOCK:
+        return 'pearl_clam_block';
+
+      // Aether Expanse & Anomaly Blocks
+      case BlockType.AETHER_STONE:
+        return 'aether_stone';
+      case BlockType.VOIDGLASS:
+        return 'voidglass';
+      case BlockType.CRYSTAL_BRICK:
+        return 'crystal_brick';
+      case BlockType.MECHANUM_PLATE:
+        return 'mechanum_plate';
+      case BlockType.SKYROOT_LOG:
+        return face === 'side' ? 'skyroot_log_side' : 'skyroot_log_top';
+      case BlockType.SKYROOT_LEAVES:
+        return 'skyroot_leaves';
+      case BlockType.SKYROOT_PLANKS:
+        return 'skyroot_planks';
+      case BlockType.AETHER_GRASS:
+        return face === 'top' ? 'aether_grass_top' : face === 'bottom' ? 'aether_dirt' : 'aether_grass_side';
+      case BlockType.AETHER_DIRT:
+        return 'aether_dirt';
+      case BlockType.AETHER_GATE_FRAME:
+        return 'aether_gate_frame';
+      case BlockType.AETHER_PORTAL:
+        return 'aether_portal';
 
       default:
         if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {

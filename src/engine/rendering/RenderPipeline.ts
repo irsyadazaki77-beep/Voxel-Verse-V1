@@ -10,16 +10,16 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { GraphicsSettings } from '../ui/SettingsManager';
 
-// Custom Cinematic Color Grading + Sharpening Shader
+// Custom Cinematic Color Grading + Luma-Guided Contrast-Adaptive Sharpening (CAS) Shader
 const CinematicPostShader = {
   uniforms: {
     tDiffuse: { value: null },
     uTime: { value: 0 },
     uExposure: { value: 1.0 },
-    uContrast: { value: 1.05 },
-    uSaturation: { value: 1.08 },
+    uContrast: { value: 1.08 },
+    uSaturation: { value: 1.12 },
     uWarmth: { value: 0.0 },
-    uSharpenStrength: { value: 0.25 },
+    uSharpenStrength: { value: 0.36 },
     uUnderwater: { value: 0.0 },
     uColorGradingMode: { value: 1 }, // 0: None, 1: Cinematic, 2: Vibrant, 3: Warm Golden, 4: Cool Twilight
     uTexelSize: { value: new THREE.Vector2(1.0 / 1920.0, 1.0 / 1080.0) },
@@ -44,20 +44,14 @@ const CinematicPostShader = {
     uniform vec2 uTexelSize;
     varying vec2 vUv;
 
-    // ACES Filmic Tone Mapping Curve
-    vec3 ACESFilm(vec3 x) {
-      float a = 2.51;
-      float b = 0.03;
-      float c = 2.43;
-      float d = 0.59;
-      float e = 0.14;
-      return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+    float getLuma(vec3 rgb) {
+      return dot(rgb, vec3(0.2126, 0.7152, 0.0722));
     }
 
     void main() {
       vec2 texel = uTexelSize;
       
-      // Center & 4-tap neighbor sampling for contrast-adaptive sharpening (CAS)
+      // Center & 4-tap neighbor sampling for Luma-Guided Contrast-Adaptive Sharpening (CAS)
       vec3 c = texture2D(tDiffuse, vUv).rgb;
       
       if (uSharpenStrength > 0.01) {
@@ -66,9 +60,20 @@ const CinematicPostShader = {
         vec3 e = texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).rgb;
         vec3 w = texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).rgb;
         
+        // Luma-guided adaptive weight prevents bright/dark haloing on high-contrast sky edges
+        float lc = getLuma(c);
+        float ln = getLuma(n);
+        float ls = getLuma(s);
+        float le = getLuma(e);
+        float lw = getLuma(w);
+        float minL = min(lc, min(min(ln, ls), min(le, lw)));
+        float maxL = max(lc, max(max(ln, ls), max(le, lw)));
+        float localContrast = maxL - minL;
+        float casWeight = clamp(1.0 - smoothstep(0.35, 0.85, localContrast), 0.35, 1.0);
+
         vec3 neighbors = (n + s + e + w) * 0.25;
         vec3 diff = c - neighbors;
-        c = c + diff * uSharpenStrength;
+        c = max(vec3(0.0), c + diff * (uSharpenStrength * 1.15 * casWeight));
       }
 
       // Underwater distortion & aquatic tint override
@@ -79,30 +84,31 @@ const CinematicPostShader = {
         c = mix(c, c * aquaTint * 1.5, uUnderwater * 0.45);
       }
 
-      // S-curve Contrast (Toe-protected to preserve shadow visibility)
+      // Crisp S-curve Contrast (Toe-protected to preserve shadow visibility without milky lift)
       vec3 contrasted = (c - 0.5) * uContrast + 0.5;
-      c = max(contrasted, c * 0.42);
+      c = max(contrasted, c * 0.38);
 
-      // Saturation
-      float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      // Clean Natural Saturation
+      float luma = getLuma(c);
       c = mix(vec3(luma), c, uSaturation);
 
-      // Color Grading profiles
+      // Color Grading profiles (Zero milky black-floor haze)
       if (uColorGradingMode == 1) {
-        // Cinematic: subtle atmospheric split-toning without crushing night blues
-        c.r = pow(max(c.r, 0.0), 0.96) + 0.01;
-        c.b = pow(max(c.b, 0.0), 0.98) + 0.015;
+        // Cinematic: crisp natural dynamic range with clean shadow separation
+        c.r = pow(max(c.r, 0.0), 0.97);
+        c.g = pow(max(c.g, 0.0), 0.98);
+        c.b = pow(max(c.b, 0.0), 0.97);
       } else if (uColorGradingMode == 2) {
         // Vibrant
-        c = mix(vec3(luma), c, 1.25);
+        c = mix(vec3(luma), c, 1.22);
       } else if (uColorGradingMode == 3) {
         // Warm Golden
-        c.r += 0.04;
-        c.g += 0.02;
+        c.r *= 1.05;
+        c.g *= 1.02;
       } else if (uColorGradingMode == 4) {
         // Cool Twilight
-        c.r -= 0.02;
-        c.b += 0.05;
+        c.r *= 0.97;
+        c.b *= 1.06;
       }
 
       // Warmth shift
@@ -161,6 +167,19 @@ export class RenderPipeline {
   }
 
   public initPipeline(): void {
+    if (
+      !this.renderer ||
+      typeof this.renderer.getPixelRatio !== 'function' ||
+      typeof this.renderer.getSize !== 'function'
+    ) {
+      this.isPostProcessingActive = false;
+      if (this.renderer) {
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      }
+      this.composer = null;
+      return;
+    }
+
     try {
       this.composer = new EffectComposer(this.renderer);
       this.renderPass = new RenderPass(this.scene, this.camera);
@@ -174,13 +193,13 @@ export class RenderPipeline {
       this.ssaoPass.enabled = false; // Configured and enabled via settings
       this.composer.addPass(this.ssaoPass);
 
-      // 1. Capped half-resolution bloom pass for optimal fillrate on 1080p, 1440p, and 4K
+      // 1. Capped half-resolution selective bloom pass (high threshold so sky/fog never haze)
       const [bloomW, bloomH] = this.calculateBloomResolution(this.currentWidth, this.currentHeight);
       this.bloomPass = new UnrealBloomPass(
         new THREE.Vector2(bloomW, bloomH),
-        0.32,  // Strength
-        0.45,  // Radius
-        1.15   // Threshold (raised to avoid fog contamination)
+        0.22,  // Subtle strength for emissives only
+        0.35,  // Tight radius for zero haze bleed
+        1.28   // High threshold so sunlit terrain & horizon stay razor-sharp
       );
       this.composer.addPass(this.bloomPass);
 
@@ -256,8 +275,8 @@ export class RenderPipeline {
     // Update Bloom Pass
     if (this.bloomPass) {
       this.bloomPass.enabled = settings.bloom;
-      const bloomStrength = (settings as any).bloomStrength ?? 0.35;
-      this.bloomPass.strength = bloomStrength;
+      const bloomStrength = (settings as any).bloomStrength ?? 0.22;
+      this.bloomPass.strength = Math.min(0.28, bloomStrength);
       const [bloomW, bloomH] = this.calculateBloomResolution(width, height);
       (this.bloomPass as any).resolution.set(bloomW, bloomH);
     }
@@ -275,7 +294,7 @@ export class RenderPipeline {
       this.postPass.uniforms.uColorGradingMode.value = modeMap[cgMode] ?? 1;
 
       const sharpen = (settings as any).sharpening !== false;
-      const sharpenStr = (settings as any).sharpenStrength ?? 0.25;
+      const sharpenStr = Math.max(0.34, (settings as any).sharpenStrength ?? 0.36);
       this.postPass.uniforms.uSharpenStrength.value = sharpen ? sharpenStr : 0.0;
       this.postPass.uniforms.uTexelSize.value.set(1.0 / Math.max(1, width), 1.0 / Math.max(1, height));
     }

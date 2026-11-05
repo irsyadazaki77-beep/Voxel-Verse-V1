@@ -40,6 +40,7 @@ export interface GraphicsSettings {
   particles: boolean;
   cameraMode: 'first_person' | 'third_person_back' | 'third_person_front';
   nightBrightness: number; // 0.8 .. 1.2, default 1.0
+  turboFpsMode?: boolean;
 }
 
 export type KeyBindingAction =
@@ -194,12 +195,12 @@ export const DEFAULT_SETTINGS: GameSettings = {
     antiAliasingMode: 'smaa',
     postProcessing: true,
     bloom: true,
-    bloomStrength: 0.35,
+    bloomStrength: 0.22,
     ambientOcclusion: true,
     ambientOcclusionQuality: 'high',
     colorGrading: 'cinematic',
     sharpening: true,
-    sharpenStrength: 0.25,
+    sharpenStrength: 0.36,
     dynamicResolution: true,
     targetFps: 60,
     fov: 75,
@@ -208,6 +209,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
     particles: true,
     cameraMode: 'first_person',
     nightBrightness: 1.0,
+    turboFpsMode: false,
   },
   controls: {
     keyBindings: {
@@ -358,6 +360,107 @@ export class SettingsManager {
   public static resetToDefault(): void {
     this.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
     this.save();
+  }
+
+  public static toggleTurboFpsMode(): boolean {
+    const nextTurbo = !this.settings.graphics.turboFpsMode;
+    if (nextTurbo) {
+      this.update({
+        graphics: {
+          ...this.settings.graphics,
+          turboFpsMode: true,
+          dynamicResolution: true,
+          targetFps: 60,
+          renderDistance: Math.min(this.settings.graphics.renderDistance, 5),
+          shadowQuality: this.settings.graphics.shadows ? 'medium' : 'off',
+          shadowMapSize: 1024,
+          ambientOcclusion: false,
+          antiAliasingMode: 'fxaa',
+          sharpening: true,
+          sharpenStrength: 0.36,
+          particleQuality: 'medium',
+          cloudQuality: 'medium',
+        },
+      });
+    } else {
+      this.update({
+        graphics: {
+          ...this.settings.graphics,
+          turboFpsMode: false,
+          renderDistance: 6,
+          shadowQuality: 'high',
+          shadowMapSize: 2048,
+          sharpenStrength: 0.25,
+        },
+      });
+    }
+    return nextTurbo;
+  }
+
+  public static autoCalibrateFor60Fps(currentFps: number = 60, frameTimeMs: number = 16.0): { tierLabel: string; details: string } {
+    const isMobileDevice = typeof window !== 'undefined' && (window.innerWidth <= 900 || 'ontouchstart' in window);
+    const cores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4;
+
+    if (currentFps < 45 || frameTimeMs > 22 || isMobileDevice || cores <= 4) {
+      this.update({
+        graphics: {
+          ...this.settings.graphics,
+          preset: 'medium',
+          turboFpsMode: true,
+          resolutionMode: 'auto',
+          renderScale: 0.9,
+          renderDistance: 5,
+          postProcessing: true,
+          bloom: false,
+          ambientOcclusion: false,
+          antiAliasing: true,
+          antiAliasingMode: 'fxaa',
+          shadows: true,
+          shadowQuality: 'medium',
+          shadowMapSize: 1024,
+          sharpening: true,
+          sharpenStrength: 0.35,
+          dynamicResolution: true,
+          targetFps: 60,
+          particleQuality: 'medium',
+          cloudQuality: 'low',
+        },
+      });
+      return {
+        tierLabel: 'Adaptif 60 FPS (Prioritas Kelancaran & Ketajaman Dekat)',
+        details: 'Jarak pandang 5 chunk, Shadow 1024px terukur, CAS Sharpening 35%, Dynamic Resolution Aktif.',
+      };
+    }
+
+    this.update({
+      graphics: {
+        ...this.settings.graphics,
+        preset: 'high',
+        turboFpsMode: false,
+        resolutionMode: 'auto',
+        renderScale: 1.0,
+        renderDistance: 6,
+        postProcessing: true,
+        bloom: true,
+        bloomStrength: 0.32,
+        ambientOcclusion: false,
+        antiAliasing: true,
+        antiAliasingMode: 'smaa',
+        shadows: true,
+        shadowQuality: 'high',
+        shadowMapSize: 2048,
+        sharpening: true,
+        sharpenStrength: 0.28,
+        dynamicResolution: true,
+        targetFps: 60,
+        particleQuality: 'high',
+        cloudQuality: 'medium',
+      },
+    });
+    return {
+      tierLabel: 'Tinggi Seimbang 60 FPS (Visual Sinematik & Responsif)',
+      details: 'Jarak pandang 6 chunk, Shadow 2048px, SMAA + CAS Sharpening, Dynamic Resolution Penjaga 60 FPS.',
+    };
   }
 
   public static subscribe(listener: Listener): () => void {

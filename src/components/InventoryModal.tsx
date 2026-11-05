@@ -165,12 +165,27 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
               </h2>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg bg-[var(--vv-elevated)] hover:bg-[var(--vv-border)] text-[var(--vv-text-muted)] hover:text-white transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setInventory(prev => InventoryManager.sortAndConsolidate(prev, 9));
+                setSelectedSlot(null);
+                const rt = (window as any).__voxelRuntime;
+                rt?.audio?.playUIClick?.();
+              }}
+              title="Gabungkan tumpukan item & rapikan tas secara otomatis"
+              className="px-3 py-1.5 rounded-lg bg-[var(--vv-primary)]/15 hover:bg-[var(--vv-primary)]/25 border border-[var(--vv-primary)]/40 text-xs font-bold text-[var(--vv-primary)] hover:text-white transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span>Rapikan Tas</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-[var(--vv-elevated)] hover:bg-[var(--vv-border)] text-[var(--vv-text-muted)] hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { BiomeDef } from '../../types';
 import { EnvironmentAtmosphereEngine, VisualProfile } from './EnvironmentVisualProfile';
 import { AetherAnomalyManager } from '../anomaly/AetherAnomalyManager';
+import { WorldEventManager } from '../events/WorldEventManager';
 
 import { WeatherState } from '../../types';
 
@@ -25,18 +26,32 @@ export class SkyEnvironment {
   private currentShadowQuality: string = 'medium';
   private currentProfile: VisualProfile = EnvironmentAtmosphereEngine.getProfile('plains');
 
-  // Exposed environment color telemetry for Water & Environment 4.0
+  // Exposed environment color telemetry for Water & Environment 5.0
   public currentSkyZenithColor = new THREE.Color(0.35, 0.62, 0.95);
   public currentSkyHorizonColor = new THREE.Color(0.65, 0.82, 0.92);
+  public currentWaterBaseColor = new THREE.Color(0.16, 0.62, 0.85);
+  public currentWaterDeepColor = new THREE.Color(0.02, 0.14, 0.38);
   public currentSunDirection = new THREE.Vector3(0, 1, 0);
   public currentSunColor = new THREE.Color(1.0, 0.95, 0.85);
   public currentMoonDirection = new THREE.Vector3(0, -1, 0);
   public currentMoonColor = new THREE.Color(0.55, 0.72, 1.0);
+  private smoothedFogDensity: number = 0.0030;
+  private isFirstFrame: boolean = true;
+  private static readonly _scratchWaterBase = new THREE.Color();
+  private static readonly _scratchWaterDeep = new THREE.Color();
 
   // Lightweight Dynamic IBL
   public iblCanvas: HTMLCanvasElement | null = null;
   public iblContext: CanvasRenderingContext2D | null = null;
   public iblTexture: THREE.CanvasTexture | null = null;
+  private iblUpdateTimer: number = 99.0;
+  private lastSnappedShadowPos = new THREE.Vector3(Infinity, Infinity, Infinity);
+  private shadowFrameCounter: number = 0;
+  public shadowCadence: number = 3;
+
+  public setShadowCadence(cadence: number): void {
+    this.shadowCadence = Math.max(1, Math.min(8, Math.round(cadence)));
+  }
 
   // Reusable Zero-GC scratch objects for hot-path per-frame updates
   private static readonly _scratchLightDir = new THREE.Vector3();
@@ -294,8 +309,17 @@ export class SkyEnvironment {
     shadowTarget.y = Math.floor(shadowTarget.y / texelSize) * texelSize;
     shadowTarget.z = Math.floor(shadowTarget.z / texelSize) * texelSize;
 
-    this.sunLight.target.position.copy(shadowTarget);
-    this.sunLight.target.updateMatrixWorld();
+    this.shadowFrameCounter = (this.shadowFrameCounter + 1) & 0x7fffffff;
+    const shadowMoved = this.lastSnappedShadowPos.distanceToSquared(shadowTarget) > 0.0001;
+    if (shadowMoved || (this.shadowFrameCounter % this.shadowCadence) === 0) {
+      this.lastSnappedShadowPos.copy(shadowTarget);
+      this.sunLight.target.position.copy(shadowTarget);
+      this.sunLight.target.updateMatrixWorld();
+      if (this.sunLight.castShadow) {
+        this.sunLight.shadow.autoUpdate = false;
+        this.sunLight.shadow.needsUpdate = true;
+      }
+    }
 
     // Celestial Directional Light Orientation:
     // When Sun is above horizon (daytime), light shines from Sun.
@@ -406,7 +430,7 @@ export class SkyEnvironment {
       }
     }
     
-    // Weather effects on lighting
+    // Weather effects on lighting (Vibrant Nusantara Atmospheric Profiles)
     if (currentWeather && currentWeather.intensity > 0.05) {
       const weatherIntensity = currentWeather.intensity;
       if (currentWeather.type === 'rain' || currentWeather.type === 'snow') {
@@ -414,6 +438,24 @@ export class SkyEnvironment {
         ambientIntensity *= (1.0 + weatherIntensity * 0.15); // diffuse scattered bounce
         skyColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x283850), weatherIntensity * 0.5);
         fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x30425c), weatherIntensity * 0.6);
+      } else if (currentWeather.type === 'monsoon_rain') {
+        // Tropical Archipelago Monsoon: rich teal-azure sky & emerald foliage vibrancy
+        sunIntensity *= (1.0 - weatherIntensity * 0.30);
+        ambientIntensity *= (1.0 + weatherIntensity * 0.22);
+        hemiIntensity *= (1.0 + weatherIntensity * 0.15);
+        skyColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x244c66), weatherIntensity * 0.45);
+        fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x31667c), weatherIntensity * 0.52);
+      } else if (currentWeather.type === 'rimba_mist') {
+        // Warm Golden-Emerald Rimba Morning Mist
+        sunIntensity *= (1.0 - weatherIntensity * 0.12);
+        ambientIntensity *= (1.0 + weatherIntensity * 0.28);
+        skyColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x7ac7c4), weatherIntensity * 0.38);
+        fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0xbfe8d6), weatherIntensity * 0.55);
+      } else if (currentWeather.type === 'aether_aurora') {
+        auroraOpacity = Math.max(auroraOpacity, weatherIntensity * 0.9);
+        ambientIntensity *= (1.0 + weatherIntensity * 0.20);
+        skyColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x133854), weatherIntensity * 0.35);
+        fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x1b4d6e), weatherIntensity * 0.40);
       } else if (currentWeather.type === 'storm') {
         sunIntensity *= (1.0 - weatherIntensity * 0.6);
         ambientIntensity = Math.max(0.24, ambientIntensity * (1.0 - weatherIntensity * 0.25));
@@ -444,21 +486,76 @@ export class SkyEnvironment {
       hemiIntensity = THREE.MathUtils.lerp(hemiIntensity, 0.08, anomalyIntensity);
     }
 
-    // Water 3.0: Underwater Atmosphere Override when player eyes are submerged
+    // Mythic Cataclysm Sky & Celestial Overrides (Blood Eclipse, Volcanic Eruption, Starfall)
+    const activeWorldEvents = WorldEventManager.getActiveEvents();
+    const isEclipse = activeWorldEvents.some(e => e.type === 'eclipse');
+    const isVolcanic = activeWorldEvents.some(e => e.type === 'gejolak_gunung_api' || e.type === 'kabut_mistis');
+    const isStarfall = activeWorldEvents.some(e => e.type === 'meteor');
+
+    if (isEclipse) {
+      skyColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x3b0710), 0.85);
+      fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x5c0b16), 0.82);
+      this.sunLight.color.setHex(0xef4444);
+      this.hemiLight.color.setHex(0x991b1b);
+      this.hemiLight.groundColor.setHex(0x2a080c);
+      (this.moonMesh.material as THREE.MeshBasicMaterial).color.setHex(0xef4444);
+      (this.sunMesh.material as THREE.MeshBasicMaterial).color.setHex(0xdc2626);
+      auroraOpacity = Math.max(auroraOpacity, 0.65);
+      (this.auroraParticles.material as THREE.PointsMaterial).color.setHex(0xef4444);
+    } else if (isVolcanic) {
+      skyColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x431407), 0.78);
+      fogColor.lerp(SkyEnvironment._scratchTempCol.setHex(0x7c2d12), 0.75);
+      this.sunLight.color.setHex(0xf97316);
+      this.hemiLight.color.setHex(0xea580c);
+      this.hemiLight.groundColor.setHex(0x3b1508);
+      (this.moonMesh.material as THREE.MeshBasicMaterial).color.setHex(0xfdba74);
+      (this.sunMesh.material as THREE.MeshBasicMaterial).color.setHex(0xf97316);
+    } else {
+      (this.moonMesh.material as THREE.MeshBasicMaterial).color.setHex(0xddeeff);
+      (this.sunMesh.material as THREE.MeshBasicMaterial).color.setHex(0xfff3aa);
+      (this.auroraParticles.material as THREE.PointsMaterial).color.setHex(0x38bdf8);
+      if (isStarfall) {
+        auroraOpacity = Math.max(auroraOpacity, 0.85);
+        starOpacity = Math.max(starOpacity, 0.95);
+      }
+    }
+
+    // Water 4.0: Bioluminescent Underwater Trench Atmosphere Override when player eyes are submerged
     if (isEyesInWater) {
-      skyColor.setHex(0x073347);
-      fogColor.setHex(0x0b4f6c);
-      sunIntensity *= 0.35;
-      ambientIntensity = 0.55;
-      hemiIntensity = 0.35;
+      skyColor.setHex(0x063954);
+      fogColor.setHex(0x085a78);
+      sunIntensity = Math.max(0.55, sunIntensity * 0.65);
+      ambientIntensity = 0.78;
+      hemiIntensity = 0.58;
       starOpacity = 0.0;
       auroraOpacity = 0.0;
     }
 
-    // Sync exposed environment colors
-    this.currentSkyZenithColor.copy(skyColor);
-    this.currentSkyHorizonColor.copy(fogColor);
-    this.currentSunColor.copy(this.sunLight.color);
+    // Compute target biome water base & deep colors
+    const targetWaterBase = SkyEnvironment._scratchWaterBase.setRGB(
+      profile.waterColor[0],
+      profile.waterColor[1],
+      profile.waterColor[2]
+    );
+    const targetWaterDeep = SkyEnvironment._scratchWaterDeep.setRGB(
+      Math.max(0.01, profile.waterColor[0] * 0.18),
+      Math.max(0.04, profile.waterColor[1] * 0.28),
+      Math.max(0.12, profile.waterColor[2] * 0.48)
+    );
+    if (this.isNight) {
+      targetWaterBase.multiplyScalar(0.55);
+      targetWaterDeep.multiplyScalar(0.45);
+    }
+
+    // Smooth temporal biome & time-of-day interpolation (prevents abrupt visual snaps at biome borders)
+    const smoothLerp = this.isFirstFrame ? 1.0 : Math.min(1.0, 1.0 - Math.exp(-Math.max(0.001, deltaTime) * 2.8));
+    this.isFirstFrame = false;
+
+    this.currentSkyZenithColor.lerp(skyColor, smoothLerp);
+    this.currentSkyHorizonColor.lerp(fogColor, smoothLerp);
+    this.currentWaterBaseColor.lerp(targetWaterBase, smoothLerp);
+    this.currentWaterDeepColor.lerp(targetWaterDeep, smoothLerp);
+    this.currentSunColor.lerp(this.sunLight.color, smoothLerp);
     this.currentSunDirection.subVectors(this.sunMesh.position, playerPos).normalize();
     this.currentMoonDirection.subVectors(this.moonMesh.position, playerPos).normalize();
 
@@ -469,14 +566,14 @@ export class SkyEnvironment {
       ? Math.sin(((this.timeOfDay - 4.8) / 2.0) * Math.PI)
       : 0.0;
 
-    // Apply colors to scene & materials
+    // Apply smoothed colors to scene & materials
     const skyMat = this.skyDomeMesh.material as THREE.ShaderMaterial;
     if (skyMat.uniforms) {
-      skyMat.uniforms.topColor.value.copy(skyColor);
-      skyMat.uniforms.bottomColor.value.copy(fogColor); // use fogColor for horizon to blend seamlessly
+      skyMat.uniforms.topColor.value.copy(this.currentSkyZenithColor);
+      skyMat.uniforms.bottomColor.value.copy(this.currentSkyHorizonColor); // use horizon/fog color to blend seamlessly
 
       // Horizon band color: subtly brighter desaturated cyan-blue for silhouette readability
-      const horizonCol = SkyEnvironment._scratchHorizonCol.copy(fogColor).multiplyScalar(1.15);
+      const horizonCol = SkyEnvironment._scratchHorizonCol.copy(this.currentSkyHorizonColor).multiplyScalar(1.15);
       horizonCol.r = Math.min(1.0, horizonCol.r * 0.98 + 0.01);
       horizonCol.g = Math.min(1.0, horizonCol.g * 1.02 + 0.02);
       horizonCol.b = Math.min(1.0, horizonCol.b * 1.05 + 0.04);
@@ -494,9 +591,9 @@ export class SkyEnvironment {
     (this.starsParticles.material as THREE.PointsMaterial).opacity = starOpacity;
     (this.auroraParticles.material as THREE.PointsMaterial).opacity = auroraOpacity;
 
-    this.sunLight.intensity = sunIntensity;
-    this.ambientLight.intensity = ambientIntensity;
-    this.hemiLight.intensity = hemiIntensity;
+    this.sunLight.intensity = THREE.MathUtils.lerp(this.sunLight.intensity, sunIntensity, smoothLerp);
+    this.ambientLight.intensity = THREE.MathUtils.lerp(this.ambientLight.intensity, ambientIntensity, smoothLerp);
+    this.hemiLight.intensity = THREE.MathUtils.lerp(this.hemiLight.intensity, hemiIntensity, smoothLerp);
 
     // Apply lightning flash if provided by environment system
     if (this.lightningFlashActive) {
@@ -506,24 +603,27 @@ export class SkyEnvironment {
     }
 
     if (this.scene.fog) {
-      this.scene.fog.color.copy(fogColor);
+      this.scene.fog.color.copy(this.currentSkyHorizonColor);
       if (this.scene.fog instanceof THREE.FogExp2) {
         if (isEyesInWater) {
-          this.scene.fog.density = 0.052;
+          this.scene.fog.density = 0.020; // Clearer bioluminescent trench visibility
         } else {
-          const baseDensity = profile.fogDensity || 0.010;
-          const caveMultiplier = playerPos.y < 32 ? (1.0 + (32 - playerPos.y) * 0.07) : 1.0;
-          // Cheap height fog / aerial perspective:
-          // Low valleys (Y < 55) have hazier atmosphere, mountain summits (Y > 85) have crisp clear horizons
+          const baseDensity = profile.fogDensity || 0.0035;
+          const caveMultiplier = playerPos.y < 32 ? (1.0 + (32 - playerPos.y) * 0.06) : 1.0;
+          // Crisp aerial perspective: clear near/mid-ground with gentle horizon blend
           const heightNorm = THREE.MathUtils.clamp((playerPos.y - 48.0) / 52.0, 0.0, 1.0);
-          const heightMultiplier = THREE.MathUtils.lerp(1.22, 0.72, heightNorm);
-          this.scene.fog.density = baseDensity * caveMultiplier * heightMultiplier;
+          const heightMultiplier = THREE.MathUtils.lerp(0.85, 0.48, heightNorm);
+          const targetFogDensity = baseDensity * caveMultiplier * heightMultiplier;
+          this.smoothedFogDensity = THREE.MathUtils.lerp(this.smoothedFogDensity, targetFogDensity, smoothLerp);
+          this.scene.fog.density = this.smoothedFogDensity;
         }
       }
     }
 
-    // Update Dynamic IBL Gradient Map
-    if (this.iblCanvas && this.iblContext && this.iblTexture) {
+    // Update Dynamic IBL Gradient Map (Throttled to every 1.2s to prevent 60Hz GPU PMREM regeneration stalls)
+    this.iblUpdateTimer += deltaTime;
+    if (this.iblCanvas && this.iblContext && this.iblTexture && this.iblUpdateTimer >= 1.2) {
+      this.iblUpdateTimer = 0;
       const ctx = this.iblContext;
       const gradient = ctx.createLinearGradient(0, 0, 0, 32);
       

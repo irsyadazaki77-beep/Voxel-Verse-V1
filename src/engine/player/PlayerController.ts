@@ -112,6 +112,11 @@ export class PlayerController {
   public damageTilt: number = 0;
   public screenShakeAmount: number = 0;
 
+  // Rhythmic Footstep Distance Accumulator & Surface Audio Tracking
+  private stepDistanceAccum: number = 0;
+  public pendingStepSurfaceBlock: number | null = null;
+  public pendingLandingEvent: { blockId: number; fallDist: number } | null = null;
+
   // Combat posture states
   public isBlockingShield: boolean = false;
   public bowDrawRatio: number = 0; // 0..1
@@ -133,6 +138,27 @@ export class PlayerController {
   public lockOnTargetId: string | null = null;
   public lockOnTargetPos: THREE.Vector3 = new THREE.Vector3();
   public lockOnTargetHeight: number = 2.0;
+
+  // Mount State (Riding Tamed Creatures)
+  public mountedEntityId: string | null = null;
+  public mountedCreatureName: string | null = null;
+  public mountSpeedBonus: number = 1.0;
+  public mountJumpBonus: number = 1.0;
+
+  public mountEntity(entityId: string, creatureName: string, speedBonus: number = 1.45, jumpBonus: number = 1.5): void {
+    this.mountedEntityId = entityId;
+    this.mountedCreatureName = creatureName;
+    this.mountSpeedBonus = speedBonus;
+    this.mountJumpBonus = jumpBonus;
+    this.isCrouching = false;
+  }
+
+  public dismountEntity(): void {
+    this.mountedEntityId = null;
+    this.mountedCreatureName = null;
+    this.mountSpeedBonus = 1.0;
+    this.mountJumpBonus = 1.0;
+  }
 
   public toggleLockOn(preferredTargetId?: string, preferredPos?: THREE.Vector3 | [number, number, number], targetHeight: number = 2.0): boolean {
     if (this.isLockOnActive) {
@@ -180,6 +206,7 @@ export class PlayerController {
 
   constructor(camera: THREE.PerspectiveCamera, startPos: [number, number, number] = [0, 80, 0]) {
     this.camera = camera;
+    this.cameraMotion = new CameraMotionSystem();
     this.position = new THREE.Vector3(...startPos);
     this.highestFallY = startPos[1];
 
@@ -397,8 +424,11 @@ export class PlayerController {
       fallDamageToApply += 10 * dt;
     }
 
-    // 2. Crouch Transition with Ceiling Verification
-    const wantsCrouch = this.keys.crouch && !this.isFlying && !this.isSwimming;
+    // 2. Crouch Transition with Ceiling Verification (or Dismount if riding a creature)
+    if (this.mountedEntityId && this.keys.crouch) {
+      this.dismountEntity();
+    }
+    const wantsCrouch = this.keys.crouch && !this.isFlying && !this.isSwimming && !this.mountedEntityId;
     if (wantsCrouch) {
       this.isCrouching = true;
     } else if (this.isCrouching) {
@@ -413,15 +443,16 @@ export class PlayerController {
       }
     }
 
-    // Smooth height & eye interpolation
+    // Smooth height & eye interpolation (elevated slightly when mounted)
+    const mountEyeOffset = this.mountedEntityId ? 0.55 : 0;
     const targetHeight = this.isCrouching ? this.crouchHeight : this.standingHeight;
-    const targetEye = this.isCrouching ? this.crouchEyeHeight : this.standingEyeHeight;
+    const targetEye = (this.isCrouching ? this.crouchEyeHeight : this.standingEyeHeight) + mountEyeOffset;
     this.currentHeight += (targetHeight - this.currentHeight) * 15 * dt;
     this.currentEyeHeight += (targetEye - this.currentEyeHeight) * 15 * dt;
 
     // 3. Sprinting & Speed Configuration
     const hasInput = this.keys.forward || this.keys.backward || this.keys.left || this.keys.right;
-    const canSprint = this.keys.sprint && !this.isCrouching && !this.isSwimming && (stamina > 5 || gameMode === 'creative');
+    const canSprint = this.keys.sprint && !this.isCrouching && !this.isSwimming && (stamina > 5 || gameMode === 'creative' || !!this.mountedEntityId);
 
     const accSettings = SettingsManager.get().accessibility;
     const sprintFovBoost = accSettings.motionReduction ? 1 : 7;
@@ -443,6 +474,10 @@ export class PlayerController {
       targetSpeed = this.config.crouchSpeed;
     } else if (this.isSprinting) {
       targetSpeed = this.config.sprintSpeed;
+    }
+
+    if (this.mountedEntityId && !this.isSwimming) {
+      targetSpeed *= this.mountSpeedBonus;
     }
 
     // Stagger movement penalty (reduced movement speed during poise break)
@@ -542,9 +577,9 @@ export class PlayerController {
         this.highestFallY = this.position.y;
       }
 
-      // Jump execution
+      // Jump execution (with Mount Jump Bonus if riding)
       if (this.jumpBufferTimer > 0 && this.coyoteTimer > 0) {
-        this.velocity.y = this.config.jumpForce;
+        this.velocity.y = this.config.jumpForce * (this.mountedEntityId ? Math.min(1.35, this.mountJumpBonus) : 1.0);
         this.isGrounded = false;
         this.coyoteTimer = 0;
         this.jumpBufferTimer = 0;
@@ -568,10 +603,46 @@ export class PlayerController {
         this.landingDip = Math.min(0.25, Math.abs(this.velocity.y) * 0.02 + fallDist * 0.03);
       }
 
+      if (fallDist >= 1.1) {
+        const groundBlock = world.getBlock(
+          Math.floor(this.position.x),
+          Math.floor(this.position.y - 0.2),
+          Math.floor(this.position.z)
+        );
+        this.pendingLandingEvent = { blockId: groundBlock, fallDist };
+      }
+
       if (gameMode !== 'creative' && fallDist > 3.8) {
         const dmg = Math.round((fallDist - 3.5) * 8);
         fallDamageToApply += dmg;
         this.applyDamageFeedback();
+      }
+    }
+
+    // 8b. Rhythmic Footstep Distance Accumulator (Material-Aware Step Cadence)
+    if ((this.isGrounded || this.isSwimming) && !this.isFlying && !this.mountedEntityId) {
+      const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+      if (horizSpeed > 0.45) {
+        this.stepDistanceAccum += horizSpeed * dt;
+        const stepThreshold = this.isSwimming
+          ? 2.1
+          : this.isSprinting
+          ? 1.38
+          : this.isCrouching
+          ? 1.95
+          : 1.68;
+
+        if (this.stepDistanceAccum >= stepThreshold) {
+          this.stepDistanceAccum %= stepThreshold;
+          const underFootBlock = world.getBlock(
+            Math.floor(this.position.x),
+            Math.floor(this.position.y - 0.2),
+            Math.floor(this.position.z)
+          );
+          this.pendingStepSurfaceBlock = underFootBlock;
+        }
+      } else {
+        this.stepDistanceAccum = Math.min(this.stepDistanceAccum, 0.6);
       }
     }
 
@@ -671,11 +742,19 @@ export class PlayerController {
 
   // Camera placement with obstacle collision for third-person views
   private updateCamera(world: VoxelWorld, bobOffset: number): void {
-    const shakeX = this.cameraMotion ? 0 : (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
-    const shakeY = this.cameraMotion ? 0 : (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
-    const effBob = this.cameraMotion ? 0 : bobOffset;
-    const effDip = this.cameraMotion ? 0 : this.landingDip;
-    const effTilt = this.cameraMotion ? 0 : this.damageTilt;
+    const isMoving = Math.hypot(this.velocity.x, this.velocity.z) > 0.35;
+    const motion = this.cameraMotion
+      ? this.cameraMotion.update(0.016, isMoving, this.isGrounded, this.isSprinting)
+      : null;
+
+    const shakeX = motion ? motion.shakeOffsetX : (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
+    const shakeY = motion ? motion.shakeOffsetY : (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
+    const effBob = motion ? motion.bobOffset : bobOffset;
+    const effDip = motion ? motion.landingDip : this.landingDip;
+    const effTilt = motion
+      ? motion.damageTilt + motion.bobRoll + motion.vesselWaveRoll
+      : this.damageTilt;
+    const effPitchOffset = motion ? motion.recoilPitch + motion.vesselWavePitch : 0;
 
     const eyePos = PlayerController._tempEyePos.set(
       this.position.x + shakeX,
@@ -688,7 +767,7 @@ export class PlayerController {
       this.camera.position.copy(eyePos);
       this.camera.rotation.order = 'YXZ';
       this.camera.rotation.y = this.yaw;
-      this.camera.rotation.x = this.pitch;
+      this.camera.rotation.x = this.pitch + effPitchOffset;
       this.camera.rotation.z = effTilt;
     } else if (this.cameraMode === 'third_person_back') {
       this.avatarMesh.visible = true;

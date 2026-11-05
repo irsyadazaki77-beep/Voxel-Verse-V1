@@ -13,7 +13,8 @@ export type StructureCategory =
   | 'storage'         // Depots: Chests, Storage Relays, Funnels
   | 'defense'         // Fortifications: Turrets, Traps, Fences, Gates
   | 'leyline_hub'     // Energy Core, Conduits, Sensors, Logic Runes
-  | 'infrastructure';  // Roads, Bridges, Rail lines
+  | 'infrastructure'  // Roads, Bridges, Rail lines
+  | 'sanctum';        // Sacred: Altar, Pendopo, Gamelan, Candi shrines
 
 export interface RecognizedStructure {
   id: string;
@@ -211,6 +212,7 @@ export class StructureRecognitionEngine {
       defense: 'Benteng & Menara Pertahanan (Fortification)',
       leyline_hub: 'Stasiun Daya Leyline (Power Hub)',
       infrastructure: 'Jalur Fasilitas & Jalan Adat (Infrastructure)',
+      sanctum: 'Pendopo & Tempat Pemujaan Sakral (Sanctum)',
     };
 
     const structure: RecognizedStructure = {

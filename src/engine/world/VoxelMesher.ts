@@ -179,6 +179,78 @@ class DynamicMeshBuffer {
     this.indexCount += 6;
   }
 
+  public addWaterQuad(
+    x0: number, y0: number, z0: number,
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    x3: number, y3: number, z3: number,
+    nx: number, ny: number, nz: number,
+    depthFactor: number,
+    shoreFactor: number,
+    causticFactor: number,
+    u0: number, v0: number,
+    u1: number, v1: number,
+    u2: number, v2: number,
+    u3: number, v3: number,
+    tuMin: number, tvMin: number, tuMax: number, tvMax: number,
+    matClass: number
+  ): void {
+    this.ensureVertexCapacity(4);
+    this.ensureIndexCapacity(6);
+
+    const vIdx = this.vertexCount;
+    const pOffset = vIdx * 3;
+    const uvOffset = vIdx * 2;
+    const tOffset = vIdx * 4;
+
+    this.positions[pOffset] = x0;     this.positions[pOffset + 1] = y0; this.positions[pOffset + 2] = z0;
+    this.positions[pOffset + 3] = x1; this.positions[pOffset + 4] = y1; this.positions[pOffset + 5] = z1;
+    this.positions[pOffset + 6] = x2; this.positions[pOffset + 7] = y2; this.positions[pOffset + 8] = z2;
+    this.positions[pOffset + 9] = x3; this.positions[pOffset + 10] = y3; this.positions[pOffset + 11] = z3;
+
+    this.normals[pOffset] = nx;     this.normals[pOffset + 1] = ny; this.normals[pOffset + 2] = nz;
+    this.normals[pOffset + 3] = nx; this.normals[pOffset + 4] = ny; this.normals[pOffset + 5] = nz;
+    this.normals[pOffset + 6] = nx; this.normals[pOffset + 7] = ny; this.normals[pOffset + 8] = nz;
+    this.normals[pOffset + 9] = nx; this.normals[pOffset + 10] = ny; this.normals[pOffset + 11] = nz;
+
+    // Encode R = depthFactor, G = shoreFactor, B = causticFactor
+    for (let i = 0; i < 4; i++) {
+      const co = pOffset + i * 3;
+      this.colors[co] = depthFactor;
+      this.colors[co + 1] = shoreFactor;
+      this.colors[co + 2] = causticFactor;
+    }
+
+    this.uvs[uvOffset] = u0;     this.uvs[uvOffset + 1] = v0;
+    this.uvs[uvOffset + 2] = u1; this.uvs[uvOffset + 3] = v1;
+    this.uvs[uvOffset + 4] = u2; this.uvs[uvOffset + 5] = v2;
+    this.uvs[uvOffset + 6] = u3; this.uvs[uvOffset + 7] = v3;
+
+    for (let i = 0; i < 4; i++) {
+      const to = tOffset + i * 4;
+      this.tileRects[to] = tuMin;
+      this.tileRects[to + 1] = tvMin;
+      this.tileRects[to + 2] = tuMax;
+      this.tileRects[to + 3] = tvMax;
+    }
+
+    this.materials[vIdx] = matClass;
+    this.materials[vIdx + 1] = matClass;
+    this.materials[vIdx + 2] = matClass;
+    this.materials[vIdx + 3] = matClass;
+
+    const iIdx = this.indexCount;
+    this.indices[iIdx] = vIdx;
+    this.indices[iIdx + 1] = vIdx + 1;
+    this.indices[iIdx + 2] = vIdx + 2;
+    this.indices[iIdx + 3] = vIdx;
+    this.indices[iIdx + 4] = vIdx + 2;
+    this.indices[iIdx + 5] = vIdx + 3;
+
+    this.vertexCount += 4;
+    this.indexCount += 6;
+  }
+
   public toTransferable(): {
     positions: Float32Array;
     normals: Float32Array;
@@ -650,13 +722,17 @@ export class VoxelMesher {
                 shoreFactor = 0.45;
               }
 
-              waterBuffer.addQuad(
+              const causticFactor = Math.max(0.0, 1.0 - depthCount / 5.0);
+
+              waterBuffer.addWaterQuad(
                 x, y + 0.88, z + 1,
                 x + 1, y + 0.88, z + 1,
                 x + 1, y + 0.88, z,
                 x, y + 0.88, z,
                 0, 1, 0,
-                depthFactor, depthFactor, depthFactor, depthFactor,
+                depthFactor,
+                shoreFactor,
+                causticFactor,
                 0, 0,
                 1, 0,
                 1, 1,

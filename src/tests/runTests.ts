@@ -21,6 +21,11 @@ import { QuestManager } from '../engine/progression/QuestManager';
 import { DiscoverySystem } from '../engine/progression/DiscoverySystem';
 import { GameEventBus } from '../engine/events/GameEventBus';
 import { ServerAuthority } from '../engine/network/ServerAuthority';
+import { CREATURE_REGISTRY } from '../engine/entities/CreatureRegistry';
+import { EntityModelBuilder } from '../engine/entities/EntityModelBuilder';
+import { DungeonGenerator } from '../engine/dungeon/DungeonGenerator';
+import { WeatherSystem } from '../engine/environment/WeatherSystem';
+import { ITEM_DEFS } from '../engine/items/ItemRegistry';
 
 let testCount = 0;
 let passedCount = 0;
@@ -788,11 +793,176 @@ async function runTestSuite() {
   }
 
   // TEST 30: Phase 1.1 World Save & Data Integrity Overhaul Suite
-  console.log('\n▶ [30/30] Running Phase 1.1 World Save & Data Integrity Overhaul Tests...');
+  console.log('\n▶ [30/31] Running Phase 1.1 World Save & Data Integrity Overhaul Tests...');
   {
     const { runWorldSaveIntegrityOverhaulTests } = await import('./worldSaveIntegrityOverhaulTest');
     const integritySuccess = await runWorldSaveIntegrityOverhaulTests();
     assert(integritySuccess === true, 'All Phase 1.1 World Save & Data Integrity Overhaul tests passed strictly');
+  }
+
+  // TEST 31: Deep Audit Regression Suite (Registries, Chunk Async State, Chest Loot Anti-Exploit, Terrace Harvest & ServerAuthority)
+  console.log('\n▶ [31/31] Running Deep Audit Regression Suite...');
+  {
+    const { BLOCK_DEFS } = await import('../engine/world/BlockRegistry');
+    const { ITEM_DEFS } = await import('../engine/items/ItemRegistry');
+    const { Chunk, ChunkState } = await import('../engine/world/Chunk');
+    const { BlockPlacementEngine } = await import('../engine/world/BlockPlacementEngine');
+    const { FarmingManager } = await import('../engine/world/FarmingManager');
+    const { InventoryManager } = await import('../engine/items/InventoryManager');
+
+    // 1. Registry completeness for Tall Grass & Aether Expanse blocks
+    const tallGrassDef = BLOCK_DEFS[BlockType.TALL_GRASS];
+    assert(tallGrassDef.dropItem === 'seeds_wheat' && ITEM_DEFS['seeds_wheat'] !== undefined, 'TALL_GRASS drops valid seeds_wheat item');
+    assert(ITEM_DEFS['mushroom_red'] !== undefined && ITEM_DEFS['glow_shroom'] !== undefined, 'Mushroom and Glow Shroom items exist in ItemRegistry');
+    assert(BLOCK_DEFS[BlockType.SKYROOT_PLANKS] !== undefined && ITEM_DEFS['skyroot_planks'] !== undefined, 'SKYROOT_PLANKS registered in BlockRegistry and ItemRegistry');
+    assert(BLOCK_DEFS[BlockType.AETHER_GRASS] !== undefined && ITEM_DEFS['aether_grass'] !== undefined, 'AETHER_GRASS registered in BlockRegistry and ItemRegistry');
+    assert(BLOCK_DEFS[BlockType.AETHER_STONE] !== undefined && ITEM_DEFS['aether_stone'] !== undefined, 'AETHER_STONE registered in BlockRegistry and ItemRegistry');
+    assert(BLOCK_DEFS[BlockType.CRYSTAL_BRICK] !== undefined && ITEM_DEFS['crystal_brick'] !== undefined, 'CRYSTAL_BRICK registered in BlockRegistry and ItemRegistry');
+
+    // 2. Chunk async generation state preservation during concurrent block edits
+    const testChunk = new Chunk(0, 0);
+    testChunk.state = ChunkState.QUEUED_GENERATION;
+    testChunk.setBlockWithState(2, 10, 2, BlockType.TORCH, { facing: 'north' });
+    assert(testChunk.state === ChunkState.QUEUED_GENERATION, 'Chunk.setBlockWithState preserves QUEUED_GENERATION state');
+
+    testChunk.state = ChunkState.GENERATING;
+    testChunk.setBlock(3, 10, 3, BlockType.WOOD_PLANKS);
+    assert(testChunk.state === ChunkState.GENERATING, 'Chunk.setBlock preserves GENERATING state');
+
+    // 3. Chest container anti-exploit (player-placed chests start empty & broken chests do not respawn procedural loot)
+    const chestPos: [number, number, number] = [999, 68, 999];
+    BlockPlacementEngine.initializeEmptyContainer(chestPos);
+    const placedSlots = BlockPlacementEngine.getContainer(chestPos);
+    assert(placedSlots.every((s) => s === null), 'Player-placed chest initializes completely empty without procedural loot');
+    const harvestWorld = new VoxelWorld(54321);
+    harvestWorld.setBlock(999, 68, 999, BlockType.CHEST, true);
+    BlockPlacementEngine.handleBlockDestruction(chestPos, BlockType.CHEST, harvestWorld);
+    const replacedSlots = BlockPlacementEngine.getContainer(chestPos);
+    assert(replacedSlots.every((s) => s === null), 'Broken and re-opened chest coordinate does not regenerate infinite procedural loot');
+
+    // 4. Naturally generated terrace crop harvest & full-inventory protection
+    const farmWorld = new VoxelWorld(12345);
+    farmWorld.setBlock(10, 64, 10, BlockType.FARMLAND, true);
+    farmWorld.setBlock(10, 65, 10, BlockType.CROP_WHEAT_3, true);
+
+    const fullInv = Array.from({ length: 36 }, () => ({ itemId: 'cobblestone', count: 64 }));
+    const fullHarvest = FarmingManager.harvestCrop([10, 64, 10], farmWorld, fullInv);
+    assert(fullHarvest.success === false && fullHarvest.inventoryFull === true, 'Harvesting with full inventory is blocked to prevent item loss');
+    assert(farmWorld.getBlock(10, 65, 10) === BlockType.CROP_WHEAT_3, 'Crop block remains intact when inventory is full');
+
+    const emptyInv = InventoryManager.sanitizeInventory([], 36);
+    const validHarvest = FarmingManager.harvestCrop([10, 64, 10], farmWorld, emptyInv);
+    assert(validHarvest.success === true && validHarvest.drops.length > 0, 'Naturally generated terrace crop harvests cleanly without prior plot registration');
+    assert(farmWorld.getBlock(10, 65, 10) === BlockType.AIR, 'Crop block cleared after successful harvest');
+
+    // 5. Hardened ServerAuthority checks (Unbreakable block protection & Crafting workstation validation)
+    const portalBreak = ServerAuthority.validateBlockBreak([10, 5, 10], 11, 5, 10, BlockType.AETHER_PORTAL, BlockType.AETHER_PORTAL);
+    assert(portalBreak.valid === false && portalBreak.reason === 'UNBREAKABLE_BLOCK', 'ServerAuthority rejects breaking unbreakable AETHER_PORTAL');
+
+    const craftBenchNoNearby = ServerAuthority.validateCrafting(
+      'chest_bench',
+      1,
+      [{ itemId: 'wood_planks', count: 10 }],
+      'bench',
+      undefined,
+      [10, 64, 10],
+      () => BlockType.AIR
+    );
+    assert(craftBenchNoNearby.valid === false && craftBenchNoNearby.reason === 'WORKSTATION_NOT_NEARBY', 'ServerAuthority rejects workstation crafting when no bench is nearby');
+
+    const craftBenchValid = ServerAuthority.validateCrafting(
+      'chest_bench',
+      1,
+      [{ itemId: 'wood_planks', count: 10 }, null],
+      'bench',
+      [12, 64, 10],
+      [10, 64, 10],
+      () => BlockType.CRAFTING_BENCH
+    );
+    assert(craftBenchValid.valid === true, 'ServerAuthority approves valid workstation crafting within reach');
+
+    // 6. Nusantara Boss, Candi Ruins Dungeon & Tropical Weather Enhancements
+    const antabogaDef = CREATURE_REGISTRY['naga_antaboga'];
+    assert(!!antabogaDef && antabogaDef.isBoss === true && antabogaDef.isMythic === true, 'Sang Hyang Naga Antaboga registered as Mythic Boss');
+    assert(!!ITEM_DEFS['sisik_emas_naga'] && !!ITEM_DEFS['tombak_trisula_naga'], 'Naga Antaboga Pusaka items registered in ItemRegistry');
+
+    const antabogaMesh = EntityModelBuilder.buildByModelType('naga_antaboga', 0);
+    assert(!!antabogaMesh && antabogaMesh.userData.rig?.modelType === 'naga_antaboga', 'EntityModelBuilder builds articulated Naga Antaboga 3D voxel rig');
+
+    const candiDungeon = DungeonGenerator.generateDungeon(0, 20, 0, 'candi_ruins', 'tier3_ancient', 777);
+    assert(DungeonGenerator.validateReachability(candiDungeon.dungeon) === true, 'Candi Ruins dungeon graph passes reachability validation');
+    const hasAltar = candiDungeon.blocks.some((b) => b.block === BlockType.AETHER_ALTAR_CORE);
+    assert(hasAltar === true, 'Candi Ruins dungeon contains Sacred Lingga Summoning Altar (AETHER_ALTAR_CORE)');
+
+    const testScene = new THREE.Scene();
+    const weatherSys = new WeatherSystem(testScene);
+    weatherSys.setWeather('rimba_mist', 0.7);
+    assert(weatherSys.weather.type === 'rimba_mist', 'WeatherSystem transitions to Nusantara rimba_mist mode');
+    weatherSys.setWeather('monsoon_rain', 0.85);
+    assert(weatherSys.weather.type === 'monsoon_rain', 'WeatherSystem transitions to Nusantara monsoon_rain mode');
+    weatherSys.dispose();
+
+    const { RegistryValidator } = await import('../engine/validation/RegistryValidator');
+    const validationReport = RegistryValidator.validateAll();
+    assert(
+      validationReport.valid && validationReport.totalErrors === 0,
+      `RegistryValidator passes with 0 errors (found ${validationReport.totalErrors})`
+    );
+
+    const { TextureAtlas } = await import('../engine/world/TextureAtlas');
+    let allBlocksHaveTiles = true;
+    for (const key of Object.keys(BlockType)) {
+      const val = (BlockType as any)[key];
+      if (typeof val === 'number' && val !== BlockType.AIR) {
+        for (const face of ['top', 'bottom', 'side'] as const) {
+          const tileName = TextureAtlas.getTileForBlock(val as BlockType, face);
+          if (tileName === 'missing_texture' || !TextureAtlas.TILE_COORDS[tileName]) {
+            allBlocksHaveTiles = false;
+            console.error(`Missing TextureAtlas tile for BlockType.${key} (${face}) -> ${tileName}`);
+          }
+        }
+      }
+    }
+    assert(allBlocksHaveTiles, 'All non-AIR BlockTypes resolve to valid TextureAtlas TILE_COORDS across all faces');
+
+    // 7. VoxelVerse v4.5: Aerial Flight, Pamor Forging, Mustika Socketing & Endemic Fauna
+    const { AerialFlightAndSiegeSystem } = await import('../engine/systems/AerialFlightAndSiegeSystem');
+
+    // Test Garuda Kencana 3D mount & Glider launch
+    const testPos = new THREE.Vector3(100, 64, 100);
+    const testVel = new THREE.Vector3(0, 0, 0);
+    AerialFlightAndSiegeSystem.toggleFlightMode('garuda', testPos, testVel);
+    assert(AerialFlightAndSiegeSystem.mode === 'garuda', 'AerialFlightAndSiegeSystem mounts Garuda Kencana 3D mount');
+    AerialFlightAndSiegeSystem.dismountFlight();
+    assert(AerialFlightAndSiegeSystem.mode === 'none', 'AerialFlightAndSiegeSystem dismounts cleanly');
+
+    AerialFlightAndSiegeSystem.toggleFlightMode('glider', testPos, testVel);
+    assert(AerialFlightAndSiegeSystem.mode === 'glider', 'AerialFlightAndSiegeSystem deploys Dragon Kite Glider');
+    AerialFlightAndSiegeSystem.dismountFlight();
+    assert(AerialFlightAndSiegeSystem.mode === 'none', 'AerialFlightAndSiegeSystem retracts Glider cleanly');
+
+    // Test Pamor Forging & Mustika Socketing
+    const baseWeapon = InventoryManager.createStack('keris_kyai_sengkelat', 1)!;
+    const mustikaGem = InventoryManager.createStack('mustika_merah_delima', 1)!;
+
+    const forgeRes = InventoryManager.forgeWeaponPamor(baseWeapon, 'surya_api');
+    assert(forgeRes.success === true && forgeRes.forgedItem?.modifiers?.pamorElement === 'surya_api', 'InventoryManager forges Pamor Surya Merapi onto weapon');
+
+    const socketRes = InventoryManager.socketMustikaGem(forgeRes.forgedItem!, mustikaGem);
+    assert(socketRes.success === true && socketRes.socketedItem?.modifiers?.mustikaName === 'Mustika Merah Delima', 'InventoryManager sockets Mustika Merah Delima gem into weapon');
+
+    // Test 3D Endemic Fauna Rigs
+    const garudaMesh = EntityModelBuilder.buildByModelType('garuda_kencana', 0);
+    assert(!!garudaMesh && garudaMesh.userData.rig?.modelType === 'garuda_kencana', 'EntityModelBuilder builds articulated Garuda Kencana 3D voxel rig');
+
+    const tigerMesh = EntityModelBuilder.buildByModelType('harimau_sumatera', 0);
+    assert(!!tigerMesh && tigerMesh.userData.rig?.modelType === 'harimau_sumatera', 'EntityModelBuilder builds articulated Harimau Sumatera 3D voxel rig');
+
+    const komodoMesh = EntityModelBuilder.buildByModelType('komodo_purba', 0);
+    assert(!!komodoMesh && komodoMesh.userData.rig?.modelType === 'komodo_purba', 'EntityModelBuilder builds articulated Komodo Purba 3D voxel rig');
+
+    const birdMesh = EntityModelBuilder.buildByModelType('cenderawasih_emas', 0);
+    assert(!!birdMesh && birdMesh.userData.rig?.modelType === 'cenderawasih_emas', 'EntityModelBuilder builds articulated Cenderawasih Emas 3D voxel rig');
   }
 
   console.log('\n====================================================');

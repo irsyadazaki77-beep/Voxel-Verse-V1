@@ -25,6 +25,10 @@ export class ChunkScheduler {
 
   private projScreenMatrix = new THREE.Matrix4();
   private frustum = new THREE.Frustum();
+  private lastFrustumCamPos = new THREE.Vector3(Infinity, Infinity, Infinity);
+  private lastFrustumCamQuat = new THREE.Quaternion();
+  private lastFrustumChunkCount: number = -1;
+  private forceNextFrustumUpdate: boolean = true;
 
   private lastZombieCheckTime: number = 0;
   private zombieCount: number = 0;
@@ -60,13 +64,67 @@ export class ChunkScheduler {
 
   private lastDiscoveryPlayerCX: number = -999999;
   private lastDiscoveryPlayerCZ: number = -999999;
+  private readonly maxWarmCacheEntries: number;
+
+  // Zero-GC Pool of 18x128x18 Halo Buffers (41,472 bytes each)
+  private static readonly HALO_BYTE_LEN = 18 * 128 * 18;
+  private static readonly haloBufferPool: ArrayBuffer[] = [];
+
+  public static acquireHaloUint8(): Uint8Array {
+    while (this.haloBufferPool.length > 0) {
+      const buf = this.haloBufferPool.pop()!;
+      if (buf && buf.byteLength === this.HALO_BYTE_LEN) {
+        const arr = new Uint8Array(buf);
+        arr.fill(0);
+        return arr;
+      }
+    }
+    return new Uint8Array(this.HALO_BYTE_LEN);
+  }
+
+  public static releaseHaloBuffer(buf: ArrayBuffer): void {
+    if (
+      buf &&
+      buf.byteLength === this.HALO_BYTE_LEN &&
+      this.haloBufferPool.length < 16
+    ) {
+      this.haloBufferPool.push(buf);
+    }
+  }
 
   constructor(world: VoxelWorld) {
     this.world = world;
     this.workerPool = new ChunkWorkerPool();
+    ChunkWorkerPool.onRecycleHaloBuffer = (buf) => ChunkScheduler.releaseHaloBuffer(buf);
+
+    const isMobileOrLowMem =
+      typeof window !== 'undefined' &&
+      (window.innerWidth <= 900 ||
+        'ontouchstart' in window ||
+        ((navigator as any).deviceMemory && (navigator as any).deviceMemory <= 4));
+    this.maxWarmCacheEntries = isMobileOrLowMem ? 28 : 64;
   }
 
   public updateFrustumCulling(camera: THREE.PerspectiveCamera): void {
+    const chunkCount = this.world.chunks.size;
+    const posDeltaSq = this.lastFrustumCamPos.distanceToSquared(camera.position);
+    const quatDot = Math.abs(this.lastFrustumCamQuat.dot(camera.quaternion));
+
+    // Skip full frustum sweep if camera is stationary and chunk set hasn't changed
+    if (
+      !this.forceNextFrustumUpdate &&
+      chunkCount === this.lastFrustumChunkCount &&
+      posDeltaSq < 0.0025 &&
+      quatDot > 0.99995
+    ) {
+      return;
+    }
+
+    this.forceNextFrustumUpdate = false;
+    this.lastFrustumChunkCount = chunkCount;
+    this.lastFrustumCamPos.copy(camera.position);
+    this.lastFrustumCamQuat.copy(camera.quaternion);
+
     camera.updateMatrixWorld();
     camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
     this.projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -95,7 +153,7 @@ export class ChunkScheduler {
   }
 
   public static buildHaloBuffer(chunk: Chunk, world: VoxelWorld): ArrayBuffer {
-    const halo = new Uint8Array(18 * 128 * 18);
+    const halo = ChunkScheduler.acquireHaloUint8();
     const center = chunk.blocks;
     if (!center) return halo.buffer;
 
@@ -121,7 +179,6 @@ export class ChunkScheduler {
 
     for (let i = 0; i < offsets.length; i++) {
       const [ox, oz] = offsets[i];
-      const nChunkKey = world.getChunkKey(cx + ox, cz + oz);
       const nChunk = world.getChunkLoaded(cx + ox, cz + oz);
       if (!nChunk || !nChunk.blocks) continue;
       const nBlocks = nChunk.blocks;
@@ -136,7 +193,7 @@ export class ChunkScheduler {
         const dstY = ly * 324;
         for (let lz = srcLzStart; lz <= srcLzEnd; lz++) {
           const pz = oz === 0 ? lz + 1 : (oz === -1 ? 0 : 17);
-          for (let lx = srcLxStart; lx <= srcLxEnd; lx++) {
+          for (let lx = srcLxStart; lx <= srcLzEnd; lx++) {
             const px = ox === 0 ? lx + 1 : (ox === -1 ? 0 : 17);
             halo[px + pz * 18 + dstY] = nBlocks[lx + lz * 16 + srcY];
           }
@@ -327,7 +384,17 @@ export class ChunkScheduler {
             onComplete: (buffer) => {
               const targetChunk = this.world.chunks.get(key);
               if (targetChunk) {
-                targetChunk.setBlocks(new Uint8Array(buffer));
+                const blockArray = new Uint8Array(buffer);
+                const latestMods = this.world.getModifiedBlocks(cx, cz);
+                if (latestMods) {
+                  latestMods.forEach((bType, localKey) => {
+                    const [lx, wy, lz] = localKey.split(',').map(Number);
+                    if (!isNaN(lx) && !isNaN(wy) && !isNaN(lz) && lx >= 0 && lx < 16 && wy >= 0 && wy < 128 && lz >= 0 && lz < 16) {
+                      blockArray[Chunk.getIndex(lx, wy, lz)] = bType;
+                    }
+                  });
+                }
+                targetChunk.setBlocks(blockArray);
 
                 const statesMap = this.world.getModifiedBlockStates(cx, cz);
                 if (statesMap) {
@@ -339,7 +406,7 @@ export class ChunkScheduler {
                   });
                 }
 
-                transitionChunkState(targetChunk, [ChunkState.QUEUED_GENERATION, ChunkState.GENERATING, ChunkState.GENERATION_RETRY, ChunkState.GENERATED], ChunkState.GENERATED, 'gen_complete');
+                transitionChunkState(targetChunk, [ChunkState.QUEUED_GENERATION, ChunkState.GENERATING, ChunkState.GENERATION_RETRY, ChunkState.GENERATED, ChunkState.DIRTY], ChunkState.GENERATED, 'gen_complete');
                 targetChunk.isDirty = true;
                 this.dirtyQueue.add(key);
                 this.triggerBorderRemesh(cx, cz);
@@ -375,8 +442,8 @@ export class ChunkScheduler {
         // Requirement 24: DO NOT CACHE BROKEN / DIRTY / MESHING / GENERATING CHUNKS
         const isCacheable = chunk.state === ChunkState.READY || chunk.state === ChunkState.GENERATED;
         if (isCacheable && chunk.blocks) {
-          // Warm Cache LRU Eviction (max 64 entries)
-          if (this.warmCache.size >= 64) {
+          // Warm Cache LRU Eviction (device-adaptive max entries)
+          if (this.warmCache.size >= this.maxWarmCacheEntries) {
             const oldestKey = this.warmCache.keys().next().value;
             if (oldestKey !== undefined) {
               const old = this.warmCache.get(oldestKey);
@@ -408,116 +475,122 @@ export class ChunkScheduler {
     // 3. Process Remesh / Dirty Queue to Worker
     let meshingTasksEnqueued = 0;
 
-    const dirtyBatch = Array.from(this.dirtyQueue);
-    dirtyBatch.sort((a, b) => {
-      const ca = this.world.chunks.get(a);
-      const cb = this.world.chunks.get(b);
-      if (!ca) return 1;
-      if (!cb) return -1;
-      const da = (ca.cx - playerCX) ** 2 + (ca.cz - playerCZ) ** 2;
-      const db = (cb.cx - playerCX) ** 2 + (cb.cz - playerCZ) ** 2;
-      return da - db;
-    });
-
-    for (const key of dirtyBatch) {
-      if (meshingTasksEnqueued >= maxMeshTasksPerCall || (meshingTasksEnqueued > 0 && performance.now() - startTime >= frameBudgetMs)) {
-        break;
+    if (this.dirtyQueue.size > 0) {
+      const dirtyBatch = Array.from(this.dirtyQueue);
+      if (dirtyBatch.length > 1) {
+        dirtyBatch.sort((a, b) => {
+          const ca = this.world.chunks.get(a);
+          const cb = this.world.chunks.get(b);
+          if (!ca) return 1;
+          if (!cb) return -1;
+          const da = (ca.cx - playerCX) ** 2 + (ca.cz - playerCZ) ** 2;
+          const db = (cb.cx - playerCX) ** 2 + (cb.cz - playerCZ) ** 2;
+          return da - db;
+        });
       }
 
-      const chunk = this.world.chunks.get(key);
-      if (
-        chunk &&
-        chunk.isDirty &&
-        chunk.state !== ChunkState.QUEUED_GENERATION &&
-        chunk.state !== ChunkState.GENERATING &&
-        chunk.state !== ChunkState.MESHING &&
-        chunk.state !== ChunkState.QUEUED_MESH
-      ) {
-        const cx = chunk.cx;
-        const cz = chunk.cz;
-
-        const dx = cx - playerCX;
-        const dz = cz - playerCZ;
-        const distSq = dx * dx + dz * dz;
-        const isVeryNear = distSq <= 4;
-
-        if (!isVeryNear && meshingTasksEnqueued >= maxMeshTasksPerCall) {
+      for (const key of dirtyBatch) {
+        if (meshingTasksEnqueued >= maxMeshTasksPerCall || (meshingTasksEnqueued > 0 && performance.now() - startTime >= frameBudgetMs)) {
           break;
         }
 
-        transitionChunkState(chunk, [ChunkState.GENERATED, ChunkState.DIRTY, ChunkState.READY], ChunkState.QUEUED_MESH, 'enqueue_mesh');
-        chunk.isDirty = false;
-        this.dirtyQueue.delete(key);
+        const chunk = this.world.chunks.get(key);
+        if (
+          chunk &&
+          chunk.isDirty &&
+          chunk.state !== ChunkState.QUEUED_GENERATION &&
+          chunk.state !== ChunkState.GENERATING &&
+          chunk.state !== ChunkState.MESHING &&
+          chunk.state !== ChunkState.QUEUED_MESH
+        ) {
+          const cx = chunk.cx;
+          const cz = chunk.cz;
 
-        if (!isVeryNear) {
-          meshingTasksEnqueued++;
+          const dx = cx - playerCX;
+          const dz = cz - playerCZ;
+          const distSq = dx * dx + dz * dz;
+          const isVeryNear = distSq <= 4;
+
+          if (!isVeryNear && meshingTasksEnqueued >= maxMeshTasksPerCall) {
+            break;
+          }
+
+          transitionChunkState(chunk, [ChunkState.GENERATED, ChunkState.DIRTY, ChunkState.READY], ChunkState.QUEUED_MESH, 'enqueue_mesh');
+          chunk.isDirty = false;
+          this.dirtyQueue.delete(key);
+
+          if (!isVeryNear) {
+            meshingTasksEnqueued++;
+          }
+
+          const invDist = distSq > 0 ? 1 / Math.sqrt(distSq) : 0;
+          const dirX = dx * invDist;
+          const dirZ = dz * invDist;
+          const dot = dirX * cameraDir.x + dirZ * cameraDir.z;
+
+          let meshPriority = Math.max(10, 1200 - distSq * 20);
+          if (dot > 0) meshPriority += dot * 250;
+          if (dx === 0 && dz === 0) meshPriority += 2000;
+          meshPriority += 150;
+
+          const chunkSourceRev = chunk.voxelRevision;
+
+          this.workerPool.enqueueTask({
+            type: 'mesh',
+            taskId: `mesh_${key}_${Date.now()}`,
+            cx,
+            cz,
+            sourceRevision: chunkSourceRev,
+            priority: meshPriority,
+            sessionToken: this.workerPool.currentSessionToken,
+            // Requirement 3 & 4: Provide fresh buffer dynamically at execution time
+            bufferProvider: () => {
+              const freshChunk = this.world.getChunkLoaded(cx, cz);
+              if (!freshChunk || !freshChunk.blocks) return {};
+              const freshHalo = ChunkScheduler.buildHaloBuffer(freshChunk, this.world);
+              return { haloBuffer: freshHalo };
+            },
+            onComplete: (meshData, sourceRevision) => {
+              // Push to Mesh Integration Queue (Req 18 & 19)
+              this.meshIntegrationQueue.push({
+                key,
+                cx,
+                cz,
+                meshData,
+                sourceRevision,
+                sessionToken: this.workerPool.currentSessionToken,
+                priority: meshPriority,
+              });
+            },
+            onError: (_err) => {
+              const targetChunk = this.world.chunks.get(key);
+              if (targetChunk) {
+                targetChunk.setDirty();
+                transitionChunkState(targetChunk, targetChunk.state, ChunkState.DIRTY, 'mesh_error');
+                this.dirtyQueue.add(key);
+              }
+            },
+          });
+        } else if (!chunk) {
+          this.dirtyQueue.delete(key);
         }
-
-        const invDist = distSq > 0 ? 1 / Math.sqrt(distSq) : 0;
-        const dirX = dx * invDist;
-        const dirZ = dz * invDist;
-        const dot = dirX * cameraDir.x + dirZ * cameraDir.z;
-
-        let meshPriority = Math.max(10, 1200 - distSq * 20);
-        if (dot > 0) meshPriority += dot * 250;
-        if (dx === 0 && dz === 0) meshPriority += 2000;
-        meshPriority += 150;
-
-        const chunkSourceRev = chunk.voxelRevision;
-
-        this.workerPool.enqueueTask({
-          type: 'mesh',
-          taskId: `mesh_${key}_${Date.now()}`,
-          cx,
-          cz,
-          sourceRevision: chunkSourceRev,
-          priority: meshPriority,
-          sessionToken: this.workerPool.currentSessionToken,
-          // Requirement 3 & 4: Provide fresh buffer dynamically at execution time
-          bufferProvider: () => {
-            const freshChunk = this.world.getChunkLoaded(cx, cz);
-            if (!freshChunk || !freshChunk.blocks) return {};
-            const freshHalo = ChunkScheduler.buildHaloBuffer(freshChunk, this.world);
-            return { haloBuffer: freshHalo };
-          },
-          onComplete: (meshData, sourceRevision) => {
-            // Push to Mesh Integration Queue (Req 18 & 19)
-            this.meshIntegrationQueue.push({
-              key,
-              cx,
-              cz,
-              meshData,
-              sourceRevision,
-              sessionToken: this.workerPool.currentSessionToken,
-              priority: meshPriority,
-            });
-          },
-          onError: (_err) => {
-            const targetChunk = this.world.chunks.get(key);
-            if (targetChunk) {
-              targetChunk.setDirty();
-              transitionChunkState(targetChunk, targetChunk.state, ChunkState.DIRTY, 'mesh_error');
-              this.dirtyQueue.add(key);
-            }
-          },
-        });
-      } else if (!chunk) {
-        this.dirtyQueue.delete(key);
       }
     }
 
     // 4. GPU Mesh Integration Queue (Req 18 & 19)
     let uploads = 0;
     if (this.meshIntegrationQueue.length > 0) {
-      // Sort integration queue by priority (near player first)
-      this.meshIntegrationQueue.sort((a, b) => b.priority - a.priority);
+      if (this.meshIntegrationQueue.length > 1) {
+        // Sort integration queue by priority (near player first)
+        this.meshIntegrationQueue.sort((a, b) => b.priority - a.priority);
+      }
 
       const gpuStart = performance.now();
 
       while (
         this.meshIntegrationQueue.length > 0 &&
         uploads < maxUploadsPerFrame &&
-        performance.now() - gpuStart < 2.0
+        performance.now() - gpuStart < 1.65
       ) {
         const item = this.meshIntegrationQueue.shift()!;
         if (item.sessionToken !== this.workerPool.currentSessionToken) continue;
@@ -537,6 +610,7 @@ export class ChunkScheduler {
             const dx = targetChunk.cx - playerCX;
             const dz = targetChunk.cz - playerCZ;
             targetChunk.updateShadowLOD(dx * dx + dz * dz);
+            this.forceNextFrustumUpdate = true;
             uploads++;
           } else {
             // Stale revision: mark dirty and re-enqueue

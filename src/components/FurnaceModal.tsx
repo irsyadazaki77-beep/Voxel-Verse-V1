@@ -36,10 +36,11 @@ export const FurnaceModal: React.FC<FurnaceModalProps> = ({
     if (!furnaceState.outputSlot) return;
 
     const stack = furnaceState.outputSlot;
-    const res = InventoryManager.addItem(playerInventory, stack.itemId, stack.count);
+    const newInv = playerInventory.map((s) => (s ? { ...s } : null));
+    const res = InventoryManager.addItem(newInv, stack.itemId, stack.count);
 
     if (res.addedCount > 0) {
-      setPlayerInventory([...playerInventory]);
+      setPlayerInventory(newInv);
       const remaining = stack.count - res.addedCount;
       const nextOutput = remaining > 0 ? { ...stack, count: remaining } : null;
 
@@ -50,13 +51,14 @@ export const FurnaceModal: React.FC<FurnaceModalProps> = ({
   };
 
   const handleInventorySlotClick = (index: number) => {
-    const item = playerInventory[index];
-    if (!item) return;
+    const srcItem = playerInventory[index];
+    if (!srcItem) return;
 
-    const itemDef = ITEM_DEFS[item.itemId];
+    const itemDef = ITEM_DEFS[srcItem.itemId];
     if (!itemDef) return;
 
-    const newInv = [...playerInventory];
+    const newInv = playerInventory.map((s) => (s ? { ...s } : null));
+    const item = newInv[index]!;
 
     // Priority 1: If item is fuel and fuel slot is empty or compatible
     const isFuel = ((itemDef.fuelBurnTime || itemDef.burnTime || 0) > 0);
@@ -110,9 +112,10 @@ export const FurnaceModal: React.FC<FurnaceModalProps> = ({
     const slot = slotType === 'input' ? furnaceState.inputSlot : furnaceState.fuelSlot;
     if (!slot) return;
 
-    const res = InventoryManager.addItem(playerInventory, slot.itemId, slot.count);
+    const newInv = playerInventory.map((s) => (s ? { ...s } : null));
+    const res = InventoryManager.addItem(newInv, slot.itemId, slot.count);
     if (res.addedCount > 0) {
-      setPlayerInventory([...playerInventory]);
+      setPlayerInventory(newInv);
       const remaining = slot.count - res.addedCount;
 
       if (slotType === 'input') {

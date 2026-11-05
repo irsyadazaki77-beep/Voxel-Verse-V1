@@ -13,7 +13,7 @@ interface ActiveParticle {
   life: number;
   maxLife: number;
   gravity: number;
-  type: 'debris' | 'footstep' | 'splash' | 'ember' | 'ash' | 'spore' | 'spark' | 'slash';
+  type: 'debris' | 'footstep' | 'splash' | 'ember' | 'ash' | 'spore' | 'spark' | 'slash' | 'firefly' | 'sunmote';
 }
 
 export class ParticleManager {
@@ -150,6 +150,38 @@ export class ParticleManager {
     }
   }
 
+  public emitBlockBreak(pos: THREE.Vector3, colorHex: string = '#38bdf8', _style?: string): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0) return;
+    const maxCap = this.getMaxActiveLimit();
+    const count = Math.max(4, Math.round(18 * mult));
+    const baseCol = new THREE.Color(colorHex);
+
+    for (let i = 0; i < count; i++) {
+      if (this.particles.length >= maxCap) {
+        this.evictOldestParticle();
+      }
+      const p = this.getPooledParticle();
+      p.position.set(
+        pos.x + (Math.random() - 0.5) * 0.8,
+        pos.y + Math.random() * 0.8,
+        pos.z + (Math.random() - 0.5) * 0.8
+      );
+      p.velocity.set(
+        (Math.random() - 0.5) * 5.0,
+        2.8 + Math.random() * 4.0,
+        (Math.random() - 0.5) * 5.0
+      );
+      p.color.copy(baseCol);
+      p.size = 0.85 + Math.random() * 0.55;
+      p.life = 0;
+      p.maxLife = 0.65 + Math.random() * 0.45;
+      p.gravity = 9.5;
+      p.type = 'debris';
+      this.particles.push(p);
+    }
+  }
+
   // Spawn Combat Hit Sparks (e.g. Weapon strike / Critical Hit)
   public spawnCombatSparks(pos: THREE.Vector3, isCritical: boolean = false): void {
     const mult = this.getQualityMultiplier();
@@ -244,6 +276,87 @@ export class ParticleManager {
     }
   }
 
+  // Spawn Crop Harvest & Subak Golden Grain Particles
+  public spawnHarvestParticles(pos: THREE.Vector3, isSubakBonus: boolean = false): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0) return;
+    const maxCap = this.getMaxActiveLimit();
+    const count = Math.max(4, Math.round((isSubakBonus ? 20 : 14) * mult));
+    for (let i = 0; i < count; i++) {
+      if (this.particles.length >= maxCap) {
+        this.evictOldestParticle();
+      }
+
+      const p = this.getPooledParticle();
+      p.position.set(
+        pos.x + (Math.random() - 0.5) * 0.7,
+        pos.y + 0.2 + Math.random() * 0.5,
+        pos.z + (Math.random() - 0.5) * 0.7
+      );
+      p.velocity.set(
+        (Math.random() - 0.5) * 2.6,
+        2.0 + Math.random() * 2.5,
+        (Math.random() - 0.5) * 2.6
+      );
+      if (isSubakBonus && i % 2 === 0) {
+        // Golden rice grain sparkle
+        p.color.setRGB(0.98, 0.78, 0.18);
+      } else {
+        // Verdant leaf & harvest gold
+        const isGold = Math.random() > 0.45;
+        if (isGold) p.color.setRGB(0.92, 0.74, 0.24);
+        else p.color.setRGB(0.22, 0.82, 0.45);
+      }
+      p.size = 0.8 + Math.random() * 0.4;
+      p.life = 0;
+      p.maxLife = 0.65 + Math.random() * 0.35;
+      p.gravity = 6.5;
+      p.type = 'spore';
+
+      this.particles.push(p);
+    }
+  }
+
+  // Spawn Creature Trust & Taming Heart/Aura Particles
+  public spawnTameParticles(pos: THREE.Vector3, isFullyTamed: boolean = false): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0) return;
+    const maxCap = this.getMaxActiveLimit();
+    const count = Math.max(4, Math.round((isFullyTamed ? 22 : 12) * mult));
+    for (let i = 0; i < count; i++) {
+      if (this.particles.length >= maxCap) {
+        this.evictOldestParticle();
+      }
+
+      const p = this.getPooledParticle();
+      p.position.set(
+        pos.x + (Math.random() - 0.5) * 0.9,
+        pos.y + 0.6 + Math.random() * 0.8,
+        pos.z + (Math.random() - 0.5) * 0.9
+      );
+      p.velocity.set(
+        (Math.random() - 0.5) * 1.6,
+        1.4 + Math.random() * 1.8,
+        (Math.random() - 0.5) * 1.6
+      );
+      if (isFullyTamed) {
+        // Rose-gold & emerald celebration burst
+        if (i % 2 === 0) p.color.setRGB(0.96, 0.28, 0.48);
+        else p.color.setRGB(0.98, 0.78, 0.22);
+      } else {
+        // Warm emerald trust glow
+        p.color.setRGB(0.20, 0.88, 0.55);
+      }
+      p.size = isFullyTamed ? 1.05 : 0.8;
+      p.life = 0;
+      p.maxLife = 0.85 + Math.random() * 0.4;
+      p.gravity = -0.8; // Float gently upward
+      p.type = 'spore';
+
+      this.particles.push(p);
+    }
+  }
+
   // Spawn Underwater Air Bubbles
   public spawnUnderwaterBubbles(pos: THREE.Vector3): void {
     const mult = this.getQualityMultiplier();
@@ -318,6 +431,152 @@ export class ParticleManager {
     this.particles.push(p);
   }
 
+  // Spawn Authentic Night Fireflies (Kunang-Kunang) & Golden Hour Sunbeam Motes
+  public spawnFireflyOrSunMote(pos: THREE.Vector3, isNightFirefly: boolean): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0) return;
+    const maxCap = this.getMaxActiveLimit();
+    const count = isNightFirefly ? Math.max(1, Math.round(3 * mult)) : Math.max(1, Math.round(2 * mult));
+
+    for (let i = 0; i < count; i++) {
+      if (this.particles.length >= maxCap) {
+        this.evictOldestParticle();
+      }
+
+      const p = this.getPooledParticle();
+      p.position.set(
+        pos.x + (Math.random() - 0.5) * 4.5,
+        pos.y + (Math.random() - 0.5) * 1.6,
+        pos.z + (Math.random() - 0.5) * 4.5
+      );
+      p.velocity.set(
+        (Math.random() - 0.5) * 0.45,
+        (Math.random() - 0.45) * 0.22,
+        (Math.random() - 0.5) * 0.45
+      );
+
+      if (isNightFirefly) {
+        if (Math.random() > 0.4) {
+          p.color.setRGB(0.68, 0.96, 0.24); // Emerald-Lime Kunang-Kunang
+        } else {
+          p.color.setRGB(0.98, 0.88, 0.28); // Warm Gold Kunang-Kunang
+        }
+        p.size = 0.72 + Math.random() * 0.35;
+        p.maxLife = 2.6 + Math.random() * 1.6;
+        p.type = 'firefly';
+      } else {
+        p.color.setRGB(0.99, 0.82, 0.36); // Golden Hour Sunbeam Mote
+        p.size = 0.52 + Math.random() * 0.28;
+        p.maxLife = 2.2 + Math.random() * 1.4;
+        p.type = 'sunmote';
+      }
+
+      p.life = 0;
+      p.gravity = 0.0; // Weightless floating
+      this.particles.push(p);
+    }
+  }
+
+  // Spawn Crisp Seafoam & Waterwheel Spray
+  public spawnWaterFoamSpray(pos: THREE.Vector3): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0) return;
+    const maxCap = this.getMaxActiveLimit();
+    const count = Math.max(2, Math.round(5 * mult));
+
+    for (let i = 0; i < count; i++) {
+      if (this.particles.length >= maxCap) {
+        this.evictOldestParticle();
+      }
+      const p = this.getPooledParticle();
+      p.position.set(
+        pos.x + (Math.random() - 0.5) * 1.4,
+        pos.y + 0.08 + Math.random() * 0.25,
+        pos.z + (Math.random() - 0.5) * 1.4
+      );
+      p.velocity.set(
+        (Math.random() - 0.5) * 1.8,
+        1.1 + Math.random() * 1.4,
+        (Math.random() - 0.5) * 1.8
+      );
+      if (i % 2 === 0) {
+        p.color.setRGB(0.88, 0.97, 1.0); // Crisp white seafoam
+      } else {
+        p.color.setRGB(0.38, 0.86, 0.96); // Turquoise spray
+      }
+      p.size = 0.58 + Math.random() * 0.32;
+      p.life = 0;
+      p.maxLife = 0.45 + Math.random() * 0.30;
+      p.gravity = 6.5;
+      p.type = 'splash';
+      this.particles.push(p);
+    }
+  }
+
+  // Spawn Biome-Specific Atmospheric Drift (Leaves, Spores, Ash, Sand, Snow)
+  public spawnBiomeFoliageDrift(
+    pos: THREE.Vector3,
+    particleType: 'leaves' | 'snow' | 'sand' | 'ash' | 'spores' | 'embers',
+    windSpeed: number = 2.0
+  ): void {
+    const mult = this.getQualityMultiplier();
+    if (mult <= 0 || mult < 0.35) return;
+    const maxCap = this.getMaxActiveLimit();
+    if (this.particles.length >= maxCap) {
+      this.evictOldestParticle();
+    }
+
+    const p = this.getPooledParticle();
+    p.position.set(
+      pos.x + (Math.random() - 0.5) * 18,
+      pos.y + 1.5 + Math.random() * 6.5,
+      pos.z + (Math.random() - 0.5) * 18
+    );
+
+    if (particleType === 'leaves') {
+      p.velocity.set(0.35 * windSpeed + (Math.random() - 0.5) * 0.6, -0.55 - Math.random() * 0.35, (Math.random() - 0.5) * 0.6);
+      p.color.setRGB(0.28 + Math.random() * 0.25, 0.68 + Math.random() * 0.20, 0.22);
+      p.size = 0.68;
+      p.maxLife = 2.8 + Math.random() * 1.2;
+      p.gravity = 0.05;
+      p.type = 'spore';
+    } else if (particleType === 'ash' || particleType === 'embers') {
+      const isEmber = particleType === 'embers' || Math.random() > 0.65;
+      p.velocity.set((Math.random() - 0.5) * 0.8, isEmber ? 0.65 + Math.random() * 0.7 : -0.35, (Math.random() - 0.5) * 0.8);
+      if (isEmber) p.color.setRGB(0.98, 0.48, 0.14);
+      else p.color.setRGB(0.32, 0.28, 0.28);
+      p.size = isEmber ? 0.58 : 0.52;
+      p.maxLife = 2.2 + Math.random() * 1.0;
+      p.gravity = isEmber ? -0.15 : 0.08;
+      p.type = isEmber ? 'ember' : 'ash';
+    } else if (particleType === 'sand') {
+      p.velocity.set(0.65 * windSpeed, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.8);
+      p.color.setRGB(0.92, 0.82, 0.58);
+      p.size = 0.46;
+      p.maxLife = 1.6 + Math.random() * 0.8;
+      p.gravity = 0.15;
+      p.type = 'footstep';
+    } else if (particleType === 'snow') {
+      p.velocity.set(0.25 * windSpeed, -0.85 - Math.random() * 0.4, (Math.random() - 0.5) * 0.5);
+      p.color.setRGB(0.94, 0.97, 1.0);
+      p.size = 0.58;
+      p.maxLife = 2.6 + Math.random() * 1.2;
+      p.gravity = 0.04;
+      p.type = 'spore';
+    } else {
+      // Spores (Subak / Borneo / Crystal)
+      p.velocity.set((Math.random() - 0.5) * 0.4, 0.2 + Math.random() * 0.35, (Math.random() - 0.5) * 0.4);
+      p.color.setRGB(0.45, 0.92, 0.78);
+      p.size = 0.56;
+      p.maxLife = 2.5 + Math.random() * 1.2;
+      p.gravity = -0.05;
+      p.type = 'spore';
+    }
+
+    p.life = 0;
+    this.particles.push(p);
+  }
+
   public getActiveParticleCount(): number {
     return this.particles.length;
   }
@@ -367,11 +626,25 @@ export class ParticleManager {
 
       // Physics update
       p.velocity.y -= p.gravity * dt;
-      p.position.addScaledVector(p.velocity, dt);
+      if (p.type === 'firefly') {
+        // Organic firefly bobbing & meandering
+        p.position.x += (p.velocity.x + Math.sin(p.life * 3.2 + i) * 0.18) * dt;
+        p.position.y += (p.velocity.y + Math.cos(p.life * 4.4 + i * 0.7) * 0.22) * dt;
+        p.position.z += (p.velocity.z + Math.cos(p.life * 2.9 + i * 1.3) * 0.18) * dt;
+      } else {
+        p.position.addScaledVector(p.velocity, dt);
+      }
 
-      // Scale & Opacity decay
+      // Scale & Opacity decay (with bioluminescent pulse for fireflies and smooth bell curve for sunmotes)
       const progress = p.life / p.maxLife;
-      const scale = p.size * (1.0 - progress * 0.55);
+      let scale = p.size * (1.0 - progress * 0.55);
+      if (p.type === 'firefly') {
+        const envelope = Math.sin(progress * Math.PI);
+        const blink = 0.55 + 0.45 * Math.sin(p.life * 6.5 + i * 1.9);
+        scale = p.size * envelope * blink;
+      } else if (p.type === 'sunmote') {
+        scale = p.size * Math.sin(progress * Math.PI);
+      }
 
       this.dummy.position.copy(p.position);
       this.dummy.scale.set(scale, scale, scale);

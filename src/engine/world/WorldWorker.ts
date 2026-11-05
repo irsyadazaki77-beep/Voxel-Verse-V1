@@ -44,6 +44,7 @@ export interface MeshTaskResult {
   cz: number;
   sourceRevision: number;
   meshData: TransferableMeshData;
+  returnedHaloBuffer?: ArrayBuffer;
 }
 
 export type WorkerTaskResult = GenerateTaskResult | MeshTaskResult;
@@ -123,8 +124,16 @@ if (typeof self !== 'undefined') {
 
       const meshData = VoxelMesher.buildChunkMeshData(getBlock, 16, 128, 16);
       
-      const response: MeshTaskResult = { type: 'mesh', taskId: input.taskId, cx, cz, sourceRevision, meshData };
-      const rawBuffers: ArrayBuffer[] = [
+      const response: MeshTaskResult = {
+        type: 'mesh',
+        taskId: input.taskId,
+        cx,
+        cz,
+        sourceRevision,
+        meshData,
+        returnedHaloBuffer: haloBuffer,
+      };
+      const rawBuffers: (ArrayBuffer | undefined)[] = [
         meshData.solidPositions.buffer,
         meshData.solidNormals.buffer,
         meshData.solidColors.buffer,
@@ -145,9 +154,10 @@ if (typeof self !== 'undefined') {
         meshData.waterUvs.buffer,
         meshData.waterTileRects.buffer,
         meshData.waterIndices.buffer,
-        meshData.waterMaterials.buffer
+        meshData.waterMaterials.buffer,
+        haloBuffer,
       ];
-      const transfers = rawBuffers.filter(buf => buf && buf.byteLength > 0);
+      const transfers = rawBuffers.filter((buf): buf is ArrayBuffer => !!buf && buf.byteLength > 0);
       
       (self as unknown as { postMessage: (msg: any, transfer: any[]) => void }).postMessage(response, transfers);
     }

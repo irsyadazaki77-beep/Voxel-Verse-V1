@@ -37,6 +37,7 @@ import { TreasureMapSystem } from '../exploration/TreasureMapSystem';
 import { WorldStabilitySystem } from '../exploration/WorldStabilitySystem';
 import { DungeonExpeditionManager } from '../dungeon/DungeonExpeditionManager';
 import { RewardService } from '../progression/RewardService';
+import { CharacterProgressionManager } from '../progression/CharacterProgressionManager';
 
 // Import Systems
 import { SettingsManager } from '../ui/SettingsManager';
@@ -56,6 +57,14 @@ import { BalanceTelemetry } from '../telemetry/BalanceTelemetry';
 import { NetworkSession } from '../network/NetworkSession';
 import { TelegraphVisualEngine } from '../combat/TelegraphVisualEngine';
 import { WeaponSkillManager } from '../combat/WeaponSkillManager';
+import { MiningVisualEngine } from '../world/MiningVisualEngine';
+import { FishingSystem } from '../systems/FishingSystem';
+import { MaritimeVesselSystem } from '../systems/MaritimeVesselSystem';
+import { VernacularHologramSystem } from '../systems/VernacularHologramSystem';
+import { CataclysmVisualEngine } from '../environment/CataclysmVisualEngine';
+import { AerialFlightAndSiegeSystem } from '../systems/AerialFlightAndSiegeSystem';
+import { NusantaraSanctumSilatSubakSystem } from '../systems/NusantaraSanctumSilatSubakSystem';
+import { MahakaryaNusantaraSystem } from '../systems/MahakaryaNusantaraSystem';
 
 export interface GameRuntimeCallbacks {
   onBossUpdated?: (boss: BossCombatState | null) => void;
@@ -306,6 +315,9 @@ export class GameRuntime {
     this.inputManager.onAction('Map', () => {
       this.openModal('map');
     });
+    this.inputManager.onAction('Character', () => {
+      this.openModal('character');
+    });
     const isProd = (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production') || (typeof import.meta !== 'undefined' && (import.meta as any).env?.PROD);
     if (!isProd) {
       this.inputManager.onAction('ContentDebug', () => {
@@ -407,6 +419,12 @@ export class GameRuntime {
       this.inventory = worldData.player.inventory;
       this.equipment = worldData.player.equipment;
       this.activeHotbarIndex = worldData.player.hotbarIndex || 0;
+    }
+
+    CharacterProgressionManager.initialize(worldData?.characterProgression, this.stats.level);
+    this.stats.recalculateProgressionBonuses();
+
+    if (worldData) {
 
       // Safe recovery if player saved while dead or falling through void
       if (this.stats.health <= 0 || initialSpawn[1] < 5) {
@@ -430,10 +448,36 @@ export class GameRuntime {
 
       const starterInv: (ItemStack | null)[] = new Array(36).fill(null);
       starterInv[0] = InventoryManager.createStack('wooden_pickaxe', 1);
-      starterInv[1] = InventoryManager.createStack('wooden_axe', 1);
-      starterInv[2] = InventoryManager.createStack('torch', 16);
-      starterInv[3] = InventoryManager.createStack('bread', 8);
-      starterInv[4] = InventoryManager.createStack('seeds_wheat', 4);
+      starterInv[1] = InventoryManager.createStack('keris_naga_baruklinting', 1);
+      starterInv[2] = InventoryManager.createStack('lontar_arsitek_nusantara', 1);
+      starterInv[3] = InventoryManager.createStack('prasasti_harta_nusantara', 1);
+      starterInv[4] = InventoryManager.createStack('kapal_phinisi', 1);
+      starterInv[5] = InventoryManager.createStack('astrolabe_nusantara', 1);
+      starterInv[6] = InventoryManager.createStack('jamu_kunyit_asam', 4);
+      starterInv[7] = InventoryManager.createStack('rendang_pusaka_minang', 4);
+      starterInv[8] = InventoryManager.createStack('tirta_selam', 3);
+      starterInv[9] = InventoryManager.createStack('wooden_axe', 1);
+      starterInv[10] = InventoryManager.createStack('fishing_rod', 1);
+      starterInv[11] = InventoryManager.createStack('torch', 16);
+      starterInv[12] = InventoryManager.createStack('jamu_beras_kencur', 4);
+      starterInv[13] = InventoryManager.createStack('peluit_garuda_kencana', 1);
+      starterInv[14] = InventoryManager.createStack('layang_naga_batik', 1);
+      starterInv[15] = InventoryManager.createStack('kentongan_siaga_desa', 1);
+      starterInv[16] = InventoryManager.createStack('lampion_terbang_nusantara', 6);
+      starterInv[17] = InventoryManager.createStack('mustika_merah_delima', 2);
+      starterInv[18] = InventoryManager.createStack('mustika_zamrud_khatulistiwa', 2);
+      starterInv[19] = InventoryManager.createStack('mustika_bintang_jatuh', 2);
+      starterInv[20] = InventoryManager.createStack('kompas_candi_bawah_tanah', 1);
+      starterInv[21] = InventoryManager.createStack('kitab_silat_nusantara', 1);
+      starterInv[22] = InventoryManager.createStack('kincir_air_subak', 2);
+      starterInv[23] = InventoryManager.createStack('panggung_wayang_kulit', 1);
+      starterInv[24] = InventoryManager.createStack('gada_pusaka_buto_ijo', 1);
+      starterInv[25] = InventoryManager.createStack('kapal_selam_nanggala', 1);
+      starterInv[26] = InventoryManager.createStack('lokomotif_uap_aether', 2);
+      starterInv[27] = InventoryManager.createStack('gamelan_angklung_pusaka', 1);
+      starterInv[28] = InventoryManager.createStack('mustika_khodam_pendamping', 1);
+      starterInv[29] = InventoryManager.createStack('lontar_erupsi_vulkanik', 1);
+      starterInv[30] = InventoryManager.createStack('kamera_sinematik_nusantara', 1);
       this.inventory = starterInv;
       this.equipment = { head: null, chest: null, legs: null, feet: null, accessory: null };
       this.activeHotbarIndex = 0;
@@ -460,6 +504,14 @@ export class GameRuntime {
 
     this.camera.add(this.viewmodel.rootGroup);
     this.scene.add(this.camera);
+    this.scene.add(MiningVisualEngine.getCrackMesh());
+    this.scene.add(FishingSystem.getOrCreateVisualGroup());
+    this.scene.add(MaritimeVesselSystem.getOrCreateRootGroup());
+    this.scene.add(CataclysmVisualEngine.getOrCreateRootGroup());
+    this.scene.add(VernacularHologramSystem.hologramGroup);
+    this.scene.add(AerialFlightAndSiegeSystem.getOrCreateRootGroup());
+    this.scene.add(NusantaraSanctumSilatSubakSystem.getOrCreateRootGroup());
+    this.scene.add(MahakaryaNusantaraSystem.getOrCreateRootGroup());
 
     // 3. Instantiate Systems in strict ordering
     this.simulationSystem = new SimulationSystem(this);
@@ -535,7 +587,7 @@ export class GameRuntime {
     // Register block change replication callback to sync other players' edits without triggering echo loops
     this.networkBlockUnsubscribe = NetworkSession.getInstance().onBlockChange((event) => {
       if (this.world) {
-        this.world.setBlock(event.x, event.y, event.z, event.newBlock, true);
+        this.world.setBlockWithState(event.x, event.y, event.z, event.newBlock, event.state, true);
       }
     });
 
@@ -631,6 +683,10 @@ export class GameRuntime {
     if (this.callbacks.onTargetHitChanged) {
       this.callbacks.onTargetHitChanged(hit);
     }
+  }
+
+  public get activeBoss(): BossCombatState | null {
+    return this.combatSystem?.activeBoss || null;
   }
 
   public emitBossUpdated(boss: BossCombatState | null): void {
@@ -775,6 +831,8 @@ export class GameRuntime {
     AetherAnomalyManager.dispose();
     SettlementManager.dispose();
     RewardService.dispose();
+    AerialFlightAndSiegeSystem.reset();
+    MahakaryaNusantaraSystem.reset();
 
     if (this.viewmodel) {
       this.viewmodel.dispose();
@@ -959,12 +1017,22 @@ export class GameRuntime {
     
     const lookDeltas = this.inputManager.getLookDeltas();
     if (lookDeltas.dx !== 0 || lookDeltas.dy !== 0) {
-      this.player.handleMouseMove(
-        lookDeltas.dx,
-        lookDeltas.dy,
-        this.settings.controls.mouseSensitivity,
-        this.settings.controls.invertY
-      );
+      if (MahakaryaNusantaraSystem.photoModeActive) {
+        const sens = 0.0022 * (this.settings.controls.mouseSensitivity || 1.0);
+        const inv = this.settings.controls.invertY ? 1 : -1;
+        MahakaryaNusantaraSystem.photoCamYaw -= lookDeltas.dx * sens;
+        MahakaryaNusantaraSystem.photoCamPitch = Math.max(
+          -Math.PI / 2.1,
+          Math.min(Math.PI / 2.1, MahakaryaNusantaraSystem.photoCamPitch + lookDeltas.dy * sens * inv)
+        );
+      } else {
+        this.player.handleMouseMove(
+          lookDeltas.dx,
+          lookDeltas.dy,
+          this.settings.controls.mouseSensitivity,
+          this.settings.controls.invertY
+        );
+      }
     }
 
     if (this.inputManager.mouseWheelDelta !== 0) {

@@ -12,7 +12,9 @@ import { InventoryActionMessage } from './src/engine/network/NetworkProtocol';
 export { ServerAuthority, isValidVector3, toVector3Tuple };
 import { ITEM_DEFS } from './src/engine/items/ItemRegistry';
 import { MiningEngine } from './src/engine/world/MiningEngine';
-import { WORLD_MIN_Y, WORLD_MAX_Y, MAX_INTERACTION_REACH } from './src/engine/world/WorldConfig';
+import { WORLD_MIN_Y, WORLD_MAX_Y, MAX_INTERACTION_REACH, WorldPreset } from './src/engine/world/WorldConfig';
+import { WorldGeneratorCore } from './src/engine/world/WorldGeneratorCore';
+import { BlockType } from './src/types';
 
 const PORT = 3000;
 const PROTOCOL_VERSION = '1.0.0-phase9';
@@ -46,7 +48,9 @@ export interface Realm {
     active: boolean;
     timer: number;
   };
+  globalRevision?: number; // Monotonically increasing realm-wide block revision counter
   worldBlocks: Record<string, number>; // coordinates "x,y,z" -> blockType (0 = tombstone AIR)
+  worldBlockStates?: Record<string, any>; // coordinates "x,y,z" -> BlockState
   worldBlockRevisions: Record<string, number>; // coordinates "x,y,z" -> revision number
 }
 
@@ -54,7 +58,7 @@ export interface PlayerPersistentState {
   playerId: string; // Opaque UUID
   playerSecret?: string; // Cryptographic ownership secret to prevent impersonation
   playerName: string; // Mutable display name
-  inventory: Array<{ itemId: string; count: number } | null>;
+  inventory: Array<{ itemId: string; count: number; durability?: number; maxDurability?: number; instanceId?: string } | null>;
   equipment: Record<string, string | null>;
   position: [number, number, number];
   stats: {
@@ -101,6 +105,41 @@ export interface ActiveSession {
   expiresAt: number;
 }
 
+// Server-side deterministic procedural chunk cache for authoritative terrain & workstation verification
+const realmGeneratorCache: Map<string, { gen: WorldGeneratorCore; chunks: Map<string, Uint8Array> }> = new Map();
+
+export function getAuthoritativeBlockAt(realm: Realm, wx: number, wy: number, wz: number): number {
+  if (wy < WORLD_MIN_Y || wy >= WORLD_MAX_Y) return BlockType.AIR;
+  const coordKey = `${wx},${wy},${wz}`;
+  if (realm.worldBlocks && realm.worldBlocks[coordKey] !== undefined) {
+    return realm.worldBlocks[coordKey];
+  }
+  const cacheKey = `${realm.realmId}:${realm.worldSeed}:${realm.worldPreset}`;
+  let entry = realmGeneratorCache.get(cacheKey);
+  if (!entry) {
+    entry = {
+      gen: new WorldGeneratorCore(realm.worldSeed, (realm.worldPreset as WorldPreset) || 'standard', { dimensionId: 'overworld' }),
+      chunks: new Map(),
+    };
+    realmGeneratorCache.set(cacheKey, entry);
+  }
+  const cx = Math.floor(wx / 16);
+  const cz = Math.floor(wz / 16);
+  const cKey = `${cx},${cz}`;
+  let chunkBuf = entry.chunks.get(cKey);
+  if (!chunkBuf) {
+    if (entry.chunks.size > 128) {
+      const oldestKey = entry.chunks.keys().next().value;
+      if (oldestKey) entry.chunks.delete(oldestKey);
+    }
+    chunkBuf = entry.gen.generateChunkData(cx, cz);
+    entry.chunks.set(cKey, chunkBuf);
+  }
+  const lx = ((wx % 16) + 16) % 16;
+  const lz = ((wz % 16) + 16) % 16;
+  return chunkBuf[lx + lz * 16 + wy * 256];
+}
+
 // Debounced Atomic Write Mutex & Mechanism for database
 let saveDebounceTimer: NodeJS.Timeout | null = null;
 let isSaving = false;
@@ -125,17 +164,25 @@ export async function executeAtomicSave(): Promise<void> {
     return;
   }
   isSaving = true;
+  db.clearDirty();
   try {
     const tempFile = `${DB_FILE}.tmp`;
+    const backupFile = `${DB_FILE}.bak`;
     const jsonStr = JSON.stringify(db.getData(), null, 2);
     await fs.promises.writeFile(tempFile, jsonStr, 'utf8');
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        await fs.promises.copyFile(DB_FILE, backupFile);
+      } catch {}
+    }
     await fs.promises.rename(tempFile, DB_FILE);
   } catch (e) {
     console.error('[DB] Atomic realm save failed:', e);
+    db.markDirty();
     scheduleRealmSave();
   } finally {
     isSaving = false;
-    if (pendingSave) {
+    if (pendingSave || db.isDirtyState()) {
       pendingSave = false;
       scheduleRealmSave();
     }
@@ -153,32 +200,65 @@ export class JsonDatabase {
     this.load();
     this.seedDefaults();
 
-    // Periodic check to flush dirty state
+    // Periodic check to flush dirty state if no debounce timer is already scheduled
     this.flushTimer = setInterval(() => {
-      if (this.isDirty) {
-        scheduleRealmSave();
+      if (this.isDirty && !saveDebounceTimer && !isSaving) {
+        executeAtomicSave().catch((err) => {
+          console.error('[DB] Periodic flush error:', err);
+        });
       }
-    }, 2000);
+    }, 5000);
   }
 
   public getData(): DBStructure {
     return this.data;
   }
 
+  public isDirtyState(): boolean {
+    return this.isDirty;
+  }
+
+  public clearDirty(): void {
+    this.isDirty = false;
+  }
+
   public load(): void {
-    try {
-      if (fs.existsSync(DB_FILE)) {
-        const content = fs.readFileSync(DB_FILE, 'utf8');
-        this.data = JSON.parse(content);
-        if (!this.data.realms) this.data.realms = {};
-        if (!this.data.players) this.data.players = {};
-      } else {
-        this.flushSync();
+    const tryParseFile = (filePath: string): DBStructure | null => {
+      try {
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, 'utf8');
+          const parsed = JSON.parse(content);
+          if (parsed && typeof parsed === 'object') {
+            return {
+              realms: parsed.realms && typeof parsed.realms === 'object' ? parsed.realms : {},
+              players: parsed.players && typeof parsed.players === 'object' ? parsed.players : {},
+            };
+          }
+        }
+      } catch (err) {
+        console.warn(`[DB] Failed to load or parse ${filePath}:`, err);
       }
-    } catch (e) {
-      console.error('[DB] Error loading DB, resetting to empty defaults', e);
-      this.flushSync();
+      return null;
+    };
+
+    const primary = tryParseFile(DB_FILE);
+    if (primary) {
+      this.data = primary;
+      return;
     }
+
+    const backup = tryParseFile(`${DB_FILE}.bak`);
+    if (backup) {
+      console.warn('[DB] Recovered server database from backup file (.bak)');
+      this.data = backup;
+      this.markDirty();
+      this.flushSync();
+      return;
+    }
+
+    this.data = { realms: {}, players: {} };
+    this.markDirty();
+    this.flushSync();
   }
 
   public markDirty(): void {
@@ -190,14 +270,22 @@ export class JsonDatabase {
   }
 
   public flushSync(): void {
-    if (!this.isDirty && fs.existsSync(DB_FILE)) return;
+    if (!this.isDirty && !isSaving && !pendingSave && fs.existsSync(DB_FILE)) return;
     this.isDirty = false;
+    pendingSave = false;
     try {
-      const tempFile = `${DB_FILE}.tmp`;
+      const tempFile = `${DB_FILE}.sync.tmp`;
+      const backupFile = `${DB_FILE}.bak`;
       const jsonStr = JSON.stringify(this.data, null, 2);
       fs.writeFileSync(tempFile, jsonStr, 'utf8');
+      if (fs.existsSync(DB_FILE)) {
+        try {
+          fs.copyFileSync(DB_FILE, backupFile);
+        } catch {}
+      }
       fs.renameSync(tempFile, DB_FILE);
     } catch (e) {
+      this.isDirty = true;
       console.error('[DB] Synchronous persistence flush failed:', e);
     }
   }
@@ -219,7 +307,9 @@ export class JsonDatabase {
         weather: { type: 'clear', intensity: 0, windAngle: 0.5, windSpeed: 2.0, durationLeft: 180 },
         bossState: { active: false, health: 0, maxHealth: 0, phase: 1 },
         anomalyState: { active: false, timer: 0 },
+        globalRevision: 0,
         worldBlocks: {},
+        worldBlockStates: {},
         worldBlockRevisions: {},
       };
       this.data.realms['realm_peak'] = {
@@ -235,12 +325,15 @@ export class JsonDatabase {
         weather: { type: 'clear', intensity: 0, windAngle: 0.5, windSpeed: 2.0, durationLeft: 180 },
         bossState: { active: false, health: 0, maxHealth: 0, phase: 1 },
         anomalyState: { active: false, timer: 0 },
+        globalRevision: 0,
         worldBlocks: {},
+        worldBlockStates: {},
         worldBlockRevisions: {},
       };
       changed = true;
     }
     if (changed) {
+      this.markDirty();
       this.flushSync();
     }
   }
@@ -692,6 +785,11 @@ async function startServer() {
       // Handle message types
       switch (msg.type) {
         case 'PLAYER_JOIN': {
+          // Ensure realm has globalRevision initialized
+          if (typeof realm.globalRevision !== 'number') {
+            realm.globalRevision = Object.values(realm.worldBlockRevisions || {}).reduce((max, r) => Math.max(max, r), 0);
+          }
+
           // Reconnect or fresh join logic
           if (disconnectedPlayers.has(activeSessionId)) {
             const cached = disconnectedPlayers.get(activeSessionId)!;
@@ -723,7 +821,8 @@ async function startServer() {
                 blocks: Object.entries(realm.worldBlocks).map(([coords, blockType]) => {
                   const [x, y, z] = coords.split(',').map(Number);
                   const revision = realm.worldBlockRevisions?.[coords] || 1;
-                  return { x, y, z, blockType, revision };
+                  const state = realm.worldBlockStates?.[coords];
+                  return { x, y, z, blockType, state, revision };
                 }),
                 onlinePlayers: Array.from(players.values())
                   .filter((p) => sessions.get(p.token)?.realmId === session.realmId)
@@ -790,7 +889,8 @@ async function startServer() {
               blocks: Object.entries(realm.worldBlocks).map(([coords, blockType]) => {
                 const [x, y, z] = coords.split(',').map(Number);
                 const revision = realm.worldBlockRevisions?.[coords] || 1;
-                return { x, y, z, blockType, revision };
+                const state = realm.worldBlockStates?.[coords];
+                return { x, y, z, blockType, state, revision };
               }),
               onlinePlayers: Array.from(players.values())
                 .filter((p) => sessions.get(p.token)?.realmId === session.realmId)
@@ -891,8 +991,8 @@ async function startServer() {
             db.setPlayer(activeSessionId, pState);
           }
 
-          // Broadcast authoritative snapshot to all other players in this realm
-          broadcastToOthersInRealm(activeSessionId, session.realmId, {
+          // Broadcast authoritative snapshot to players within interest radius in this realm
+          broadcastTransformWithInterest(activeSessionId, session.realmId, player.position, {
             type: 'TRANSFORM_SNAPSHOT',
             sessionId: activeSessionId,
             position: player.position,
@@ -905,6 +1005,23 @@ async function startServer() {
           break;
         }
 
+        case 'HEARTBEAT_PING': {
+          const player = players.get(activeSessionId);
+          if (player) {
+            player.lastActive = Date.now();
+          }
+          ws.send(
+            JSON.stringify({
+              type: 'HEARTBEAT_PONG',
+              clientTimestamp: msg.clientTimestamp || Date.now(),
+              serverTimestamp: Date.now(),
+              timestamp: Date.now(),
+              protocolVersion: PROTOCOL_VERSION,
+            })
+          );
+          break;
+        }
+
         case 'RECONNECT_REQUEST': {
           const player = players.get(activeSessionId);
           if (!player) return;
@@ -914,15 +1031,19 @@ async function startServer() {
           if (!savedPlayer) return;
 
           const lastRev = typeof msg.lastKnownBlockRevision === 'number' ? msg.lastKnownBlockRevision : 0;
-          const deltaBlocks: Array<{ x: number; y: number; z: number; blockType: number; revision: number }> = [];
+          const deltaBlocks: Array<{ x: number; y: number; z: number; blockType: number; state?: any; revision: number }> = [];
 
           Object.entries(realm.worldBlocks).forEach(([coords, blockType]) => {
             const revision = realm.worldBlockRevisions?.[coords] || 1;
             if (revision > lastRev) {
               const [x, y, z] = coords.split(',').map(Number);
-              deltaBlocks.push({ x, y, z, blockType, revision });
+              const state = realm.worldBlockStates?.[coords];
+              deltaBlocks.push({ x, y, z, blockType, state, revision });
             }
           });
+
+          // Sort by revision ascending so client applies changes in exact causal order across chunks
+          deltaBlocks.sort((a, b) => a.revision - b.revision);
 
           // Send missed block deltas if any, or full bootstrap if large
           if (deltaBlocks.length > 0 && deltaBlocks.length <= 150) {
@@ -955,7 +1076,8 @@ async function startServer() {
                 blocks: Object.entries(realm.worldBlocks).map(([coords, blockType]) => {
                   const [x, y, z] = coords.split(',').map(Number);
                   const revision = realm.worldBlockRevisions?.[coords] || 1;
-                  return { x, y, z, blockType, revision };
+                  const state = realm.worldBlockStates?.[coords];
+                  return { x, y, z, blockType, state, revision };
                 }),
                 onlinePlayers: Array.from(players.values())
                   .filter((p) => sessions.get(p.token)?.realmId === session.realmId)
@@ -1010,13 +1132,18 @@ async function startServer() {
           }
 
           const coordKey = `${bx},${by},${bz}`;
-          const currentServerBlock = realm.worldBlocks[coordKey];
+          const recordedServerBlock = realm.worldBlocks[coordKey];
+          // Resolve authoritative server block (either modified in realm.worldBlocks or deterministically generated from seed)
+          const authoritativeCurrentBlock = recordedServerBlock !== undefined
+            ? recordedServerBlock
+            : getAuthoritativeBlockAt(realm, bx, by, bz);
+
           const pState = db.getPlayer(player.playerId);
           const currentInv = pState?.inventory || [];
 
           // Comprehensive authoritative validation via ServerAuthority (validateMining for breaking vs validateBlockPlacement)
           const valRes = newBlockType === 0
-            ? ServerAuthority.validateMining(player.position, [bx, by, bz], oldBlockType, currentServerBlock)
+            ? ServerAuthority.validateMining(player.position, [bx, by, bz], oldBlockType, recordedServerBlock)
             : ServerAuthority.validateBlockPlacement(
                 player.position,
                 bx,
@@ -1025,8 +1152,14 @@ async function startServer() {
                 oldBlockType,
                 newBlockType,
                 currentInv,
-                currentServerBlock
+                recordedServerBlock
               );
+
+          // Additional protection: cannot mine AIR block to farm drops
+          if (valRes.valid && newBlockType === 0 && authoritativeCurrentBlock === BlockType.AIR && oldBlockType === BlockType.AIR) {
+            valRes.valid = false;
+            valRes.reason = 'CANNOT_MINE_AIR';
+          }
 
           if (!valRes.valid) {
             console.warn(`[Server Security] Block action rejected for ${player.playerName}: ${valRes.reason}`);
@@ -1038,7 +1171,9 @@ async function startServer() {
                 y: by,
                 z: bz,
                 oldBlockType: msg.oldBlockType,
-                newBlockType: currentServerBlock !== undefined ? currentServerBlock : msg.oldBlockType,
+                newBlockType: authoritativeCurrentBlock,
+                state: realm.worldBlockStates?.[coordKey],
+                revision: realm.worldBlockRevisions?.[coordKey] || realm.globalRevision || 1,
                 playerSessionId: activeSessionId,
                 transactionId: txId,
                 timestamp: Date.now(),
@@ -1054,6 +1189,7 @@ async function startServer() {
                   inventory: pState.inventory,
                   equipment: pState.equipment,
                   transactionId: txId,
+                  success: false,
                   timestamp: Date.now(),
                   protocolVersion: PROTOCOL_VERSION,
                 })
@@ -1090,9 +1226,116 @@ async function startServer() {
                   y: by,
                   z: bz,
                   oldBlockType: msg.oldBlockType,
-                  newBlockType: currentServerBlock !== undefined ? currentServerBlock : 0,
+                  newBlockType: authoritativeCurrentBlock,
+                  state: realm.worldBlockStates?.[coordKey],
+                  revision: realm.worldBlockRevisions?.[coordKey] || realm.globalRevision || 1,
                   playerSessionId: activeSessionId,
                   transactionId: txId,
+                  timestamp: Date.now(),
+                  protocolVersion: PROTOCOL_VERSION,
+                })
+              );
+              if (pState) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'INVENTORY_SNAPSHOT',
+                    inventory: pState.inventory,
+                    equipment: pState.equipment,
+                    transactionId: txId,
+                    success: false,
+                    timestamp: Date.now(),
+                    protocolVersion: PROTOCOL_VERSION,
+                  })
+                );
+              }
+              return;
+            }
+          }
+
+          // Per-coordinate revision check to prevent stale rollback/replay on the same coordinate
+          if (!realm.worldBlockRevisions) realm.worldBlockRevisions = {};
+          if (!realm.worldBlockStates) realm.worldBlockStates = {};
+          const currentCoordRev = realm.worldBlockRevisions[coordKey] || 0;
+          if (msg.revision !== undefined && typeof msg.revision === 'number' && msg.revision > 0 && msg.revision < currentCoordRev) {
+            console.warn(`[Server Security] Stale block update rejected (Client rev: ${msg.revision}, Server coord rev: ${currentCoordRev})`);
+            ws.send(
+              JSON.stringify({
+                type: 'BLOCK_CHANGE',
+                x: bx,
+                y: by,
+                z: bz,
+                oldBlockType: msg.oldBlockType,
+                newBlockType: authoritativeCurrentBlock,
+                state: realm.worldBlockStates[coordKey],
+                revision: currentCoordRev,
+                playerSessionId: activeSessionId,
+                transactionId: txId,
+                timestamp: Date.now(),
+                protocolVersion: PROTOCOL_VERSION,
+              })
+            );
+            return;
+          }
+
+          // Determine effective mined block type (including procedural terrain blocks not previously in realm.worldBlocks)
+          const minedBlockType = recordedServerBlock !== undefined
+            ? recordedServerBlock
+            : (authoritativeCurrentBlock !== BlockType.AIR ? authoritativeCurrentBlock : oldBlockType);
+
+          // Resolve held tool from client message or player inventory so tool tier & durability apply to procedural & placed blocks
+          let heldToolStack: any = null;
+          if (typeof msg.heldToolItemId === 'string' && pState) {
+            const matchingSlot = pState.inventory.find((s) => s && s.itemId === msg.heldToolItemId && s.count > 0);
+            if (matchingSlot) {
+              heldToolStack = matchingSlot;
+            }
+          }
+          if (!heldToolStack && pState) {
+            // Fallback: pick best matching tool in player's hotbar/inventory for the target block
+            for (const slot of pState.inventory) {
+              if (!slot || slot.count <= 0) continue;
+              const calc = MiningEngine.calculateBreakTime(minedBlockType, slot as any, 'survival');
+              if (calc.canHarvest && calc.isOptimalTool) {
+                heldToolStack = slot;
+                break;
+              }
+              if (calc.canHarvest && !heldToolStack) {
+                heldToolStack = slot;
+              }
+            }
+          }
+
+          // Pre-validate inventory capacity before breaking block to prevent item loss
+          const drops = (msg.newBlockType === 0 && minedBlockType !== BlockType.AIR)
+            ? MiningEngine.getBlockDrops(minedBlockType, heldToolStack, 'survival')
+            : [];
+
+          if (drops.length > 0 && pState) {
+            if (!InventoryManager.canFitItems(pState.inventory as any, drops)) {
+              console.warn(`[Server Security] Block mining rejected for ${player.playerName}: INSUFFICIENT_INVENTORY_CAPACITY`);
+              ws.send(
+                JSON.stringify({
+                  type: 'BLOCK_CHANGE',
+                  x: bx,
+                  y: by,
+                  z: bz,
+                  oldBlockType: BlockType.AIR,
+                  newBlockType: minedBlockType,
+                  state: realm.worldBlockStates[coordKey],
+                  revision: currentCoordRev || 1,
+                  playerSessionId: activeSessionId,
+                  transactionId: txId,
+                  timestamp: Date.now(),
+                  protocolVersion: PROTOCOL_VERSION,
+                })
+              );
+              ws.send(
+                JSON.stringify({
+                  type: 'INVENTORY_SNAPSHOT',
+                  inventory: pState.inventory,
+                  equipment: pState.equipment,
+                  transactionId: txId,
+                  success: false,
                   timestamp: Date.now(),
                   protocolVersion: PROTOCOL_VERSION,
                 })
@@ -1101,43 +1344,53 @@ async function startServer() {
             }
           }
 
-          // Revision check to prevent rollback/replay
-          if (!realm.worldBlockRevisions) realm.worldBlockRevisions = {};
-          const currentRev = realm.worldBlockRevisions[coordKey] || 0;
-          if (msg.revision !== undefined && typeof msg.revision === 'number' && msg.revision < currentRev) {
-            console.warn(`[Server Security] Stale block update rejected (Client rev: ${msg.revision}, Server rev: ${currentRev})`);
-            return;
-          }
-
           // Atomic material consumption for placement OR drop generation for breaking
           let inventoryModified = false;
           if (msg.newBlockType !== 0) {
-            // Block Placement: consume the exact matching material
-            const materialId = valRes.consumedMaterialId;
-            if (materialId && pState) {
-              const remRes = InventoryManager.removeItem(pState.inventory, materialId, 1);
-              if (remRes.success) {
-                inventoryModified = true;
-              } else {
-                console.warn(`[Server Security] Failed to consume material ${materialId} for block placement`);
-                return;
+            // Only consume material if actually placing a new block (not toggling door/trapdoor state where oldBlockType === newBlockType)
+            if (oldBlockType !== newBlockType) {
+              const materialId = valRes.consumedMaterialId;
+              if (materialId && pState) {
+                const remRes = InventoryManager.removeItem(pState.inventory as any, materialId, 1);
+                if (remRes.success) {
+                  inventoryModified = true;
+                } else {
+                  console.warn(`[Server Security] Failed to consume material ${materialId} for block placement`);
+                  return;
+                }
               }
             }
-          } else if (msg.newBlockType === 0 && currentServerBlock !== undefined && currentServerBlock !== 0) {
-            // Block Destruction: Authoritative drops calculation
-            const drops = MiningEngine.getBlockDrops(currentServerBlock, null, 'survival');
+          } else if (msg.newBlockType === 0 && minedBlockType !== BlockType.AIR) {
+            // Block Destruction: Authoritative drops addition & tool durability consumption
             if (drops.length > 0 && pState) {
               for (const drop of drops) {
-                InventoryManager.addItem(pState.inventory, drop.itemId, drop.count);
+                InventoryManager.addItem(pState.inventory as any, drop.itemId, drop.count);
               }
               inventoryModified = true;
             }
+            if (heldToolStack && pState) {
+              const toolIdx = pState.inventory.indexOf(heldToolStack);
+              if (toolIdx !== -1) {
+                const durRes = MiningEngine.consumeDurability(heldToolStack, 'mine');
+                pState.inventory[toolIdx] = durRes.broken ? null : (durRes.item as any);
+                inventoryModified = true;
+              }
+            }
           }
 
-          // Update revision & world state atomically
-          const nextRev = currentRev + 1;
+          // Update realm-wide monotonic globalRevision & world state atomically
+          const currentGlobalRev = typeof realm.globalRevision === 'number'
+            ? realm.globalRevision
+            : Object.values(realm.worldBlockRevisions).reduce((max, r) => Math.max(max, r), 0);
+          const nextRev = Math.max(currentGlobalRev, currentCoordRev) + 1;
+          realm.globalRevision = nextRev;
           realm.worldBlockRevisions[coordKey] = nextRev;
           realm.worldBlocks[coordKey] = msg.newBlockType; // 0 is tombstone AIR
+          if (msg.newBlockType === 0) {
+            delete realm.worldBlockStates[coordKey];
+          } else if (msg.state !== undefined) {
+            realm.worldBlockStates[coordKey] = msg.state;
+          }
           realm.lastPlayed = Date.now();
           db.setRealm(session.realmId, realm); // Marks DB dirty
 
@@ -1150,6 +1403,7 @@ async function startServer() {
                 inventory: pState.inventory,
                 equipment: pState.equipment,
                 transactionId: txId,
+                success: true,
                 timestamp: Date.now(),
                 protocolVersion: PROTOCOL_VERSION,
               })
@@ -1159,13 +1413,13 @@ async function startServer() {
           // Mark transaction as processed
           if (txId) {
             player.processedTransactions.add(txId);
-            if (player.processedTransactions.size > 200) {
+            if (player.processedTransactions.size > 500) {
               const first = player.processedTransactions.values().next().value;
               if (first) player.processedTransactions.delete(first);
             }
           }
 
-          // Propagate validated block change to everyone in the realm with revision tag
+          // Propagate validated block change to everyone in the realm with revision tag and state
           broadcastToRealm(session.realmId, {
             type: 'BLOCK_CHANGE',
             x: bx,
@@ -1173,6 +1427,7 @@ async function startServer() {
             z: bz,
             oldBlockType: msg.oldBlockType,
             newBlockType: msg.newBlockType,
+            state: msg.state,
             playerSessionId: activeSessionId,
             revision: nextRev,
             transactionId: txId,
@@ -1198,15 +1453,19 @@ async function startServer() {
           const recipeId = String(msg.recipeId || '');
           const quantity = typeof msg.quantity === 'number' && msg.quantity > 0 ? Math.floor(msg.quantity) : 1;
           const stationContext = typeof msg.stationContext === 'string' ? msg.stationContext : undefined;
+          const stationPos = toVector3Tuple(msg.stationPos) || undefined;
           const pState = db.getPlayer(activeSessionId);
           if (!pState) return;
 
-          // Server-side authoritative craft validation via ServerAuthority
+          // Server-side authoritative craft validation including physical workstation proximity & world block check
           const valRes = ServerAuthority.validateCrafting(
             recipeId,
             quantity,
             pState.inventory,
-            stationContext
+            stationContext,
+            stationPos,
+            player.position,
+            (wx, wy, wz) => getAuthoritativeBlockAt(realm, wx, wy, wz)
           );
 
           if (!valRes.valid) {
@@ -1236,26 +1495,52 @@ async function startServer() {
 
           const recipe = CRAFTING_RECIPES.find((r) => r.id === recipeId)!;
 
-          // Atomic Transaction: Consume ingredients
+          // Clone inventory to execute transaction atomically and verify zero overflow/loss
+          const workingInv = InventoryManager.cloneInventory(pState.inventory as any);
+
           for (const input of recipe.inputs) {
             const countToConsume = input.count * quantity;
-            const remRes = InventoryManager.removeItem(pState.inventory, input.itemId, countToConsume);
+            const remRes = InventoryManager.removeItem(workingInv, input.itemId, countToConsume);
             if (!remRes.success) {
               console.error(`[Server Security] Critical crafting anomaly: failed to remove ${input.itemId}`);
               return;
             }
           }
 
-          // Atomic Transaction: Allocate output stack
           const totalOutput = recipe.output.count * quantity;
-          InventoryManager.addItem(pState.inventory, recipe.output.itemId, totalOutput);
+          const addRes = InventoryManager.addItem(workingInv, recipe.output.itemId, totalOutput);
+          if (!addRes.success || addRes.remainingCount > 0) {
+            console.warn(`[Server Security] Crafting aborted due to output stack overflow for ${player.playerName}`);
+            ws.send(
+              JSON.stringify({
+                type: 'TRANSACTION_REJECT',
+                transactionId: txId || '',
+                reason: 'INSUFFICIENT_INVENTORY_CAPACITY',
+                timestamp: Date.now(),
+                protocolVersion: PROTOCOL_VERSION,
+              })
+            );
+            ws.send(
+              JSON.stringify({
+                type: 'INVENTORY_SNAPSHOT',
+                inventory: pState.inventory,
+                equipment: pState.equipment,
+                transactionId: txId,
+                success: false,
+                timestamp: Date.now(),
+                protocolVersion: PROTOCOL_VERSION,
+              })
+            );
+            return;
+          }
 
+          pState.inventory = workingInv;
           db.setPlayer(activeSessionId, pState);
           console.log(`[Authoritative Crafting] ${player.playerName} crafted ${recipe.output.itemId} x${totalOutput}`);
 
           if (txId) {
             player.processedTransactions.add(txId);
-            if (player.processedTransactions.size > 200) {
+            if (player.processedTransactions.size > 500) {
               const first = player.processedTransactions.values().next().value;
               if (first) player.processedTransactions.delete(first);
             }
@@ -1311,31 +1596,7 @@ async function startServer() {
           }
 
           if (actionType === 'move' || actionType === 'swap') {
-            const itemFrom = pState.inventory[fromSlot];
-            const itemTo = pState.inventory[toSlot];
-
-            // If merging into existing stack with matching item ID
-            if (itemFrom && itemTo && itemFrom.itemId === itemTo.itemId) {
-              const def = ITEM_DEFS[itemFrom.itemId];
-              const maxStack = def ? def.maxStack : 64;
-              const space = maxStack - itemTo.count;
-              if (space > 0) {
-                const transfer = Math.min(space, itemFrom.count);
-                itemTo.count += transfer;
-                itemFrom.count -= transfer;
-                if (itemFrom.count <= 0) {
-                  pState.inventory[fromSlot] = null;
-                }
-              } else {
-                // Regular swap
-                pState.inventory[fromSlot] = itemTo;
-                pState.inventory[toSlot] = itemFrom;
-              }
-            } else {
-              // Standard swap
-              pState.inventory[fromSlot] = itemTo;
-              pState.inventory[toSlot] = itemFrom;
-            }
+            InventoryManager.moveSlot(pState.inventory as any, fromSlot, pState.inventory as any, toSlot);
             db.setPlayer(activeSessionId, pState);
           } else if (actionType === 'drop' || actionType === 'consume') {
             const sourceItem = pState.inventory[fromSlot];
@@ -1351,7 +1612,7 @@ async function startServer() {
 
           if (txId) {
             player.processedTransactions.add(txId);
-            if (player.processedTransactions.size > 200) {
+            if (player.processedTransactions.size > 500) {
               const first = player.processedTransactions.values().next().value;
               if (first) player.processedTransactions.delete(first);
             }
@@ -1589,6 +1850,30 @@ async function startServer() {
       const pSession = sessions.get(p.token);
       if (p.sessionId !== excludeSessionId && pSession && pSession.realmId === realmId && p.ws && p.ws.readyState === WebSocket.OPEN) {
         p.ws.send(serialized);
+      }
+    });
+  }
+
+  function broadcastTransformWithInterest(
+    excludeSessionId: string,
+    realmId: string,
+    originPos: [number, number, number],
+    payload: unknown,
+    maxDistance = 128
+  ) {
+    const serialized = JSON.stringify(payload);
+    const maxDistSq = maxDistance * maxDistance;
+    players.forEach((p) => {
+      if (p.sessionId === excludeSessionId) return;
+      const pSession = sessions.get(p.token);
+      if (pSession && pSession.realmId === realmId && p.ws && p.ws.readyState === WebSocket.OPEN) {
+        const dx = p.position[0] - originPos[0];
+        const dy = p.position[1] - originPos[1];
+        const dz = p.position[2] - originPos[2];
+        const distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq <= maxDistSq) {
+          p.ws.send(serialized);
+        }
       }
     });
   }

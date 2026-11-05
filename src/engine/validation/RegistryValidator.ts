@@ -76,11 +76,12 @@ export class RegistryValidator {
       'accessory',
       'food',
       'consumable',
+      'potion',
       'material',
       'seed',
     ]);
 
-    const validRarities = new Set(['common', 'uncommon', 'rare', 'epic', 'legendary', 'ancient']);
+    const validRarities = new Set(['common', 'uncommon', 'rare', 'epic', 'legendary', 'ancient', 'aetheric']);
 
     keys.forEach((key) => {
       const def = ITEM_DEFS[key];

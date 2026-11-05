@@ -16,6 +16,8 @@ import {
 } from '../world/WorldConfig';
 import { ITEM_DEFS } from '../items/ItemRegistry';
 import { CRAFTING_RECIPES } from '../items/CraftingSystem';
+import { BLOCK_DEFS } from '../world/BlockRegistry';
+import { BlockType } from '../../types';
 
 export interface ValidationResult {
   valid: boolean;
@@ -113,18 +115,6 @@ export class ServerAuthority {
   }
 
   /**
-   * Strongly typed crafting validator without any type
-   */
-  public static validateCrafting(
-    recipeId: string,
-    quantity: number,
-    inventory: Array<{ itemId: string; count: number } | null>,
-    stationContext?: string
-  ): ValidationResult {
-    return this.validateCraftRequest(recipeId, quantity, inventory, stationContext);
-  }
-
-  /**
    * Validates block placement, verifying:
    * 1. Integer coordinates
    * 2. Vertical world bounds [WORLD_MIN_Y, WORLD_MAX_Y)
@@ -140,8 +130,12 @@ export class ServerAuthority {
     oldBlockType: number,
     newBlockType: number,
     inventory?: Array<{ itemId: string; count: number } | null>,
-    worldCurrentBlock?: number
+    worldCurrentBlock?: number,
+    consumedMaterial?: string
   ): ValidationResult {
+    if (!isValidVector3(playerPos)) {
+      return { valid: false, reason: 'INVALID_PLAYER_COORDINATES' };
+    }
     if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) {
       return { valid: false, reason: 'COORDINATES_MUST_BE_INTEGERS' };
     }
@@ -151,26 +145,52 @@ export class ServerAuthority {
     if (typeof newBlockType !== 'number' || newBlockType < 0 || newBlockType > MAX_BLOCK_TYPE_ID) {
       return { valid: false, reason: 'INVALID_BLOCK_ID' };
     }
+    // Prevent overwriting unbreakable blocks (hardness < 0, e.g., AETHER_PORTAL)
+    const oldDef = BLOCK_DEFS[oldBlockType];
+    const worldDef = worldCurrentBlock !== undefined ? BLOCK_DEFS[worldCurrentBlock] : undefined;
+    if ((oldDef && oldDef.hardness < 0) || (worldDef && worldDef.hardness < 0)) {
+      return { valid: false, reason: 'CANNOT_OVERWRITE_UNBREAKABLE_BLOCK' };
+    }
     if (worldCurrentBlock !== undefined && worldCurrentBlock !== oldBlockType) {
       return { valid: false, reason: 'OLD_BLOCK_STATE_DESYNC' };
     }
-    const dx = (x + 0.5) - playerPos[0];
-    const dy = (y + 0.5) - playerPos[1];
-    const dz = (z + 0.5) - playerPos[2];
+    const p = toVector3Tuple(playerPos)!;
+    const dx = (x + 0.5) - p[0];
+    const dy = (y + 0.5) - p[1];
+    const dz = (z + 0.5) - p[2];
     const distSq = dx * dx + dy * dy + dz * dz;
     if (distSq > this.maxReachDistance * this.maxReachDistance) {
       return { valid: false, reason: 'EXCEEDS_MAX_REACH' };
     }
 
     // Material validation: verify the player actually possesses an item that places this block
-    if (inventory !== undefined && newBlockType !== 0) {
+    if (inventory !== undefined && newBlockType !== BlockType.AIR) {
       let foundMatchingItemId: string | undefined;
-      for (const slot of inventory) {
-        if (!slot || slot.count <= 0) continue;
-        const def = ITEM_DEFS[slot.itemId];
-        if (def && def.blockType === newBlockType) {
-          foundMatchingItemId = slot.itemId;
-          break;
+      if (consumedMaterial) {
+        const cDef = ITEM_DEFS[consumedMaterial];
+        const isSlabCombine =
+          (cDef?.blockType === BlockType.WOOD_SLAB && newBlockType === BlockType.WOOD_PLANKS) ||
+          (cDef?.blockType === BlockType.STONE_SLAB && newBlockType === BlockType.STONE_BRICKS);
+        if (!cDef || (cDef.blockType !== newBlockType && !isSlabCombine)) {
+          return { valid: false, reason: 'MATERIAL_BLOCK_MISMATCH' };
+        }
+        for (const slot of inventory) {
+          if (slot && slot.itemId === consumedMaterial && slot.count > 0) {
+            foundMatchingItemId = slot.itemId;
+            break;
+          }
+        }
+      } else {
+        for (const slot of inventory) {
+          if (!slot || slot.count <= 0) continue;
+          const def = ITEM_DEFS[slot.itemId];
+          const isSlabCombine =
+            (def?.blockType === BlockType.WOOD_SLAB && newBlockType === BlockType.WOOD_PLANKS) ||
+            (def?.blockType === BlockType.STONE_SLAB && newBlockType === BlockType.STONE_BRICKS);
+          if (def && (def.blockType === newBlockType || isSlabCombine)) {
+            foundMatchingItemId = slot.itemId;
+            break;
+          }
         }
       }
       if (!foundMatchingItemId) {
@@ -190,18 +210,28 @@ export class ServerAuthority {
     oldBlockType: number,
     worldCurrentBlock?: number
   ): ValidationResult {
+    if (!isValidVector3(playerPos)) {
+      return { valid: false, reason: 'INVALID_PLAYER_COORDINATES' };
+    }
     if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) {
       return { valid: false, reason: 'COORDINATES_MUST_BE_INTEGERS' };
     }
     if (y < WORLD_MIN_Y || y >= WORLD_MAX_Y) {
       return { valid: false, reason: 'OUT_OF_WORLD_HEIGHT_BOUNDS' };
     }
+    // Prevent breaking unbreakable blocks (hardness < 0, e.g., AETHER_PORTAL)
+    const oldDef = BLOCK_DEFS[oldBlockType];
+    const worldDef = worldCurrentBlock !== undefined ? BLOCK_DEFS[worldCurrentBlock] : undefined;
+    if ((oldDef && oldDef.hardness < 0) || (worldDef && worldDef.hardness < 0)) {
+      return { valid: false, reason: 'UNBREAKABLE_BLOCK' };
+    }
     if (worldCurrentBlock !== undefined && worldCurrentBlock !== oldBlockType) {
       return { valid: false, reason: 'OLD_BLOCK_STATE_DESYNC' };
     }
-    const dx = (x + 0.5) - playerPos[0];
-    const dy = (y + 0.5) - playerPos[1];
-    const dz = (z + 0.5) - playerPos[2];
+    const p = toVector3Tuple(playerPos)!;
+    const dx = (x + 0.5) - p[0];
+    const dy = (y + 0.5) - p[1];
+    const dz = (z + 0.5) - p[2];
     const distSq = dx * dx + dy * dy + dz * dz;
     if (distSq > this.maxReachDistance * this.maxReachDistance) {
       return { valid: false, reason: 'EXCEEDS_MAX_REACH' };
@@ -215,10 +245,20 @@ export class ServerAuthority {
     inventory?: Array<{ itemId: string; count: number } | null>,
     worldCurrentBlock?: number
   ): ValidationResult {
-    if (msg.newBlockType === 0) {
+    if (msg.newBlockType === BlockType.AIR) {
       return this.validateBlockBreak(playerPos, msg.x, msg.y, msg.z, msg.oldBlockType, worldCurrentBlock);
     }
-    return this.validateBlockPlacement(playerPos, msg.x, msg.y, msg.z, msg.oldBlockType, msg.newBlockType, inventory, worldCurrentBlock);
+    return this.validateBlockPlacement(
+      playerPos,
+      msg.x,
+      msg.y,
+      msg.z,
+      msg.oldBlockType,
+      msg.newBlockType,
+      inventory,
+      worldCurrentBlock,
+      msg.consumedMaterial
+    );
   }
 
   public static validateInventoryAction(
@@ -249,7 +289,10 @@ export class ServerAuthority {
     recipeId: string,
     quantity: number,
     inventory: Array<{ itemId: string; count: number } | null>,
-    stationContext?: string
+    stationContext?: string,
+    stationPos?: [number, number, number],
+    playerPos?: [number, number, number],
+    getBlockAt?: (x: number, y: number, z: number) => number
   ): ValidationResult {
     if (quantity <= 0 || !Number.isInteger(quantity) || quantity > 64) {
       return { valid: false, reason: 'INVALID_CRAFT_QUANTITY' };
@@ -262,8 +305,61 @@ export class ServerAuthority {
 
     // Verify station requirements
     if (recipe.station && recipe.station !== 'hand') {
-      if (stationContext && stationContext !== recipe.station && stationContext !== 'creative') {
+      const normalizedContext = stationContext === 'bench' ? 'crafting_bench' : stationContext;
+      if (normalizedContext && normalizedContext !== recipe.station && normalizedContext !== 'creative') {
         return { valid: false, reason: 'INCORRECT_WORKSTATION_CONTEXT' };
+      }
+
+      // If world block lookup and playerPos are provided, verify physical workstation proximity and block type
+      if (getBlockAt && playerPos && isValidVector3(playerPos)) {
+        const p = toVector3Tuple(playerPos)!;
+        const expectedStationBlocks: number[] =
+          recipe.station === 'crafting_bench'
+            ? [BlockType.CRAFTING_BENCH]
+            : recipe.station === 'furnace'
+            ? [BlockType.FURNACE]
+            : recipe.station === 'anvil'
+            ? [BlockType.ANVIL_SMITHING]
+            : [];
+
+        if (isValidVector3(stationPos)) {
+          const sp = toVector3Tuple(stationPos)!;
+          const sx = Math.floor(sp[0]);
+          const sy = Math.floor(sp[1]);
+          const sz = Math.floor(sp[2]);
+          const dist = Math.hypot((sx + 0.5) - p[0], (sy + 0.5) - p[1], (sz + 0.5) - p[2]);
+          if (dist > this.maxReachDistance) {
+            return { valid: false, reason: 'WORKSTATION_OUT_OF_REACH' };
+          }
+          const blockAtPos = getBlockAt(sx, sy, sz);
+          if (expectedStationBlocks.length > 0 && !expectedStationBlocks.includes(blockAtPos)) {
+            return { valid: false, reason: 'WORKSTATION_BLOCK_MISSING' };
+          }
+        } else if (expectedStationBlocks.length > 0) {
+          // Scan nearby blocks within reach for the required workstation
+          const r = Math.ceil(this.maxReachDistance);
+          const px = Math.floor(p[0]);
+          const py = Math.floor(p[1]);
+          const pz = Math.floor(p[2]);
+          let found = false;
+          for (let dx = -r; dx <= r && !found; dx++) {
+            for (let dy = -r; dy <= r && !found; dy++) {
+              for (let dz = -r; dz <= r && !found; dz++) {
+                const wx = px + dx;
+                const wy = py + dy;
+                const wz = pz + dz;
+                if (wy < WORLD_MIN_Y || wy >= WORLD_MAX_Y) continue;
+                const d = Math.hypot((wx + 0.5) - p[0], (wy + 0.5) - p[1], (wz + 0.5) - p[2]);
+                if (d <= this.maxReachDistance && expectedStationBlocks.includes(getBlockAt(wx, wy, wz))) {
+                  found = true;
+                }
+              }
+            }
+          }
+          if (!found) {
+            return { valid: false, reason: 'WORKSTATION_NOT_NEARBY' };
+          }
+        }
       }
     }
 
@@ -281,13 +377,27 @@ export class ServerAuthority {
       }
     }
 
-    // Check output capacity: will the output fit into current inventory?
+    // Simulate input deduction on a clone to accurately check post-deduction output capacity
+    const simInv = inventory.map((slot) => (slot ? { ...slot } : null));
+    for (const input of recipe.inputs) {
+      let rem = input.count * quantity;
+      for (let i = 0; i < simInv.length && rem > 0; i++) {
+        const slot = simInv[i];
+        if (slot && slot.itemId === input.itemId) {
+          const take = Math.min(slot.count, rem);
+          slot.count -= take;
+          rem -= take;
+          if (slot.count <= 0) simInv[i] = null;
+        }
+      }
+    }
+
     const outputDef = ITEM_DEFS[recipe.output.itemId];
     const maxStack = outputDef ? outputDef.maxStack : 64;
-    let unitsToAdd = recipe.output.count * quantity;
+    const unitsToAdd = recipe.output.count * quantity;
 
     let availableSpace = 0;
-    for (const slot of inventory) {
+    for (const slot of simInv) {
       if (slot === null) {
         availableSpace += maxStack;
       } else if (slot.itemId === recipe.output.itemId) {
@@ -295,30 +405,23 @@ export class ServerAuthority {
       }
     }
 
-    // Even if input items are consumed, to avoid edge cases we require that the inventory has room
-    // Note that consumed inputs may free up slots, but checking total capacity prevents overflows
-    let freedSlots = 0;
-    for (const input of recipe.inputs) {
-      const required = input.count * quantity;
-      let rem = required;
-      for (const slot of inventory) {
-        if (slot && slot.itemId === input.itemId) {
-          if (slot.count <= rem) {
-            rem -= slot.count;
-            freedSlots++;
-          } else {
-            break;
-          }
-        }
-      }
-    }
-    availableSpace += freedSlots * maxStack;
-
     if (availableSpace < unitsToAdd) {
       return { valid: false, reason: 'INSUFFICIENT_INVENTORY_CAPACITY' };
     }
 
     return { valid: true };
+  }
+
+  public static validateCrafting(
+    recipeId: string,
+    quantity: number,
+    inventory: Array<{ itemId: string; count: number } | null>,
+    stationContext?: string,
+    stationPos?: [number, number, number],
+    playerPos?: [number, number, number],
+    getBlockAt?: (x: number, y: number, z: number) => number
+  ): ValidationResult {
+    return this.validateCraftRequest(recipeId, quantity, inventory, stationContext, stationPos, playerPos, getBlockAt);
   }
 
   public static validateDamageEvent(

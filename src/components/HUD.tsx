@@ -25,13 +25,17 @@ import {
   Volume2,
   Activity
 } from 'lucide-react';
-import { TelemetryStore } from '../engine/ui/TelemetryStore';
+import { TelemetryStore, TelemetryData } from '../engine/ui/TelemetryStore';
 import { GameEventBus } from '../engine/events/GameEventBus';
 import { AetherAnomalyManager } from '../engine/anomaly/AetherAnomalyManager';
 import { triggerHaptic } from '../utils/haptics';
 import { MiniRadar } from './MiniRadar';
 import { TutorialDirector, TutorialStep } from '../engine/tutorial/TutorialDirector';
 import { WeaponSkillManager, WeaponSkillDef } from '../engine/combat/WeaponSkillManager';
+import { NetworkSession } from '../engine/network/NetworkSession';
+import { CharacterProgressionManager } from '../engine/progression/CharacterProgressionManager';
+import { MahakaryaNusantaraModal } from './MahakaryaNusantaraModal';
+import { MahakaryaNusantaraSystem } from '../engine/systems/MahakaryaNusantaraSystem';
 
 interface HUDProps {
   hotbar: (ItemStack | null)[];
@@ -44,13 +48,36 @@ interface HUDProps {
   onOpenPause: () => void;
   onToggleDebugMap?: () => void;
   onOpenJournal?: () => void;
+  onOpenCharacter?: () => void;
   onOpenContentDebug?: () => void;
   onOpenMultiplayerLobby?: () => void;
   activeBoss?: BossCombatState | null;
   objectiveText?: string;
 }
 
-const HUDTelemetryOverlay = () => {
+function shallowEqualRecord(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (let i = 0; i < keysA.length; i++) {
+    const k = keysA[i];
+    const va = a[k];
+    const vb = b[k];
+    if (Array.isArray(va) && Array.isArray(vb)) {
+      if (va.length !== vb.length) return false;
+      for (let j = 0; j < va.length; j++) {
+        if (va[j] !== vb[j]) return false;
+      }
+    } else if (va !== vb) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const HUDTelemetryOverlay = React.memo(({ onOpenMultiplayerLobby }: { onOpenMultiplayerLobby?: () => void }) => {
   const posRef = useRef<HTMLDivElement>(null);
   const fpsRef = useRef<HTMLDivElement>(null);
   const armorRef = useRef<HTMLDivElement>(null);
@@ -59,10 +86,32 @@ const HUDTelemetryOverlay = () => {
   const timeRef = useRef<HTMLSpanElement>(null);
   const compassRef = useRef<HTMLSpanElement>(null);
 
+  const [netState, setNetState] = useState(NetworkSession.getInstance().connectionState);
+  const [netPing, setNetPing] = useState(NetworkSession.getInstance().getStats().pingMs);
+  const [isMpActive, setIsMpActive] = useState(NetworkSession.getInstance().isMultiplayerActive);
+
+  useEffect(() => {
+    const unsubNet = NetworkSession.getInstance().onConnectionStateChange((state) => {
+      setNetState(state);
+      setIsMpActive(NetworkSession.getInstance().isMultiplayerActive);
+    });
+
+    const pingTimer = setInterval(() => {
+      if (NetworkSession.getInstance().isMultiplayerActive) {
+        setNetPing(NetworkSession.getInstance().getStats().pingMs);
+      }
+    }, 1000);
+
+    return () => {
+      unsubNet();
+      clearInterval(pingTimer);
+    };
+  }, []);
+
   useEffect(() => {
     return TelemetryStore.subscribe((stats) => {
       if (posRef.current) {
-        posRef.current.innerHTML = `<span class="text-sky-400 font-bold">${Math.round(stats.playerPos[0])}</span>, <span class="text-sky-400 font-bold">${Math.round(stats.playerPos[1])}</span>, <span class="text-sky-400 font-bold">${Math.round(stats.playerPos[2])}</span>`;
+        posRef.current.innerText = `${Math.round(stats.playerPos[0])}, ${Math.round(stats.playerPos[1])}, ${Math.round(stats.playerPos[2])}`;
       }
       if (fpsRef.current) {
         fpsRef.current.innerText = `${stats.fps} FPS`;
@@ -88,41 +137,43 @@ const HUDTelemetryOverlay = () => {
         if (deg >= 45 && deg < 135) heading = 'E';
         else if (deg >= 135 && deg < 225) heading = 'S';
         else if (deg >= 225 && deg < 315) heading = 'W';
-        compassRef.current.innerText = `${heading} (${Math.round(deg)}°)`;
+        compassRef.current.innerText = `${heading} ${Math.round(deg)}°`;
       }
     });
   }, []);
 
   return (
-    <div className="voxel-panel-subtle px-3.5 py-2 shadow-xl flex items-center gap-3.5 text-xs font-mono pointer-events-auto border border-white/10">
-      <div className="flex items-center gap-1.5">
-        <Compass className="w-3.5 h-3.5 text-sky-400" />
-        <span className="text-emerald-400 font-bold text-[11px]" ref={regionRef}>Tanah Minang</span>
-        <span className="text-zinc-600">/</span>
-        <span className="text-zinc-300 font-bold text-[11px]" ref={biomeRef}>Highlands</span>
-      </div>
+    <div className="px-3.5 py-1.5 rounded-full bg-slate-950/75 border border-white/10 shadow-lg flex items-center gap-2.5 text-[11px] font-mono tabular-nums pointer-events-auto text-zinc-300">
+      <span className="text-zinc-100 font-semibold whitespace-nowrap" ref={regionRef}>Tanah Minang</span>
+      <span className="text-zinc-600" aria-hidden="true">·</span>
+      <span className="text-zinc-400 hidden sm:inline whitespace-nowrap" ref={biomeRef}>Highlands</span>
+      <span className="text-zinc-600 hidden sm:inline" aria-hidden="true">·</span>
+      <span className="text-amber-300/90 font-medium whitespace-nowrap" ref={timeRef}>12:00</span>
+      <span className="text-zinc-600" aria-hidden="true">·</span>
+      <span className="text-zinc-400 whitespace-nowrap" ref={posRef}>0, 80, 0</span>
+      <span className="text-zinc-600" aria-hidden="true">·</span>
+      <span className="text-emerald-400 font-semibold whitespace-nowrap" ref={fpsRef}>60 FPS</span>
 
-      <div className="h-3 w-[1px] bg-white/15" />
-
-      <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-        <span>Pos:</span>
-        <div ref={posRef}>0, 80, 0</div>
-      </div>
-
-      <div className="h-3 w-[1px] bg-white/15" />
-
-      <div className="flex items-center gap-1 text-[11px] text-amber-300">
-        <span ref={timeRef}>12:00</span>
-      </div>
-
-      <div className="h-3 w-[1px] bg-white/15" />
-
-      <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-bold" ref={fpsRef}>
-        60 FPS
-      </div>
+      {isMpActive && (
+        <>
+          <span className="text-zinc-600" aria-hidden="true">·</span>
+          <button
+            onClick={() => onOpenMultiplayerLobby?.()}
+            className="flex items-center gap-1.5 text-[10px] font-mono font-semibold text-sky-300 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
+            title="Multiplayer Realm Connection Status"
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              netState === 'READY' ? 'bg-emerald-400' :
+              netState === 'RECONNECTING' || netState === 'SYNCHRONIZING' ? 'bg-amber-400' :
+              'bg-rose-500'
+            }`} />
+            <span>{netState === 'READY' ? `${netPing}ms` : netState}</span>
+          </button>
+        </>
+      )}
     </div>
   );
-};
+});
 
 const HUDProfilerOverlay = ({ onClose }: { onClose: () => void }) => {
   const [metrics, setMetrics] = useState(TelemetryStore.state.profilerMetrics);
@@ -409,12 +460,53 @@ const HUDProfilerOverlay = ({ onClose }: { onClose: () => void }) => {
             🌌 Midnight (00:00)
           </button>
         </div>
+        <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+          <button
+            onClick={() => {
+              const rt = (window as any).__voxelRuntime;
+              if (rt?.weather) rt.weather.setWeather('rimba_mist', 0.7);
+            }}
+            className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            🌫️ Kabut Rimba
+          </button>
+          <button
+            onClick={() => {
+              const rt = (window as any).__voxelRuntime;
+              if (rt?.weather) rt.weather.setWeather('monsoon_rain', 0.85);
+            }}
+            className="px-2 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 rounded text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            🌧️ Hujan Monsun
+          </button>
+          <button
+            onClick={() => {
+              const rt = (window as any).__voxelRuntime;
+              if (rt?.weather) rt.weather.setWeather('aether_aurora', 0.85);
+            }}
+            className="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            ✨ Aurora Ley
+          </button>
+          <button
+            onClick={() => {
+              const rt = (window as any).__voxelRuntime;
+              if (rt?.entities && rt?.player && rt?.world) {
+                const p = rt.player.position;
+                rt.entities.spawnBoss('naga_antaboga', [p.x + 8, p.y, p.z + 8], rt.world);
+              }
+            }}
+            className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            🐉 Naga Antaboga
+          </button>
+        </div>
       </div>
     </div>
   );
 };
 
-const HUDVitalsBars = () => {
+const HUDVitalsBars = React.memo(() => {
   const healthRef = useRef<HTMLDivElement>(null);
   const healthTextRef = useRef<HTMLSpanElement>(null);
   const hungerRef = useRef<HTMLDivElement>(null);
@@ -476,85 +568,70 @@ const HUDVitalsBars = () => {
   }, []);
 
   return (
-    <div className="flex flex-col items-center gap-1.5 w-full max-w-lg pointer-events-auto">
-      {/* Vitals Row (Health, Hunger, Stamina) */}
-      <div className="grid grid-cols-3 gap-2.5 w-full">
+    <div className="flex flex-col items-center gap-1 w-full max-w-md pointer-events-auto">
+      {/* Oxygen Bar (only when underwater) */}
+      <div
+        className="w-full px-3 py-1 rounded-full bg-slate-950/80 border border-sky-400/30 items-center justify-between gap-2 hidden"
+        ref={oxygenContainerRef}
+      >
+        <div className="flex items-center gap-1 text-[10px] font-semibold text-sky-300">
+          <Wind className="w-3 h-3" />
+          <span>Oksigen</span>
+        </div>
+        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div className="h-full bg-sky-400 rounded-full transition-all" ref={oxygenRef} style={{ width: '100%' }} />
+        </div>
+        <span className="text-[10px] font-mono tabular-nums text-sky-300" ref={oxygenTextRef}>100%</span>
+      </div>
+
+      {/* Unified Minimalist Vitals Pill (Health · Hunger · Stamina) */}
+      <div className="grid grid-cols-3 gap-3 w-full px-3.5 py-1.5 rounded-full bg-slate-950/75 border border-white/10 shadow-lg">
         {/* Health */}
-        <div className="voxel-panel-subtle p-2 space-y-1 transition-opacity duration-500">
-          <div className="flex justify-between items-center text-[10px] font-bold">
-            <div className="flex items-center gap-1 text-[var(--color-health)]">
-              <Heart className="w-3 h-3 fill-current" />
-              <span>HEALTH</span>
-            </div>
-            <span className="font-mono text-[var(--vv-text-main)] text-[10px]" ref={healthTextRef}>100/100</span>
-          </div>
-          <div className="h-2 bg-black/60 rounded-full p-[1px] border border-[var(--vv-border)] overflow-hidden">
+        <div className="voxel-panel-subtle !bg-transparent !border-0 !shadow-none flex items-center gap-1.5 transition-opacity duration-500">
+          <Heart className="w-3 h-3 text-rose-400 fill-rose-400 shrink-0" />
+          <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-[var(--color-health)] rounded-full transition-all duration-150 shadow-[0_0_8px_var(--color-health)]"
+              className="h-full bg-rose-500 rounded-full transition-all duration-150"
               ref={healthRef}
               style={{ width: '100%' }}
             />
           </div>
+          <span className="font-mono tabular-nums text-zinc-300 text-[10px] shrink-0" ref={healthTextRef}>100</span>
         </div>
 
         {/* Hunger */}
-        <div className="voxel-panel-subtle p-2 space-y-1 transition-opacity duration-500">
-          <div className="flex justify-between items-center text-[10px] font-bold">
-            <div className="flex items-center gap-1 text-[var(--color-hunger)]">
-              <Utensils className="w-3 h-3" />
-              <span>HUNGER</span>
-            </div>
-            <span className="font-mono text-[var(--vv-text-main)] text-[10px]" ref={hungerTextRef}>100%</span>
-          </div>
-          <div className="h-2 bg-black/60 rounded-full p-[1px] border border-[var(--vv-border)] overflow-hidden">
+        <div className="voxel-panel-subtle !bg-transparent !border-0 !shadow-none flex items-center gap-1.5 transition-opacity duration-500">
+          <Utensils className="w-3 h-3 text-amber-400 shrink-0" />
+          <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-[var(--color-hunger)] rounded-full transition-all duration-150 shadow-[0_0_8px_var(--color-hunger)]"
+              className="h-full bg-amber-400 rounded-full transition-all duration-150"
               ref={hungerRef}
               style={{ width: '100%' }}
             />
           </div>
+          <span className="font-mono tabular-nums text-zinc-300 text-[10px] shrink-0" ref={hungerTextRef}>100%</span>
         </div>
 
         {/* Stamina */}
-        <div className="voxel-panel-subtle p-2 space-y-1 transition-opacity duration-500">
-          <div className="flex justify-between items-center text-[10px] font-bold">
-            <div className="flex items-center gap-1 text-[var(--color-stamina)]">
-              <Zap className="w-3 h-3 fill-current text-[var(--color-stamina)]" />
-              <span>STAMINA</span>
-            </div>
-            <span className="font-mono text-[var(--vv-text-main)] text-[10px]" ref={staminaTextRef}>100%</span>
-          </div>
-          <div className="h-2 bg-black/60 rounded-full p-[1px] border border-[var(--vv-border)] overflow-hidden">
+        <div className="voxel-panel-subtle !bg-transparent !border-0 !shadow-none flex items-center gap-1.5 transition-opacity duration-500">
+          <Zap className="w-3 h-3 text-sky-400 fill-sky-400 shrink-0" />
+          <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-[var(--color-stamina)] rounded-full transition-all duration-150 shadow-[0_0_8px_var(--color-stamina)]"
+              className="h-full bg-sky-400 rounded-full transition-all duration-150"
               ref={staminaRef}
               style={{ width: '100%' }}
             />
           </div>
+          <span className="font-mono tabular-nums text-zinc-300 text-[10px] shrink-0" ref={staminaTextRef}>100%</span>
         </div>
       </div>
 
-      {/* Oxygen Bar (when underwater) */}
-      <div
-        className="w-full voxel-panel-subtle px-3 py-1 items-center justify-between gap-2 hidden animate-pulse border-[var(--color-temp)]/40"
-        ref={oxygenContainerRef}
-      >
-        <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--color-temp)]">
-          <Wind className="w-3 h-3" />
-          <span>OXYGEN</span>
-        </div>
-        <div className="flex-1 h-2 bg-black/60 rounded-full border border-[var(--color-temp)]/30 overflow-hidden">
-          <div className="h-full bg-[var(--color-temp)] rounded-full transition-all" ref={oxygenRef} style={{ width: '100%' }} />
-        </div>
-        <span className="text-[10px] font-mono text-[var(--color-temp)]" ref={oxygenTextRef}>100%</span>
-      </div>
-
-      {/* XP Bar */}
-      <div className="w-full flex items-center gap-2 px-1">
-        <span className="text-[9px] font-mono font-bold text-[var(--color-xp)]" ref={levelTextRef}>Lv. 1</span>
-        <div className="flex-1 h-1.5 bg-black/60 rounded-full border border-[var(--vv-border)] overflow-hidden">
+      {/* Hairline XP Bar */}
+      <div className="w-full flex items-center gap-2 px-3">
+        <span className="text-[9px] font-mono tabular-nums font-semibold text-emerald-400 shrink-0" ref={levelTextRef}>Lv. 1</span>
+        <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
           <div
-            className="h-full bg-[var(--color-xp)] rounded-full transition-all duration-200"
+            className="h-full bg-emerald-400 rounded-full transition-all duration-200"
             ref={xpRef}
             style={{ width: '0%' }}
           />
@@ -562,7 +639,7 @@ const HUDVitalsBars = () => {
       </div>
     </div>
   );
-};
+});
 
 const HUDMultiPhaseBossBar: React.FC<{ activeBoss: BossCombatState }> = ({ activeBoss }) => {
   const [ghostHp, setGhostHp] = useState(activeBoss.health);
@@ -763,41 +840,30 @@ const HUDTutorialCard: React.FC = () => {
   const { step } = tutState;
 
   return (
-    <div className="voxel-panel-subtle p-3 max-w-xs border-l-2 border-l-sky-400 bg-[var(--vv-bg)]/80 backdrop-blur-md pointer-events-auto animate-fade-in relative shadow-xl">
-      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/10">
-        <div className="flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-sky-300">PANDUAN PENGELANA</span>
-        </div>
-        <button
-          onClick={() => TutorialDirector.dismissTutorial()}
-          className="text-zinc-400 hover:text-white text-xs cursor-pointer px-1 py-0.5 rounded hover:bg-white/10"
-          title="Sembunyikan Panduan"
-        >
-          ✕
-        </button>
-      </div>
-
-      <h4 className="text-xs font-bold text-white mb-1">{step.title}</h4>
-      <p className="text-[11px] text-zinc-300 leading-snug mb-2">{step.instruction}</p>
-
-      <div className="bg-black/50 border border-white/10 rounded-lg p-2 text-[10px] space-y-1">
-        <div className="text-amber-300 font-semibold flex items-center gap-1.5">
-          <span className="text-zinc-400 font-mono text-[9px] bg-white/10 px-1 py-0.5 rounded">PC</span>
-          <span>{step.keyboardHint}</span>
-        </div>
-        <div className="text-sky-300 font-semibold flex items-center gap-1.5">
-          <span className="text-zinc-400 font-mono text-[9px] bg-white/10 px-1 py-0.5 rounded">HP</span>
-          <span>{step.mobileHint}</span>
+    <div className="px-3.5 py-2.5 rounded-2xl max-w-[270px] bg-slate-950/75 border border-white/10 pointer-events-auto animate-fade-in shadow-lg">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <span className="text-[11px] font-semibold text-sky-300 truncate">{step.title}</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {step.targetCount > 1 && (
+            <span className="text-[10px] font-mono tabular-nums text-zinc-400">
+              {step.currentCount}/{step.targetCount}
+            </span>
+          )}
+          <button
+            onClick={() => TutorialDirector.dismissTutorial()}
+            className="text-zinc-500 hover:text-white text-[11px] cursor-pointer px-1 rounded transition-colors"
+            title="Sembunyikan Panduan"
+          >
+            ✕
+          </button>
         </div>
       </div>
 
-      {step.targetCount > 1 && (
-        <div className="mt-2 flex items-center justify-between text-[10px] font-mono text-zinc-400">
-          <span>Target Selesai:</span>
-          <span className="font-bold text-sky-400">{step.currentCount} / {step.targetCount}</span>
-        </div>
-      )}
+      <p className="text-[11px] text-zinc-300 leading-snug mb-1.5">{step.instruction}</p>
+
+      <div className="text-[10px] font-mono text-zinc-400 truncate">
+        {step.keyboardHint}
+      </div>
     </div>
   );
 };
@@ -829,39 +895,27 @@ const HUDWeaponSkillWidget: React.FC = () => {
   const isCooldown = skillState.cooldownSeconds > 0;
 
   return (
-    <div className="flex items-center gap-2 pointer-events-auto shrink-0">
+    <div className="flex items-center pointer-events-auto shrink-0">
       <button
         onClick={handleTrigger}
         title={skill ? `${skill.name} [R]` : 'Jurus Pusaka [R]'}
-        className={`relative w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer border shadow-xl ${
+        className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
           isCooldown
-            ? 'bg-zinc-900/80 border-white/10 opacity-75'
-            : 'bg-gradient-to-tr from-amber-600/90 to-orange-500/90 hover:from-amber-500 hover:to-orange-400 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)] active:scale-95'
+            ? 'bg-slate-950/80 border-white/10 opacity-65'
+            : 'bg-slate-900/90 hover:bg-slate-800 border-amber-400/40 text-amber-300 active:scale-95'
         }`}
       >
-        {/* Cooldown overlay */}
         {isCooldown && (
-          <div className="absolute inset-0 bg-black/75 rounded-xl flex items-center justify-center text-xs font-mono font-black text-amber-300 z-20">
+          <div className="absolute inset-0 bg-black/80 rounded-xl flex items-center justify-center text-[10px] font-mono tabular-nums font-bold text-amber-300 z-20">
             {skillState.cooldownSeconds}s
           </div>
         )}
 
-        <span className="text-base sm:text-lg relative z-10">{skill?.icon || '⚡'}</span>
-        <span className="absolute -bottom-1 -right-1 text-[8px] font-mono font-bold bg-black/80 px-1 rounded text-amber-300 border border-amber-500/30 z-10">
+        <span className="text-sm sm:text-base relative z-10">{skill?.icon || '⚡'}</span>
+        <span className="absolute bottom-0.5 right-1 text-[7px] font-mono font-semibold text-zinc-400 z-10">
           R
         </span>
       </button>
-
-      {skill && (
-        <div className="hidden md:flex flex-col text-left">
-          <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-amber-400 leading-tight">
-            JURUS PUSAKA
-          </span>
-          <span className="text-xs font-bold text-white leading-tight truncate max-w-[120px]">
-            {skill.name}
-          </span>
-        </div>
-      )}
     </div>
   );
 };
@@ -877,6 +931,7 @@ export const HUD: React.FC<HUDProps> = ({
   onOpenPause,
   onToggleDebugMap,
   onOpenJournal,
+  onOpenCharacter,
   onOpenContentDebug,
   onOpenMultiplayerLobby,
   activeBoss,
@@ -892,13 +947,48 @@ export const HUD: React.FC<HUDProps> = ({
   const [anomalyStatus, setAnomalyStatus] = useState<'dormant' | 'warning' | 'active' | 'climax' | 'resolved'>('dormant');
   const [anomalyIntensity, setAnomalyIntensity] = useState(0);
   const [showProfiler, setShowProfiler] = useState(false);
+  const [showQuickTools, setShowQuickTools] = useState(false);
+  const [zenHudMode, setZenHudMode] = useState(false);
+  const [showMahakaryaModal, setShowMahakaryaModal] = useState(false);
+  const [mahakaryaInitialTab, setMahakaryaInitialTab] = useState<'SAMUDRA_KERETA' | 'GAMELAN_STUDIO' | 'KHODAM_ARENA' | 'BUSANA_FOTO'>('SAMUDRA_KERETA');
+  const [pusakaCardMinimized, setPusakaCardMinimized] = useState(false);
+  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [comboBanner, setComboBanner] = useState<{ step: number; label: string; isCrit: boolean } | null>(null);
+  const [unspentProgPoints, setUnspentProgPoints] = useState(
+    CharacterProgressionManager.availableSkillPoints + CharacterProgressionManager.availableAttributePoints
+  );
 
-  // F3: Profiling Overlay, F6: Cycle Time of Day for lighting testing
+  useEffect(() => {
+    setUnspentProgPoints(
+      CharacterProgressionManager.availableSkillPoints + CharacterProgressionManager.availableAttributePoints
+    );
+    return CharacterProgressionManager.subscribe(() => {
+      setUnspentProgPoints(
+        CharacterProgressionManager.availableSkillPoints + CharacterProgressionManager.availableAttributePoints
+      );
+    });
+  }, []);
+
+  // F3: Profiling Overlay, F4: Toggle Turbo 60 FPS Mode, F6: Cycle Time of Day, H: Toggle Zen Minimal HUD
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'F3') {
         e.preventDefault();
         setShowProfiler(prev => !prev);
+      } else if (e.code === 'KeyH' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setZenHudMode(prev => !prev);
+      } else if (e.code === 'F4') {
+        e.preventDefault();
+        const enabled = SettingsManager.toggleTurboFpsMode();
+        NotificationManager.push({
+          title: enabled ? 'Mode Turbo 60 FPS Aktif' : 'Mode Visual Standar Aktif',
+          message: enabled
+            ? 'Shadow terukur, CAS Sharpening jarak dekat, & Dynamic Resolution menjaga 60 FPS.'
+            : 'Kualitas bayangan & jarak pandang dikembalikan ke pengaturan standar.',
+          priority: 'HIGH',
+          colorTheme: enabled ? 'emerald' : 'sky',
+          durationMs: 3200,
+        });
       } else if (e.code === 'F6') {
         e.preventDefault();
         const rt = (window as any).__voxelRuntime;
@@ -917,6 +1007,52 @@ export const HUD: React.FC<HUDProps> = ({
               duration: 2500,
             } as any
           ]);
+        }
+      } else if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const rt = (window as any).__voxelRuntime;
+        if (rt) {
+          import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+            ({ NusantaraSanctumSilatSubakSystem }) => {
+              NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt.audio);
+            }
+          );
+        }
+      } else if (e.code === 'KeyG' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const rt = (window as any).__voxelRuntime;
+        if (rt && rt.player && rt.stats) {
+          import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+            ({ NusantaraSanctumSilatSubakSystem }) => {
+              if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
+                NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
+                  rt.entities,
+                  rt.player,
+                  rt.stats,
+                  rt.audio,
+                  rt.particles
+                );
+              } else {
+                NusantaraSanctumSilatSubakSystem.cycleAjianUltimate(rt.audio);
+              }
+            }
+          );
+        }
+      } else if (e.code === 'KeyN' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setMahakaryaInitialTab('SAMUDRA_KERETA');
+        setShowMahakaryaModal(prev => !prev);
+      } else if (e.code === 'KeyP' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const rt = (window as any).__voxelRuntime;
+        if (rt && rt.player && rt.camera) {
+          const active = MahakaryaNusantaraSystem.togglePhotoMode(rt.player, rt.camera, rt.audio);
+          setMahakaryaInitialTab('BUSANA_FOTO');
+          setShowMahakaryaModal(active);
+        }
+      } else if (e.code === 'KeyB' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setPusakaCardMinimized(prev => !prev);
+      } else if (e.code === 'F5') {
+        e.preventDefault();
+        const rt = (window as any).__voxelRuntime;
+        if (rt?.persistenceSystem) {
+          rt.persistenceSystem.saveGame();
         }
       }
     };
@@ -941,11 +1077,21 @@ export const HUD: React.FC<HUDProps> = ({
     });
   }, []);
 
-  // Subscribe to Combat Events
+  // Subscribe to Combat & Smart Auto-Save Events
   useEffect(() => {
     const unsubHit = GameEventBus.on('COMBAT_HIT', (payload) => {
       setHitmarker(payload.hitType);
       setTimeout(() => setHitmarker('none'), 200);
+
+      const rt = (window as any).__voxelRuntime;
+      const step = rt?.combatSystem?.combatMachine?.comboStep ?? 0;
+      const labels = ['SABETAN I', 'SABETAN SILANG II', 'TUSUKAN PAMUNGKAS III (1.45x)'];
+      setComboBanner({
+        step,
+        label: labels[step % 3] || 'SABETAN I',
+        isCrit: payload.hitType === 'crit',
+      });
+      setTimeout(() => setComboBanner(null), 950);
     });
 
     const unsubDmg = GameEventBus.on('PLAYER_DAMAGED', () => {
@@ -953,9 +1099,19 @@ export const HUD: React.FC<HUDProps> = ({
       setTimeout(() => setDamageFlash(false), 260);
     });
 
+    const unsubSave = GameEventBus.on('AUTOSAVE_STATUS', (payload: { saving?: boolean; saved?: boolean }) => {
+      if (payload.saving) {
+        setAutoSaveState('saving');
+      } else if (payload.saved) {
+        setAutoSaveState('saved');
+        setTimeout(() => setAutoSaveState('idle'), 2400);
+      }
+    });
+
     return () => {
       unsubHit();
       unsubDmg();
+      unsubSave();
     };
   }, []);
 
@@ -977,16 +1133,6 @@ export const HUD: React.FC<HUDProps> = ({
 
   const [isLockOnActive, setIsLockOnActive] = useState(false);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const rt = (window as any).__voxelRuntime;
-      if (rt && rt.player) {
-        setIsLockOnActive(!!rt.player.isLockOnActive);
-      }
-    }, 80);
-    return () => clearInterval(interval);
-  }, []);
-
   // Display Item Name Banner upon Hotbar Switch
   useEffect(() => {
     const currentItem = hotbar[activeHotbarIndex];
@@ -1000,9 +1146,31 @@ export const HUD: React.FC<HUDProps> = ({
     }
   }, [activeHotbarIndex, hotbar]);
 
-  // Subscribe to Telemetry for Mining & Bow Reticle
+  const [fishingHud, setFishingHud] = useState<{
+    state: string;
+    tension: number;
+    progress: number;
+  }>({ state: 'IDLE', tension: 0, progress: 0 });
+
+  const [targetedCreature, setTargetedCreature] = useState<TelemetryData['targetedCreature']>(null);
+  const [activeVessel, setActiveVessel] = useState<TelemetryData['activeVessel']>(null);
+  const [activeCataclysm, setActiveCataclysm] = useState<TelemetryData['activeCataclysm']>(null);
+  const [activeHologram, setActiveHologram] = useState<TelemetryData['activeHologram']>(null);
+  const [activeTreasureHint, setActiveTreasureHint] = useState<TelemetryData['activeTreasureHint']>(null);
+  const [activeAerialFlight, setActiveAerialFlight] = useState<TelemetryData['activeAerialFlight']>(null);
+  const [activeVillageSiege, setActiveVillageSiege] = useState<TelemetryData['activeVillageSiege']>(null);
+  const [nusantaraV46, setNusantaraV46] = useState<TelemetryData['nusantaraV46']>(null);
+  const [mahakaryaV48, setMahakaryaV48] = useState<TelemetryData['mahakaryaV48']>(null);
+
+  // Subscribe to Telemetry with Shallow Diffing (Zero unnecessary React re-renders!)
   useEffect(() => {
     return TelemetryStore.subscribe((stats) => {
+      const rt = (window as any).__voxelRuntime;
+      if (rt && rt.player) {
+        const nextLock = !!rt.player.isLockOnActive;
+        setIsLockOnActive((prev) => (prev === nextLock ? prev : nextLock));
+      }
+
       const svg = document.getElementById('crosshair-break-svg');
       const circle = document.getElementById('crosshair-break-circle');
       if (svg && circle) {
@@ -1028,6 +1196,47 @@ export const HUD: React.FC<HUDProps> = ({
           bowReticle.style.display = 'none';
         }
       }
+
+      setFishingHud((prev) => {
+        const nextState = stats.fishingState || 'IDLE';
+        const nextTension = stats.fishingTension ?? 0;
+        const nextProgress = stats.fishingProgress ?? 0;
+        if (
+          prev.state === nextState &&
+          prev.tension === nextTension &&
+          prev.progress === nextProgress
+        ) {
+          return prev;
+        }
+        return { state: nextState, tension: nextTension, progress: nextProgress };
+      });
+
+      const nextCreature = stats.targetedCreature || null;
+      setTargetedCreature((prev) => (shallowEqualRecord(prev, nextCreature) ? prev : nextCreature));
+
+      const nextVessel = stats.activeVessel || null;
+      setActiveVessel((prev) => (shallowEqualRecord(prev, nextVessel) ? prev : nextVessel));
+
+      const nextCataclysm = stats.activeCataclysm || null;
+      setActiveCataclysm((prev) => (shallowEqualRecord(prev, nextCataclysm) ? prev : nextCataclysm));
+
+      const nextHologram = stats.activeHologram || null;
+      setActiveHologram((prev) => (shallowEqualRecord(prev, nextHologram) ? prev : nextHologram));
+
+      const nextTreasure = stats.activeTreasureHint || null;
+      setActiveTreasureHint((prev) => (shallowEqualRecord(prev, nextTreasure) ? prev : nextTreasure));
+
+      const nextFlight = stats.activeAerialFlight || null;
+      setActiveAerialFlight((prev) => (shallowEqualRecord(prev, nextFlight) ? prev : nextFlight));
+
+      const nextSiege = stats.activeVillageSiege || null;
+      setActiveVillageSiege((prev) => (shallowEqualRecord(prev, nextSiege) ? prev : nextSiege));
+
+      const nextV46 = stats.nusantaraV46 || null;
+      setNusantaraV46((prev) => (shallowEqualRecord(prev, nextV46) ? prev : nextV46));
+
+      const nextV48 = stats.mahakaryaV48 || null;
+      setMahakaryaV48((prev) => (shallowEqualRecord(prev, nextV48) ? prev : nextV48));
     });
   }, []);
 
@@ -1053,10 +1262,21 @@ export const HUD: React.FC<HUDProps> = ({
       interactionAction = 'Open Smelter';
     } else if (targetHit.blockType === 13 || targetBlockDef?.name?.toLowerCase().includes('anvil')) {
       interactionAction = 'Forge & Repair';
-    } else if (targetBlockDef?.category === 'farming' || targetBlockDef?.name?.toLowerCase().includes('wheat')) {
-      interactionAction = 'Harvest Crop';
+    } else if (targetBlockDef?.category === 'farming' || targetBlockDef?.name?.toLowerCase().includes('wheat') || targetBlockDef?.name?.toLowerCase().includes('padi')) {
+      interactionAction = 'Panen Tanaman [Klik Kanan]';
     } else if (targetBlockDef?.name?.toLowerCase().includes('door')) {
       interactionAction = 'Toggle Door';
+    } else if (targetHit.blockType === 131 || targetBlockDef?.name?.toLowerCase().includes('altar')) {
+      interactionAction = 'Bangkitkan Ritual Altar Purba';
+    } else if (targetHit.blockType === 134 || targetBlockDef?.name?.toLowerCase().includes('kima')) {
+      interactionAction = 'Panen Mutiara Samudra [Klik Kanan]';
+    } else if (
+      targetBlockDef?.name?.toLowerCase().includes('fabricator') ||
+      targetBlockDef?.name?.toLowerCase().includes('harvester') ||
+      targetBlockDef?.name?.toLowerCase().includes('turret') ||
+      targetBlockDef?.name?.toLowerCase().includes('ley')
+    ) {
+      interactionAction = 'Buka Panel Aether Engineering';
     }
   }
 
@@ -1088,82 +1308,121 @@ export const HUD: React.FC<HUDProps> = ({
         />
       )}
 
-      {/* Top Bar (Telemetry on Left, Objective in Center, Menu Actions on Right) */}
+      {/* Top Bar (Telemetry on Left, Objective in Center, Minimalist Actions on Right) */}
       <div className="flex justify-between items-start w-full relative z-20">
-        {/* Left: Telemetry & Quest Objective */}
-        <div className="flex flex-col gap-3">
-          {settings.gameplay.showFps && <HUDTelemetryOverlay />}
-          
-          {/* Active Quests HUD Panel - Progressive Disclosure */}
-          {activeQuests.length > 0 ? (
-            <div className="flex flex-col gap-2 max-w-xs pointer-events-auto">
-              {activeQuests.slice(0, 3).map((q, qIndex) => {
-                const priority = qIndex === 0 ? 'PRIMARY' : qIndex === 1 ? 'SECONDARY' : 'EVENT';
-                return (
-                  <div key={q.def.id} className="voxel-panel-subtle px-3 py-2 border-l-2 border-l-[var(--vv-warning)] bg-[var(--vv-bg)]/60 backdrop-blur-md">
-                    <div className="text-[9px] font-bold text-[var(--vv-warning)] tracking-wider mb-1">{priority}</div>
-                    <div className="font-semibold text-[13px] text-white leading-tight mb-1.5 drop-shadow-md">
-                      {q.def.title}
+        {/* Left: Telemetry & Compact Objective */}
+        {!zenHudMode ? (
+          <div className="flex flex-col gap-2">
+            {settings.gameplay.showFps && <HUDTelemetryOverlay onOpenMultiplayerLobby={onOpenMultiplayerLobby} />}
+            
+            {/* Active Quest Pill - Single Compact Objective */}
+            {activeQuests.length > 0 ? (
+              <div className="flex flex-col gap-1.5 max-w-[270px] pointer-events-auto">
+                {activeQuests.slice(0, 1).map((q) => {
+                  const activeObj = q.def.objectives.find(
+                    (obj: any, idx: number) => (q.progress[idx] || 0) < obj.requiredCount
+                  );
+                  const activeIdx = activeObj ? q.def.objectives.indexOf(activeObj) : 0;
+                  const count = q.progress[activeIdx] || 0;
+                  return (
+                    <div
+                      key={q.def.id}
+                      className="rounded-xl px-3 py-2 bg-slate-950/92 border border-white/10 shadow-lg"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                        <span className="text-[11px] font-semibold text-white truncate">
+                          {q.def.title}
+                        </span>
+                        {activeQuests.length > 1 && (
+                          <span className="text-[9px] font-mono text-zinc-400 shrink-0">
+                            +{activeQuests.length - 1}
+                          </span>
+                        )}
+                      </div>
+                      {activeObj && (
+                        <div className="flex items-center justify-between gap-2 text-[10px] text-zinc-300">
+                          <span className="truncate">{activeObj.description}</span>
+                          <span className="font-mono text-amber-300/90 tabular-nums shrink-0">
+                            {count}/{activeObj.requiredCount}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <div className="space-y-1">
-                      {q.def.objectives.map((obj: any, idx: number) => {
-                        const count = q.progress[idx] || 0;
-                        const isDone = count >= obj.requiredCount;
-                        if (isDone) return null; // Hide completed in compact view
-                        return (
-                          <div 
-                            key={`hud-quest-obj-${q.def.id}-${idx}`} 
-                            className="flex items-start gap-1.5 text-[11px] leading-relaxed text-[var(--vv-text-main)] drop-shadow-sm"
-                          >
-                            <span className="text-[var(--vv-warning)] shrink-0 mt-[2px] opacity-80">
-                              •
-                            </span>
-                            <span>
-                              {obj.description} <span className="opacity-70">({count}/{obj.requiredCount})</span>
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-              {activeQuests.length > 3 && (
-                <div className="text-[10px] text-[var(--vv-text-muted)] font-bold italic ml-2">
-                  + {activeQuests.length - 3} more objectives
+                  );
+                })}
+              </div>
+            ) : objectiveText ? (
+              <div className="rounded-xl px-3 py-1.5 max-w-[270px] border border-white/10 flex items-center gap-2 pointer-events-auto bg-slate-950/92 shadow-lg">
+                <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+                <div className="text-[11px] text-zinc-200 truncate">
+                  {objectiveText}
                 </div>
-              )}
-            </div>
-          ) : objectiveText ? (
-            <div className="voxel-panel-subtle px-3 py-1.5 max-w-xs border-l-2 border-l-[var(--vv-warning)] flex items-center gap-2 animate-fade-in pointer-events-auto bg-[var(--vv-bg)]/60">
-              <Sparkles className="w-3.5 h-3.5 text-[var(--vv-warning)] shrink-0" />
-              <div className="text-[12px] text-white truncate drop-shadow-md">
-                {objectiveText}
+              </div>
+            ) : null}
+
+            {/* Interactive Beginner Tutorial Card */}
+            <HUDTutorialCard />
+          </div>
+        ) : (
+          <button
+            onClick={() => setZenHudMode(false)}
+            title="Tampilkan Kembali HUD [H]"
+            className="pointer-events-auto px-2.5 py-1 rounded-full bg-slate-950/85 hover:bg-slate-950/95 border border-white/10 text-[10px] font-mono text-zinc-400 hover:text-white transition-colors cursor-pointer"
+          >
+            Zen HUD · [H]
+          </button>
+        )}
+
+        {/* Center: Aether Anomaly & Mythic Cataclysm Environmental Banner */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none z-10 top-1">
+          {activeCataclysm && (
+            <div
+              className={`rounded-2xl py-2 px-4 w-76 shadow-xl text-center pointer-events-auto flex flex-col gap-1 border ${
+                activeCataclysm.type === 'blood_moon'
+                  ? 'border-rose-500/40 bg-slate-950/92'
+                  : activeCataclysm.type === 'aether_storm'
+                  ? 'border-cyan-400/40 bg-slate-950/92'
+                  : 'border-amber-500/40 bg-slate-950/92'
+              }`}
+            >
+              <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-wider">
+                <span className="text-amber-300 truncate">{activeCataclysm.name}</span>
+                <span className="text-zinc-300 tabular-nums">
+                  {activeCataclysm.remainingSeconds}s
+                </span>
+              </div>
+              <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    activeCataclysm.type === 'blood_moon'
+                      ? 'bg-rose-500'
+                      : activeCataclysm.type === 'aether_storm'
+                      ? 'bg-cyan-400'
+                      : 'bg-amber-400'
+                  }`}
+                  style={{
+                    width: `${Math.max(
+                      4,
+                      Math.min(100, (activeCataclysm.remainingSeconds / activeCataclysm.durationSeconds) * 100)
+                    )}%`,
+                  }}
+                />
               </div>
             </div>
-          ) : null}
+          )}
 
-          {/* Interactive Beginner Tutorial Card */}
-          <HUDTutorialCard />
-        </div>
-
-        {/* Center: Aether Anomaly & Environmental Warning Panel */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none z-10 top-4">
           {anomalyStatus !== 'dormant' && (
-            <div className={`voxel-panel p-2.5 px-4 w-80 shadow-[0_0_20px_rgba(147,51,234,0.4)] animate-pulse border-purple-500/50 bg-purple-950/40 backdrop-blur-md text-center pointer-events-auto flex flex-col gap-1`}>
-              <div className="flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-purple-300">
-                <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-spin" />
-                <span>Aether Anomaly: {anomalyStatus.toUpperCase()}</span>
+            <div className="rounded-2xl py-2 px-4 w-72 border border-purple-400/35 bg-slate-950/92 text-center pointer-events-auto flex flex-col gap-1 shadow-xl">
+              <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-wider text-purple-300">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-purple-400" />
+                  <span>Anomaly: {anomalyStatus}</span>
+                </span>
+                <span className="tabular-nums">{Math.round(anomalyIntensity * 100)}%</span>
               </div>
-              <div className="text-xs font-semibold text-purple-100">
-                {anomalyStatus === 'warning' && 'Leylines rupturing... Storm warning!'}
-                {anomalyStatus === 'active' && 'Aether Storm active! Wildlife mutated.'}
-                {anomalyStatus === 'climax' && 'PORTAL ACTIVE • Elite Anomaly Sentinel mutated!'}
-                {anomalyStatus === 'resolved' && 'Leylines stabilized. Pure energy dispersing...'}
-              </div>
-              <div className="h-1 bg-black/60 rounded-full border border-purple-500/20 overflow-hidden mt-1 p-[0.5px]">
+              <div className="h-1 bg-white/10 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-gradient-to-r from-purple-600 via-indigo-500 to-pink-500 rounded-full transition-all duration-300"
+                  className="h-full bg-purple-400 rounded-full transition-all duration-300"
                   style={{ width: `${anomalyIntensity * 100}%` }}
                 />
               </div>
@@ -1171,92 +1430,266 @@ export const HUD: React.FC<HUDProps> = ({
           )}
         </div>
 
-        {/* Right: Quick Action Tray & MiniRadar */}
-        <div className="flex flex-col items-end gap-2.5 pointer-events-auto">
-          <div className="flex items-center gap-1.5">
-            {onOpenJournal && (
+        {/* Right: Unified Shortcut Dock (Dock Pintasan Terpadu) & Compass Radar */}
+        {!zenHudMode && (
+          <div className="flex flex-col items-end gap-2 pointer-events-auto relative">
+            <div className="flex items-center gap-1 p-1 rounded-full bg-slate-950/92 border border-white/10 shadow-lg">
+              {autoSaveState !== 'idle' && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-[10px] font-mono text-emerald-300 tabular-nums">
+                  {autoSaveState === 'saving' ? 'Menyimpan...' : 'Tersimpan ✓'}
+                </span>
+              )}
+
+              {onOpenCharacter && (
+                <button
+                  onClick={onOpenCharacter}
+                  title="Progresi Karakter, Skill Tree, Mastery & Blueprint [K]"
+                  className="px-2.5 py-1 rounded-full hover:bg-amber-500/15 text-[11px] font-medium text-amber-200 hover:text-amber-100 transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  <span>Karakter</span>
+                  <kbd className="text-[9px] font-mono text-amber-400">K</kbd>
+                  {unspentProgPoints > 0 && (
+                    <span className="ml-0.5 px-1 py-0.2 rounded bg-amber-400 text-slate-950 text-[9px] font-mono font-bold tabular-nums">
+                      +{unspentProgPoints}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {onToggleDebugMap && (
+                <button
+                  onClick={onToggleDebugMap}
+                  title="Peta Dunia & Fast Travel Prasasti [M]"
+                  className="px-2.5 py-1 rounded-full hover:bg-white/10 text-[11px] font-medium text-zinc-200 hover:text-white transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap"
+                >
+                  <span>Peta</span>
+                  <kbd className="text-[9px] font-mono text-zinc-400">M</kbd>
+                </button>
+              )}
+
               <button
-                onClick={onOpenJournal}
-                title="Journal & Codex [J]"
-                className="px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold text-zinc-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+                onClick={() => {
+                  setMahakaryaInitialTab('SAMUDRA_KERETA');
+                  setShowMahakaryaModal(prev => !prev);
+                }}
+                title="Pusat Mahakarya Nusantara: Kapal Selam, Kereta Uap, Studio Gamelan, Khodam & Busana [N]"
+                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap ${
+                  showMahakaryaModal
+                    ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
+                    : 'hover:bg-amber-500/15 text-amber-200 hover:text-amber-100'
+                }`}
               >
-                <span className="text-amber-400">📖</span>
-                <span className="hidden sm:inline">Journal</span>
-                <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">J</kbd>
+                <span>Mahakarya</span>
+                <kbd className="text-[9px] font-mono text-amber-400">N</kbd>
               </button>
+
+              {/* Unified Quick Dock Drawer Toggle */}
+              <button
+                onClick={() => setShowQuickTools(prev => !prev)}
+                title="Dock Pintasan Terpadu: Jurnal [J], Mode Foto 3D [P], Mode Zen [H], Performa & Uji Boss"
+                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
+                  showQuickTools || isLockOnActive || settings.graphics.turboFpsMode || showProfiler || mahakaryaV48?.photoModeActive
+                    ? 'bg-sky-500/20 text-sky-300'
+                    : 'hover:bg-white/10 text-zinc-300 hover:text-white'
+                }`}
+              >
+                <span>Pintasan</span>
+                <span className="text-[9px] opacity-75">{showQuickTools ? '▴' : '▾'}</span>
+              </button>
+
+              <button 
+                onClick={onOpenPause}
+                title="Menu Utama [ESC]"
+                className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 text-[11px] font-semibold text-white transition-colors cursor-pointer flex items-center gap-1"
+              >
+                <span>Menu</span>
+              </button>
+            </div>
+
+            {/* Collapsible Unified Quick Dock Popover */}
+            {showQuickTools && (
+              <div className="w-64 rounded-2xl bg-slate-950/96 border border-white/15 shadow-2xl p-2 flex flex-col gap-1 text-[11px] z-30">
+                <div className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-amber-300">
+                  Pintasan Utama & Imersi
+                </div>
+
+                {onOpenJournal && (
+                  <button
+                    onClick={() => {
+                      onOpenJournal();
+                      setShowQuickTools(false);
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-xl hover:bg-white/10 text-zinc-200 flex items-center justify-between transition-colors cursor-pointer"
+                  >
+                    <span>Jurnal, Quest & Lore</span>
+                    <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded">J</kbd>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    const rt = (window as any).__voxelRuntime;
+                    if (rt && rt.player && rt.camera) {
+                      const active = MahakaryaNusantaraSystem.togglePhotoMode(
+                        rt.player,
+                        rt.camera,
+                        rt.audio
+                      );
+                      setMahakaryaInitialTab('BUSANA_FOTO');
+                      setShowMahakaryaModal(active);
+                    }
+                    setShowQuickTools(false);
+                  }}
+                  className={`w-full px-2.5 py-1.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
+                    mahakaryaV48?.photoModeActive
+                      ? 'bg-sky-500/20 text-sky-200 border border-sky-400/30'
+                      : 'hover:bg-white/10 text-sky-300'
+                  }`}
+                >
+                  <span>Mode Foto Sinematik 3D</span>
+                  <kbd className="text-[9px] font-mono text-sky-300 bg-white/5 px-1.5 py-0.5 rounded">P</kbd>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setZenHudMode(true);
+                    setShowQuickTools(false);
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-xl hover:bg-white/10 text-zinc-200 flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span>Mode Layar Bersih (Zen HUD)</span>
+                  <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded">H</kbd>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const rt = (window as any).__voxelRuntime;
+                    if (rt?.persistenceSystem) {
+                      rt.persistenceSystem.saveGame();
+                    }
+                    setShowQuickTools(false);
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-xl hover:bg-emerald-500/15 text-emerald-300 flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span>Simpan Dunia Cepat (Auto-Save)</span>
+                  <kbd className="text-[9px] font-mono text-emerald-300 bg-white/5 px-1.5 py-0.5 rounded">F5</kbd>
+                </button>
+
+                <div className="h-px bg-white/10 my-1" />
+                <div className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400">
+                  Kamera & Optimasi 60 FPS
+                </div>
+                <button
+                  onClick={() => {
+                    const rt = (window as any).__voxelRuntime;
+                    if (rt) rt.toggleTargetLockOn();
+                  }}
+                  className={`w-full px-2.5 py-1.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
+                    isLockOnActive
+                      ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30'
+                      : 'hover:bg-white/5 text-zinc-200'
+                  }`}
+                >
+                  <span>Target Lock-On</span>
+                  <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded">Q</kbd>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const enabled = SettingsManager.toggleTurboFpsMode();
+                    NotificationManager.push({
+                      title: enabled ? 'Mode Turbo 60 FPS Aktif' : 'Mode Visual Standar Aktif',
+                      message: enabled
+                        ? 'CAS Sharpening +36% & Dynamic Resolution menjaga 60 FPS.'
+                        : 'Kualitas bayangan & jarak pandang standar aktif.',
+                      priority: 'HIGH',
+                      colorTheme: enabled ? 'emerald' : 'sky',
+                      durationMs: 2800,
+                    });
+                  }}
+                  className={`w-full px-2.5 py-1.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
+                    settings.graphics.turboFpsMode
+                      ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30'
+                      : 'hover:bg-white/5 text-zinc-200'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Turbo 60 FPS</span>
+                  </span>
+                  <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded">F4</kbd>
+                </button>
+
+                <button
+                  onClick={() => setShowProfiler(prev => !prev)}
+                  className={`w-full px-2.5 py-1.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
+                    showProfiler
+                      ? 'bg-sky-500/20 text-sky-200 border border-sky-400/30'
+                      : 'hover:bg-white/5 text-zinc-200'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Statistik Mesin</span>
+                  </span>
+                  <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded">F3</kbd>
+                </button>
+
+                <div className="h-px bg-white/10 my-1" />
+                <div className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider text-zinc-400">
+                  Eksplorasi & Uji Boss
+                </div>
+
+                <button
+                  onClick={() => {
+                    const rt = (window as any).__voxelRuntime;
+                    if (rt && rt.world && rt.entities && rt.player) {
+                      import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                        ({ NusantaraSanctumSilatSubakSystem }) => {
+                          NusantaraSanctumSilatSubakSystem.excavateUndergroundCandiSanctum(
+                            rt.world,
+                            rt.entities,
+                            rt.player,
+                            rt.audio,
+                            rt.particles,
+                            rt.stats,
+                            (itemId, count) => rt.addItemToInventory(itemId, count)
+                          );
+                        }
+                      );
+                    }
+                    setShowQuickTools(false);
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-xl hover:bg-emerald-500/15 text-emerald-300 flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span>Candi & Buto Ijo 3D</span>
+                  <span className="text-[9px] font-mono opacity-75">Spawn</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const rt = (window as any).__voxelRuntime;
+                    if (rt) {
+                      rt.entities.spawnBoss(
+                        'batara_kala_colossus',
+                        [rt.player.position.x + 8, rt.player.position.y, rt.player.position.z + 8],
+                        rt.world
+                      );
+                    }
+                    setShowQuickTools(false);
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-xl hover:bg-amber-500/15 text-amber-300 flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span>Boss Batara Kala</span>
+                  <span className="text-[9px] font-mono opacity-75">Colossus</span>
+                </button>
+              </div>
             )}
 
-            {onToggleDebugMap && (
-              <button
-                onClick={onToggleDebugMap}
-                title="World Map [M]"
-                className="px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold text-zinc-200 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <span className="text-cyan-400">🗺️</span>
-                <span className="hidden sm:inline">Map</span>
-                <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">M</kbd>
-              </button>
-            )}
-
-            <button
-              onClick={() => {
-                const rt = (window as any).__voxelRuntime;
-                if (rt) {
-                  rt.toggleTargetLockOn();
-                }
-              }}
-              title="Kunci Target Kamera [Q]"
-              className={`px-2.5 py-1.5 voxel-panel-subtle text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                isLockOnActive
-                  ? 'border-amber-400 text-amber-200 bg-amber-500/25 shadow-[0_0_12px_rgba(245,158,11,0.6)]'
-                  : 'hover:border-amber-400/50 text-amber-300'
-              }`}
-            >
-              <span className="text-amber-400">🎯</span>
-              <span className="hidden sm:inline">Lock-On</span>
-              <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">Q</kbd>
-            </button>
-
-            <button
-              onClick={() => {
-                const rt = (window as any).__voxelRuntime;
-                if (rt) {
-                  rt.entities.spawnBoss(
-                    'batara_kala_colossus',
-                    [rt.player.position.x + 8, rt.player.position.y, rt.player.position.z + 8],
-                    rt.world
-                  );
-                }
-              }}
-              title="Uji Coba Boss Batara Kala [Multi-Phase Colossus]"
-              className="px-2.5 py-1.5 voxel-panel-subtle hover:border-amber-400 text-xs font-bold text-amber-300 hover:text-amber-200 transition-all cursor-pointer flex items-center gap-1.5 bg-amber-950/40 border border-amber-600/40"
-            >
-              <span>⚔️</span>
-              <span className="hidden sm:inline">Boss Batara Kala</span>
-            </button>
-
-            <button
-              onClick={() => setShowProfiler(prev => !prev)}
-              title="Toggle Engine Telemetry & Profiler [F3]"
-              className={`px-3 py-1.5 voxel-panel-subtle hover:border-white/30 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${showProfiler ? 'border-sky-400 text-sky-300 bg-sky-500/10' : 'text-zinc-200 hover:text-white'}`}
-            >
-              <Activity className="w-3.5 h-3.5 text-sky-400" />
-              <span className="hidden sm:inline">Stats</span>
-              <kbd className="text-[9px] font-mono text-zinc-400 bg-white/5 px-1 rounded">F3</kbd>
-            </button>
-
-            <button 
-              onClick={onOpenPause}
-              className="px-3.5 py-1.5 voxel-panel hover:border-sky-400/50 text-xs font-bold text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-lg"
-            >
-              <span>Menu</span>
-              <kbd className="text-[9px] font-mono text-zinc-400 bg-white/10 px-1 rounded">ESC</kbd>
-            </button>
+            {/* Mini-Radar Widget with Compass & Waypoint Tracker */}
+            <MiniRadar onOpenMap={onToggleDebugMap} />
           </div>
-
-          {/* Mini-Radar Widget with Compass & Waypoint Tracker */}
-          <MiniRadar onOpenMap={onToggleDebugMap} />
-        </div>
+        )}
       </div>
 
       {/* Engine Profiler Overlay [F3] */}
@@ -1269,69 +1702,209 @@ export const HUD: React.FC<HUDProps> = ({
         <div id="hud-bow-reticle" style={{ display: 'none' }} className="relative flex items-center justify-center pointer-events-none mb-1">
           <div 
             id="hud-bow-circle"
-            className="w-10 h-10 rounded-full border border-dashed transition-all duration-75 flex items-center justify-center border-white/60 scale-125"
+            className="w-9 h-9 rounded-full border border-white/60 transition-all duration-75 flex items-center justify-center scale-110"
           >
-            <div className="w-1.5 h-1.5 rounded-full bg-white/90" />
+            <div className="w-1 h-1 rounded-full bg-white/90" />
           </div>
         </div>
 
         {/* Target Lock-On Aiming Reticle Brackets */}
         {isLockOnActive && (
-          <div className="absolute w-20 h-20 pointer-events-none flex items-center justify-center animate-pulse">
-            <div className="absolute top-0 left-0 w-3.5 h-3.5 border-t-2 border-l-2 border-amber-400 shadow-[0_0_8px_#f59e0b]" />
-            <div className="absolute top-0 right-0 w-3.5 h-3.5 border-t-2 border-r-2 border-amber-400 shadow-[0_0_8px_#f59e0b]" />
-            <div className="absolute bottom-0 left-0 w-3.5 h-3.5 border-b-2 border-l-2 border-amber-400 shadow-[0_0_8px_#f59e0b]" />
-            <div className="absolute bottom-0 right-0 w-3.5 h-3.5 border-b-2 border-r-2 border-amber-400 shadow-[0_0_8px_#f59e0b]" />
-            <div className="text-[8px] font-mono font-extrabold tracking-widest text-amber-300 bg-black/75 px-1.5 py-0.5 rounded -bottom-6 absolute border border-amber-400/50 shadow-md">
-              LOCKED
-            </div>
+          <div className="absolute w-14 h-14 pointer-events-none flex items-center justify-center">
+            <div className="absolute top-0 left-0 w-2.5 h-2.5 border-t border-l border-amber-400/90" />
+            <div className="absolute top-0 right-0 w-2.5 h-2.5 border-t border-r border-amber-400/90" />
+            <div className="absolute bottom-0 left-0 w-2.5 h-2.5 border-b border-l border-amber-400/90" />
+            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 border-b border-r border-amber-400/90" />
           </div>
         )}
 
-        {/* Dynamic Interactive Crosshair */}
-        <div className={`w-6 h-6 relative flex items-center justify-center transition-transform duration-100 ${targetHit ? 'scale-110' : ''}`}>
-          {/* Crosshair Center Dot */}
-          <div className="w-1.5 h-1.5 rounded-full bg-white/90 shadow-[0_0_4px_rgba(0,0,0,0.9)]" />
-
-          {/* Crosshair Ticks */}
-          <div className={`absolute w-3 h-[1.5px] -left-3 rounded-full transition-colors ${targetHit ? 'bg-sky-400 shadow-[0_0_6px_#38bdf8]' : 'bg-white/70'}`} />
-          <div className={`absolute w-3 h-[1.5px] -right-3 rounded-full transition-colors ${targetHit ? 'bg-sky-400 shadow-[0_0_6px_#38bdf8]' : 'bg-white/70'}`} />
-          <div className={`absolute h-3 w-[1.5px] -top-3 rounded-full transition-colors ${targetHit ? 'bg-sky-400 shadow-[0_0_6px_#38bdf8]' : 'bg-white/70'}`} />
-          <div className={`absolute h-3 w-[1.5px] -bottom-3 rounded-full transition-colors ${targetHit ? 'bg-sky-400 shadow-[0_0_6px_#38bdf8]' : 'bg-white/70'}`} />
+        {/* Minimalist Precision Crosshair */}
+        <div className={`w-5 h-5 relative flex items-center justify-center transition-transform duration-100 ${targetHit ? 'scale-110' : ''}`}>
+          <div className={`w-1.5 h-1.5 rounded-full transition-colors shadow-[0_0_4px_rgba(0,0,0,0.85)] ${targetHit ? 'bg-sky-400' : 'bg-white/90'}`} />
+          <div className={`absolute w-2 h-[1px] -left-2.5 rounded-full transition-colors ${targetHit ? 'bg-sky-400' : 'bg-white/55'}`} />
+          <div className={`absolute w-2 h-[1px] -right-2.5 rounded-full transition-colors ${targetHit ? 'bg-sky-400' : 'bg-white/55'}`} />
+          <div className={`absolute h-2 w-[1px] -top-2.5 rounded-full transition-colors ${targetHit ? 'bg-sky-400' : 'bg-white/55'}`} />
+          <div className={`absolute h-2 w-[1px] -bottom-2.5 rounded-full transition-colors ${targetHit ? 'bg-sky-400' : 'bg-white/55'}`} />
           
           {/* Hitmarker Flash */}
           {hitmarker !== 'none' && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none scale-150 animate-ping">
-              <div className={`w-4 h-0.5 transform rotate-45 ${
-                hitmarker === 'crit' ? 'bg-amber-400 shadow-[0_0_10px_#fbbf24]' : hitmarker === 'blocked' ? 'bg-sky-400 shadow-[0_0_8px_#38bdf8]' : 'bg-white'
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none scale-125">
+              <div className={`w-3.5 h-[1.5px] transform rotate-45 ${
+                hitmarker === 'crit' ? 'bg-amber-400' : hitmarker === 'blocked' ? 'bg-sky-400' : 'bg-white'
               }`} />
-              <div className={`w-4 h-0.5 transform -rotate-45 ${
-                hitmarker === 'crit' ? 'bg-amber-400 shadow-[0_0_10px_#fbbf24]' : hitmarker === 'blocked' ? 'bg-sky-400 shadow-[0_0_8px_#38bdf8]' : 'bg-white'
+              <div className={`w-3.5 h-[1.5px] transform -rotate-45 ${
+                hitmarker === 'crit' ? 'bg-amber-400' : hitmarker === 'blocked' ? 'bg-sky-400' : 'bg-white'
               }`} />
             </div>
           )}
 
           {/* Circular Mining Progress Arc */}
-          <svg className="absolute w-8 h-8 -top-1 -left-1 transform -rotate-90" style={{ display: 'none' }} id="crosshair-break-svg">
-            <circle cx="16" cy="16" r="12" stroke="rgba(255,255,255,0.2)" strokeWidth="2.5" fill="none" />
+          <svg className="absolute w-7 h-7 -top-1 -left-1 transform -rotate-90" style={{ display: 'none' }} id="crosshair-break-svg">
+            <circle cx="14" cy="14" r="10" stroke="rgba(255,255,255,0.18)" strokeWidth="2" fill="none" />
             <circle
               id="crosshair-break-circle"
-              cx="16"
-              cy="16"
-              r="12"
+              cx="14"
+              cy="14"
+              r="10"
               stroke="#38bdf8"
-              strokeWidth="2.5"
+              strokeWidth="2"
               fill="none"
-              strokeDasharray="75.4"
-              strokeDashoffset={75.4}
+              strokeDasharray="62.8"
+              strokeDashoffset={62.8}
               strokeLinecap="round"
             />
           </svg>
         </div>
 
-        {/* Contextual Interaction Prompt Box */}
-        {targetBlockDef && (
-          <div className="mt-8 voxel-panel px-3.5 py-1.5 flex items-center gap-2.5 animate-fade-in shadow-2xl">
+        {/* 3-Stage Keris & Melee Combo Chain Indicator */}
+        {comboBanner && (
+          <div
+            className={`mt-4 px-2.5 py-0.5 rounded-full border font-mono text-[10px] font-bold tracking-wider uppercase shadow-md ${
+              comboBanner.step === 2 || comboBanner.isCrit
+                ? 'bg-amber-500/25 border-amber-400/70 text-amber-200'
+                : comboBanner.step === 1
+                ? 'bg-sky-500/20 border-sky-400/60 text-sky-200'
+                : 'bg-slate-950/85 border-white/20 text-zinc-200'
+            }`}
+          >
+            ⚔️ {comboBanner.label} {comboBanner.isCrit ? '· KRITIKAL!' : ''}
+          </div>
+        )}
+
+        {/* Interactive Fishing Tension & Reel Progress HUD */}
+        {fishingHud.state !== 'IDLE' && (
+          <div className="mt-8 voxel-panel px-4 py-2.5 w-72 flex flex-col gap-2 animate-fade-in shadow-2xl border border-sky-400/50 bg-slate-950/90">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">🎣</span>
+                <span
+                  className={`text-[11px] font-mono font-extrabold uppercase tracking-wider ${
+                    fishingHud.state === 'BITE'
+                      ? 'text-amber-300 animate-pulse'
+                      : fishingHud.state === 'REELING'
+                      ? 'text-emerald-300'
+                      : 'text-sky-300'
+                  }`}
+                >
+                  {fishingHud.state === 'BITE'
+                    ? 'IKAN MENYAMBAR! KLIK KANAN!'
+                    : fishingHud.state === 'REELING'
+                    ? 'TARIK SENAR SECARA BERIRAMA'
+                    : 'MENUNGGU SAMBARAN IKAN...'}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-zinc-300">
+                {fishingHud.progress}%
+              </span>
+            </div>
+
+            {/* Reel Progress Track */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between text-[9px] font-mono text-zinc-400">
+                <span>TARIKAN TANGKAPAN</span>
+                <span className="text-emerald-300 font-bold">{fishingHud.progress}%</span>
+              </div>
+              <div className="w-full h-2 bg-black/80 rounded-full overflow-hidden border border-white/10">
+                <div
+                  className="h-full bg-gradient-to-r from-teal-500 to-emerald-400 transition-all duration-75"
+                  style={{ width: `${Math.min(100, fishingHud.progress)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Line Tension Meter */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between text-[9px] font-mono text-zinc-400">
+                <span>KETEGANGAN SENAR</span>
+                <span
+                  className={
+                    fishingHud.tension >= 78
+                      ? 'text-rose-400 font-extrabold animate-pulse'
+                      : fishingHud.tension >= 55
+                      ? 'text-amber-300 font-bold'
+                      : 'text-sky-300'
+                  }
+                >
+                  {fishingHud.tension}%
+                </span>
+              </div>
+              <div className="w-full h-2 bg-black/80 rounded-full overflow-hidden border border-white/10">
+                <div
+                  className={`h-full transition-all duration-75 ${
+                    fishingHud.tension >= 78
+                      ? 'bg-gradient-to-r from-amber-500 to-rose-500 animate-pulse'
+                      : fishingHud.tension >= 55
+                      ? 'bg-gradient-to-r from-emerald-400 to-amber-400'
+                      : 'bg-gradient-to-r from-sky-500 to-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, fishingHud.tension)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Targeted / Companion Creature Status HUD Indicator */}
+        {targetedCreature && fishingHud.state === 'IDLE' && (
+          <div className="mt-7 voxel-panel px-3.5 py-2.5 w-72 flex flex-col gap-1.5 animate-fade-in shadow-2xl border border-emerald-500/40 bg-slate-950/88">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-extrabold text-white tracking-wide">
+                  {targetedCreature.name}
+                </span>
+                <span
+                  className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${
+                    targetedCreature.isTamed
+                      ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/40'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
+                  }`}
+                >
+                  {targetedCreature.isMounted
+                    ? 'TUNGGANGAN'
+                    : targetedCreature.isTamed
+                    ? `JINAK · ${targetedCreature.command}`
+                    : 'SATWA LIAR'}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono text-rose-300 font-bold">
+                ♥ {targetedCreature.health}/{targetedCreature.maxHealth}
+              </span>
+            </div>
+
+            {/* Trust / Loyalty Progress Bar */}
+            <div className="flex items-center gap-2 text-[9px] font-mono">
+              <span className="text-zinc-400 shrink-0">KEPERCAYAAN</span>
+              <div className="flex-1 h-1.5 bg-black/80 rounded-full overflow-hidden border border-white/10">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-150"
+                  style={{ width: `${Math.min(100, targetedCreature.trustMeter)}%` }}
+                />
+              </div>
+              <span className="text-emerald-300 font-bold shrink-0">
+                {targetedCreature.trustMeter}%
+              </span>
+            </div>
+
+            {/* Contextual Action Hint */}
+            <div className="text-[10px] text-sky-300 font-semibold flex items-center justify-between pt-0.5 border-t border-white/10">
+              {targetedCreature.isMounted ? (
+                <span>Tekan [Shift / Jongkok] untuk turun</span>
+              ) : targetedCreature.isTamed ? (
+                <span>
+                  {targetedCreature.canMount
+                    ? '[Klik Kanan] Tunggangi · [Shift+Klik Kanan] Perintah'
+                    : '[Klik Kanan] Ubah Perintah (Follow/Stay/Guard)'}
+                </span>
+              ) : (
+                <span>[Klik Kanan] Beri Pakan ({targetedCreature.preferredFoodHint})</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Contextual Interaction Prompt Box (Center Crosshair stays 100% clean) */}
+        {targetBlockDef && !targetedCreature && fishingHud.state === 'IDLE' && (
+          <div className="mt-6 voxel-panel px-3.5 py-1.5 flex items-center gap-2.5 animate-fade-in shadow-2xl">
             <span className="text-xs font-bold text-white tracking-wide">{targetBlockDef.name}</span>
             <div className="h-3 w-[1px] bg-white/20" />
             <div className="flex items-center gap-1.5 text-[11px] text-sky-300 font-semibold">
@@ -1380,15 +1953,605 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
-      {/* Bottom Section: Item Banner, Vitals, and Hotbar */}
-      <div id="hud-bottom-dock" className="flex flex-col items-center w-full gap-2 relative z-20">
+      {/* Bottom Section: Unified Collapsible Contextual Pusaka Card, Item Banner, Vitals, and Hotbar */}
+      <div id="hud-bottom-dock" className="flex flex-col items-center w-full gap-1.5 relative z-20">
         
         {/* Selected Item Banner (Fades out automatically) */}
         {activeItemBanner && (
-          <div className="text-xs font-bold text-sky-300 bg-black/60 px-3 py-1 rounded-full border border-sky-400/30 backdrop-blur-md animate-fade-in font-mono shadow-lg">
+          <div className="text-[11px] font-medium text-zinc-200 bg-slate-950/92 px-3 py-0.5 rounded-full border border-white/10 animate-fade-in">
             {activeItemBanner}
           </div>
         )}
+
+        {/* FASE 1 PENYEMPURNAAN: Single Collapsible Contextual Pusaka & Vehicle Card (Docked above Hotbar) */}
+        {!zenHudMode &&
+          (() => {
+            const heldId = hotbar[activeHotbarIndex]?.itemId;
+            const hasActiveContext =
+              !!activeVessel ||
+              !!activeHologram ||
+              !!activeTreasureHint ||
+              !!activeAerialFlight ||
+              !!activeVillageSiege ||
+              heldId === 'peluit_garuda_kencana' ||
+              heldId === 'layang_naga_batik' ||
+              heldId === 'kentongan_siaga_desa' ||
+              heldId === 'lampion_terbang_nusantara' ||
+              heldId === 'kompas_candi_bawah_tanah' ||
+              heldId === 'kitab_silat_nusantara' ||
+              heldId === 'kincir_air_subak' ||
+              heldId === 'panggung_wayang_kulit' ||
+              heldId === 'kapal_selam_nanggala' ||
+              heldId === 'lokomotif_uap_aether' ||
+              heldId === 'gamelan_angklung_pusaka' ||
+              heldId === 'mustika_khodam_pendamping' ||
+              heldId === 'lontar_erupsi_vulkanik' ||
+              heldId === 'kamera_sinematik_nusantara';
+
+            if (!hasActiveContext) return null;
+
+            if (pusakaCardMinimized) {
+              return (
+                <button
+                  onClick={() => setPusakaCardMinimized(false)}
+                  className="px-3 py-1 rounded-full bg-slate-950/92 hover:bg-slate-900 border border-amber-400/40 text-[10px] font-mono text-amber-200 pointer-events-auto shadow-md cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>▴ Buka Aksi Pusaka Kontekstual</span>
+                  <kbd className="px-1 rounded bg-white/10 text-[9px] text-amber-300">B</kbd>
+                </button>
+              );
+            }
+
+            return (
+              <div className="w-full max-w-[440px] rounded-2xl bg-slate-950/95 border border-amber-400/40 px-3.5 py-2.5 shadow-2xl pointer-events-auto flex flex-col gap-2">
+                {/* Card Header with Collapse Button [B] */}
+                <div className="flex items-center justify-between border-b border-white/10 pb-1">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300">
+                    ✦ Panel Aksi Pusaka Kontekstual
+                  </span>
+                  <button
+                    onClick={() => setPusakaCardMinimized(true)}
+                    title="Lipat Kartu Pusaka [B]"
+                    className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/15 text-[9px] font-mono text-zinc-300 cursor-pointer"
+                  >
+                    ▾ Lipat [B]
+                  </button>
+                </div>
+
+                {/* 1. Maritime Vessel Helm */}
+                {activeVessel && (
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-cyan-300">
+                        {activeVessel.name} ({activeVessel.speedKnots.toFixed(1)} Knots)
+                      </span>
+                      <span className="font-mono text-[9px] text-zinc-400">
+                        Haluan {activeVessel.headingDeg}° · Kedalaman {activeVessel.seaFloorDepth}m
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const rt = (window as any).__voxelRuntime;
+                        if (rt && rt.player) {
+                          import('../engine/systems/MaritimeVesselSystem').then(({ MaritimeVesselSystem }) => {
+                            MaritimeVesselSystem.engageDivingAnchor(rt.player, rt.stats, rt.world);
+                          });
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-cyan-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                    >
+                      ⚓ Selam Palung
+                    </button>
+                  </div>
+                )}
+
+                {/* 2. Vernacular Hologram Architect */}
+                {activeHologram && !activeVessel && (
+                  <div className="flex items-center justify-between gap-1.5 text-[10px]">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-sky-300">{activeHologram.name}</span>
+                      <span className="font-mono text-[9px] text-zinc-400">
+                        {activeHologram.region} · Rotasi {activeHologram.rotationDeg}°
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          const rt = (window as any).__voxelRuntime;
+                          import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
+                            VernacularHologramSystem.cycleTemplate(rt?.audio);
+                          });
+                        }}
+                        className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-mono text-[10px] cursor-pointer"
+                      >
+                        Desain
+                      </button>
+                      <button
+                        onClick={() => {
+                          const rt = (window as any).__voxelRuntime;
+                          import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
+                            VernacularHologramSystem.rotateHologram(rt?.audio);
+                          });
+                        }}
+                        className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-sky-200 font-mono text-[10px] cursor-pointer"
+                      >
+                        90°
+                      </button>
+                      <button
+                        onClick={() => {
+                          const rt = (window as any).__voxelRuntime;
+                          if (rt && rt.world) {
+                            import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
+                              VernacularHologramSystem.constructActiveHologram(rt.world, rt.audio, rt.particles);
+                            });
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                      >
+                        Bangun
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Treasure Compass */}
+                {activeTreasureHint && !activeVessel && !activeHologram && (
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-amber-300">{activeTreasureHint.mapName}</span>
+                      <span className="font-mono text-[9px] text-zinc-300">
+                        Arah {activeTreasureHint.bearing} · Jarak {Math.round(activeTreasureHint.distance)}m
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          const rt = (window as any).__voxelRuntime;
+                          if (rt && rt.world && rt.player) {
+                            const fwd = rt.player.getForwardVector();
+                            const dx = Math.floor(rt.player.position.x + fwd.x * 3.0);
+                            const dz = Math.floor(rt.player.position.z + fwd.z * 3.0);
+                            const dy = rt.world.getSpawnHeight(dx, dz);
+                            rt.world.setBlock(dx, dy, dz, 11);
+                            rt.addItemToInventory('coastal_pearl', 2);
+                            rt.addItemToInventory('starfall_ore', 3);
+                            rt.audio?.playAncientGong();
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                      >
+                        ⛏️ Gali Harta
+                      </button>
+                      <button
+                        onClick={() => {
+                          const rt = (window as any).__voxelRuntime;
+                          if (rt && rt.entities && rt.player && rt.world) {
+                            const fwd = rt.player.getForwardVector();
+                            const sx = Math.floor(rt.player.position.x + fwd.x * 10);
+                            const sz = Math.floor(rt.player.position.z + fwd.z * 10);
+                            const sy = rt.world.getSpawnHeight(sx, sz);
+                            rt.entities.spawnBoss('naga_antaboga', [sx, sy, sz], rt.world);
+                          }
+                        }}
+                        className="px-2 py-1 rounded-lg bg-rose-500/25 border border-rose-400/50 text-rose-200 font-mono font-bold text-[10px] cursor-pointer"
+                      >
+                        Boss Naga
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Aerial Flight (Garuda / Dragon Kite Glider) */}
+                {(activeAerialFlight || heldId === 'peluit_garuda_kencana' || heldId === 'layang_naga_batik') && (
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-amber-300">
+                        {activeAerialFlight?.mode === 'garuda'
+                          ? 'Garuda Kencana Dirgantara 3D'
+                          : activeAerialFlight?.mode === 'glider'
+                          ? 'Layang-Layang Naga Batik 3D'
+                          : heldId === 'layang_naga_batik'
+                          ? 'Layang Naga Batik 3D'
+                          : 'Garuda Kencana 3D'}
+                      </span>
+                      <span className="font-mono text-[9px] text-sky-300">
+                        {activeAerialFlight
+                          ? `Ketinggian ${activeAerialFlight.altitude}m · Kecepatan ${activeAerialFlight.speed} m/s`
+                          : 'Klik tombol di kanan atau Klik Kanan untuk mengudara'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const rt = (window as any).__voxelRuntime;
+                        if (!rt || !rt.player) return;
+                        import('../engine/systems/AerialFlightAndSiegeSystem').then(
+                          ({ AerialFlightAndSiegeSystem }) => {
+                            if (AerialFlightAndSiegeSystem.mode !== 'none') {
+                              AerialFlightAndSiegeSystem.dismount(rt.audio);
+                            } else if (heldId === 'layang_naga_batik') {
+                              AerialFlightAndSiegeSystem.deployDragonKiteGlider(
+                                rt.player.position,
+                                rt.player.yaw,
+                                rt.audio,
+                                rt.particles
+                              );
+                            } else {
+                              AerialFlightAndSiegeSystem.summonAndMountGaruda(
+                                rt.player.position,
+                                rt.player.yaw,
+                                rt.audio,
+                                rt.particles
+                              );
+                            }
+                          }
+                        );
+                      }}
+                      className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer shrink-0"
+                    >
+                      {activeAerialFlight ? '⏬ Mendarat' : '🦅 Terbang'}
+                    </button>
+                  </div>
+                )}
+
+                {/* 5. Village Siege & Sky Lanterns */}
+                {(activeVillageSiege || heldId === 'kentongan_siaga_desa' || heldId === 'lampion_terbang_nusantara') && (
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-white">
+                        {activeVillageSiege?.festivalActive
+                          ? `Festival Lampion (${activeVillageSiege.festivalTimer}d)`
+                          : activeVillageSiege?.active
+                          ? `Pertahanan Desa Gelombang ${activeVillageSiege.wave}/${activeVillageSiege.maxWaves}`
+                          : 'Kentongan Siaga & Festival Lampion'}
+                      </span>
+                      <span className="font-mono text-[9px] text-amber-300">
+                        {activeVillageSiege?.active
+                          ? `Integritas Balai Desa: ${activeVillageSiege.villageIntegrity}%`
+                          : 'Pertahankan Balai Desa atau lepaskan 6 Lampion Terbang 3D'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => {
+                          const rt = (window as any).__voxelRuntime;
+                          if (!rt || !rt.player || !rt.world || !rt.entities) return;
+                          import('../engine/systems/AerialFlightAndSiegeSystem').then(
+                            ({ AerialFlightAndSiegeSystem }) => {
+                              AerialFlightAndSiegeSystem.triggerVillageSiege(
+                                rt.world,
+                                rt.entities,
+                                rt.player.position,
+                                rt.audio,
+                                rt.particles,
+                                (itemId, count) => rt.addItemToInventory(itemId, count),
+                                (xp) => rt.stats?.addXP(xp)
+                              );
+                            }
+                          );
+                        }}
+                        disabled={!!activeVillageSiege?.active}
+                        className="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-mono font-bold text-[10px] disabled:opacity-40 cursor-pointer"
+                      >
+                        🥁 Siaga
+                      </button>
+                      <button
+                        onClick={() => {
+                          const rt = (window as any).__voxelRuntime;
+                          if (!rt || !rt.player) return;
+                          import('../engine/systems/AerialFlightAndSiegeSystem').then(
+                            ({ AerialFlightAndSiegeSystem }) => {
+                              AerialFlightAndSiegeSystem.releaseSkyLanterns(
+                                rt.player.position,
+                                6,
+                                rt.audio,
+                                rt.particles,
+                                rt.stats
+                              );
+                            }
+                          );
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/25 border border-amber-400/50 text-amber-200 font-mono font-bold text-[10px] cursor-pointer"
+                      >
+                        🏮 Lampion
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. Candi Bawah Tanah / Silat / Subak / Wayang (v4.6) */}
+                {nusantaraV46 && heldId === 'kompas_candi_bawah_tanah' && (
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="text-emerald-300 font-bold">
+                      Ekspedisi Candi Bawah Tanah & Boss Buto Ijo 3D
+                    </span>
+                    <button
+                      onClick={() => {
+                        const rt = (window as any).__voxelRuntime;
+                        if (!rt || !rt.world || !rt.entities || !rt.player) return;
+                        import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                          ({ NusantaraSanctumSilatSubakSystem }) => {
+                            NusantaraSanctumSilatSubakSystem.excavateUndergroundCandiSanctum(
+                              rt.world,
+                              rt.entities,
+                              rt.player,
+                              rt.audio,
+                              rt.particles,
+                              rt.stats,
+                              (itemId, count) => rt.addItemToInventory(itemId, count)
+                            );
+                          }
+                        );
+                      }}
+                      className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                    >
+                      🏛️ Buka Candi 3D
+                    </button>
+                  </div>
+                )}
+
+                {nusantaraV46 && heldId === 'kitab_silat_nusantara' && (
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="text-amber-300 font-bold">
+                      {nusantaraV46.stanceName} ({nusantaraV46.tenagaDalam}% Tenaga Dalam)
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          const rt = (window as any).__voxelRuntime;
+                          import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                            ({ NusantaraSanctumSilatSubakSystem }) => {
+                              NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt?.audio);
+                            }
+                          );
+                        }}
+                        className="px-2 py-1 rounded-lg bg-white/10 text-white font-mono text-[10px] cursor-pointer"
+                      >
+                        Kuda-Kuda [V]
+                      </button>
+                      <button
+                        onClick={() => {
+                          const rt = (window as any).__voxelRuntime;
+                          if (!rt || !rt.player || !rt.stats) return;
+                          import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                            ({ NusantaraSanctumSilatSubakSystem }) => {
+                              if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
+                                NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
+                                  rt.entities,
+                                  rt.player,
+                                  rt.stats,
+                                  rt.audio,
+                                  rt.particles
+                                );
+                              } else {
+                                NusantaraSanctumSilatSubakSystem.meditateFocusTenagaDalam(
+                                  rt.player,
+                                  rt.audio,
+                                  rt.particles
+                                );
+                              }
+                            }
+                          );
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                      >
+                        {nusantaraV46.ajianReady ? `Lepas ${nusantaraV46.ajianName}` : 'Fokus Tenaga'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {nusantaraV46 && heldId === 'kincir_air_subak' && (
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="text-emerald-300 font-bold">
+                      Kincir Subak Aktif: {nusantaraV46.subakWheelCount} · Panen: {nusantaraV46.subakTotalHarvested}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const rt = (window as any).__voxelRuntime;
+                        if (!rt || !rt.world || !rt.player) return;
+                        import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                          ({ NusantaraSanctumSilatSubakSystem }) => {
+                            NusantaraSanctumSilatSubakSystem.deploySubakWaterwheel(
+                              rt.world,
+                              rt.player,
+                              rt.audio,
+                              rt.particles
+                            );
+                          }
+                        );
+                      }}
+                      className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                    >
+                      🌾 Bangun Subak 3D
+                    </button>
+                  </div>
+                )}
+
+                {nusantaraV46 && heldId === 'panggung_wayang_kulit' && (
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="text-amber-300 font-bold">
+                      {nusantaraV46.wayangActive
+                        ? `${nusantaraV46.wayangLakonName} (${nusantaraV46.wayangLakonTimer}d)`
+                        : 'Panggung Wayang Kulit 3D'}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const rt = (window as any).__voxelRuntime;
+                        if (!rt || !rt.world || !rt.player) return;
+                        import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                          ({ NusantaraSanctumSilatSubakSystem }) => {
+                            NusantaraSanctumSilatSubakSystem.deployWayangStageAndNightMarket(
+                              rt.world,
+                              rt.player,
+                              rt.audio,
+                              rt.particles,
+                              rt.stats
+                            );
+                          }
+                        );
+                      }}
+                      className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                    >
+                      🎪 Dirikan Wayang 3D
+                    </button>
+                  </div>
+                )}
+
+                {/* 7. Mahakarya Nusantara Items (Submarine, Steam Train, Gamelan, Khodam, Volcano, Photo Mode) */}
+                {(heldId === 'kapal_selam_nanggala' ||
+                  heldId === 'lokomotif_uap_aether' ||
+                  heldId === 'gamelan_angklung_pusaka' ||
+                  heldId === 'mustika_khodam_pendamping' ||
+                  heldId === 'lontar_erupsi_vulkanik' ||
+                  heldId === 'kamera_sinematik_nusantara') && (
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="text-amber-200 font-bold truncate">
+                      {ITEM_DEFS[heldId]?.name || heldId} — Klik Kanan untuk mengaktifkan di dunia 3D
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (heldId === 'gamelan_angklung_pusaka') setMahakaryaInitialTab('GAMELAN_STUDIO');
+                        else if (heldId === 'mustika_khodam_pendamping' || heldId === 'lontar_erupsi_vulkanik')
+                          setMahakaryaInitialTab('KHODAM_ARENA');
+                        else if (heldId === 'kamera_sinematik_nusantara') setMahakaryaInitialTab('BUSANA_FOTO');
+                        else setMahakaryaInitialTab('SAMUDRA_KERETA');
+                        setShowMahakaryaModal(true);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer shrink-0"
+                    >
+                      Buka Panel [N]
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+        {/* Contextual Pencak Silat Stance, Tenaga Dalam, Buffs & Subak/Wayang/Mahakarya Pill */}
+        {nusantaraV46 &&
+          !zenHudMode &&
+          (nusantaraV46.tenagaDalam > 0 ||
+            nusantaraV46.subakWheelCount > 0 ||
+            nusantaraV46.wayangActive ||
+            (mahakaryaV48 &&
+              (mahakaryaV48.gamelanBlessingTimer > 0 ||
+                mahakaryaV48.submarineActive ||
+                mahakaryaV48.locomotiveRiding ||
+                mahakaryaV48.activeKhodamName)) ||
+            (() => {
+              const activeSlot = hotbar[activeHotbarIndex];
+              const itemDef = activeSlot ? ITEM_DEFS[activeSlot.itemId] : null;
+              return (
+                itemDef?.category === 'weapon' ||
+                activeSlot?.itemId === 'kitab_silat_nusantara'
+              );
+            })()) && (
+          <div className="flex flex-wrap items-center justify-center gap-2 px-2.5 py-1 rounded-full bg-slate-950/92 border border-white/10 pointer-events-auto shadow-md text-[10px] font-mono">
+            <button
+              onClick={() => {
+                const rt = (window as any).__voxelRuntime;
+                import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                  ({ NusantaraSanctumSilatSubakSystem }) => {
+                    NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt?.audio);
+                  }
+                );
+              }}
+              title={`${nusantaraV46.stanceBonusText} — Klik atau tekan [V] untuk ganti Kuda-Kuda`}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 text-zinc-200 font-medium cursor-pointer transition-colors"
+            >
+              <span>{nusantaraV46.stanceName}</span>
+              <kbd className="text-[8px] text-zinc-400">V</kbd>
+            </button>
+
+            <div className="flex items-center gap-1.5">
+              <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-150 ${
+                    nusantaraV46.ajianReady ? 'bg-amber-400' : 'bg-sky-400'
+                  }`}
+                  style={{ width: `${Math.min(100, nusantaraV46.tenagaDalam)}%` }}
+                />
+              </div>
+              <span className="text-zinc-300 tabular-nums">{nusantaraV46.tenagaDalam}%</span>
+            </div>
+
+            <button
+              onClick={() => {
+                const rt = (window as any).__voxelRuntime;
+                if (!rt || !rt.player || !rt.stats) return;
+                import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                  ({ NusantaraSanctumSilatSubakSystem }) => {
+                    if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
+                      NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
+                        rt.entities,
+                        rt.player,
+                        rt.stats,
+                        rt.audio,
+                        rt.particles
+                      );
+                    } else {
+                      NusantaraSanctumSilatSubakSystem.cycleAjianUltimate(rt.audio);
+                    }
+                  }
+                );
+              }}
+              title="Klik atau tekan [G] untuk pilih / lepaskan Ajian Sakti Pusaka"
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-medium cursor-pointer transition-colors ${
+                nusantaraV46.ajianReady
+                  ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
+                  : 'bg-white/5 hover:bg-white/10 text-zinc-300'
+              }`}
+            >
+              <span>{nusantaraV46.ajianName}</span>
+              <kbd className="text-[8px] text-zinc-400">G</kbd>
+            </button>
+
+            {nusantaraV46.subakWheelCount > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 tabular-nums">
+                Subak {nusantaraV46.subakWheelCount}x
+              </span>
+            )}
+
+            {nusantaraV46.wayangActive && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 tabular-nums">
+                {nusantaraV46.wayangLakonName} ({nusantaraV46.wayangLakonTimer}d)
+              </span>
+            )}
+
+            {mahakaryaV48 && mahakaryaV48.gamelanBlessingTimer > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 tabular-nums">
+                Harmoni Gamelan ({mahakaryaV48.gamelanBlessingTimer}d)
+              </span>
+            )}
+
+            {mahakaryaV48 && (
+              <>
+                <span className="text-zinc-600" aria-hidden="true">·</span>
+                <button
+                  onClick={() => {
+                    setMahakaryaInitialTab('KHODAM_ARENA');
+                    setShowMahakaryaModal(true);
+                  }}
+                  className="text-emerald-300 hover:text-emerald-200 cursor-pointer whitespace-nowrap"
+                  title="Klik untuk membuka Panel Khodam, Kapal Selam, Kereta Uap & Gamelan [N]"
+                >
+                  {mahakaryaV48.submarineActive
+                    ? `Kapal Selam (${mahakaryaV48.submarineDepth}m)`
+                    : mahakaryaV48.locomotiveRiding
+                    ? 'Lokomotif Uap Aether'
+                    : mahakaryaV48.activeKhodamName || 'Mahakarya [N]'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* VoxelVerse v4.8.0: Collapsible Bottom Dock Modal for Submarine, Steam Train, 3D Gamelan, Khodam, Wardrobe & 3D Photo Mode */}
+        <MahakaryaNusantaraModal
+          isOpen={showMahakaryaModal}
+          initialTab={mahakaryaInitialTab}
+          onClose={() => setShowMahakaryaModal(false)}
+        />
 
         <HUDVitalsBars />
 
@@ -1396,8 +2559,8 @@ export const HUD: React.FC<HUDProps> = ({
         <div className="flex items-center gap-2 max-w-[98vw]">
           <HUDWeaponSkillWidget />
 
-          {/* Hotbar (1-9) */}
-          <div className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:p-2 voxel-panel shadow-2xl pointer-events-auto border-white/15 overflow-x-auto">
+          {/* Minimalist Hotbar (1-9) — Solid Matte Obsidian for 60 FPS GPU Compositing */}
+          <div className="flex items-center gap-1 p-1.5 rounded-2xl bg-slate-950/92 border border-white/10 shadow-xl pointer-events-auto overflow-x-auto">
           {hotbar.map((slot, idx) => {
             const isActive = idx === activeHotbarIndex;
             const itemDef = slot ? ITEM_DEFS[slot.itemId] : null;
@@ -1419,34 +2582,31 @@ export const HUD: React.FC<HUDProps> = ({
                   triggerHaptic('selection');
                   onSelectHotbar(idx);
                 }}
-                className={`w-9 h-9 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-xl flex items-center justify-center relative transition-all duration-100 cursor-pointer shrink-0 ${
+                className={`w-9 h-9 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center relative transition-all duration-100 cursor-pointer shrink-0 ${
                   isActive
-                    ? 'bg-sky-500/20 border-2 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.4)] scale-105'
+                    ? 'bg-sky-500/20 border border-sky-400/80 shadow-[0_0_10px_rgba(56,189,248,0.25)]'
                     : slot
-                    ? 'bg-white/10 hover:bg-white/15 border border-white/15'
-                    : 'bg-black/40 hover:bg-white/5 border border-white/5'
+                    ? 'bg-white/5 hover:bg-white/10 border border-white/10'
+                    : 'bg-black/30 hover:bg-white/5 border border-white/5'
                 }`}
               >
                 {slot && itemDef ? (
-                  <div className="flex flex-col items-center justify-center w-full h-full p-0.5 sm:p-1 relative">
-                    {/* Item Icon Box */}
+                  <div className="flex flex-col items-center justify-center w-full h-full p-0.5 relative">
                     <div 
-                      className="w-5 h-5 sm:w-6 sm:h-6 rounded-md flex items-center justify-center font-bold text-[9px] sm:text-[10px] shadow-sm text-white" 
+                      className="w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-md flex items-center justify-center font-bold text-[9px] text-white" 
                       style={{ backgroundColor: itemDef.iconColor }}
                     >
                       {itemDef.name.substring(0, 2).toUpperCase()}
                     </div>
 
-                    {/* Quantity Badge */}
                     {slot.count > 1 && (
-                      <span className="absolute bottom-0.5 right-0.5 sm:bottom-1 sm:right-1 text-[8px] sm:text-[9px] font-mono font-black text-white drop-shadow bg-black/60 px-0.5 sm:px-1 rounded">
+                      <span className="absolute bottom-0.5 right-1 text-[8px] font-mono font-bold text-zinc-100 tabular-nums">
                         {slot.count}
                       </span>
                     )}
 
-                    {/* Durability Bar (if damaged) */}
                     {hasDurability && (
-                      <div className="absolute bottom-0.5 left-0.5 right-0.5 sm:left-1 sm:right-1 h-0.5 sm:h-1 bg-black/80 rounded-full overflow-hidden">
+                      <div className="absolute bottom-0.5 left-1 right-1 h-0.5 bg-black/80 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
                             duraPercent < 25 ? 'bg-rose-500' : duraPercent < 50 ? 'bg-amber-400' : 'bg-emerald-400'
@@ -1457,9 +2617,9 @@ export const HUD: React.FC<HUDProps> = ({
                     )}
                   </div>
                 ) : (
-                  <div className="w-1.5 h-1.5 rounded-full bg-white/15" />
+                  <div className="w-1 h-1 rounded-full bg-white/10" />
                 )}
-                <span className="absolute top-0.5 left-1 text-[7px] sm:text-[8px] font-mono text-zinc-400">{idx + 1}</span>
+                <span className="absolute top-0.5 left-1 text-[7px] font-mono text-zinc-500">{idx + 1}</span>
               </button>
             );
           })}

@@ -45,9 +45,16 @@ const ContentDebugModal = React.lazy(() =>
 const EngineeringModal = React.lazy(() =>
   import('./EngineeringModal').then((m) => ({ default: m.EngineeringModal }))
 );
+const MultiplayerLobbyModal = React.lazy(() =>
+  import('./MultiplayerLobbyModal').then((m) => ({ default: m.MultiplayerLobbyModal }))
+);
+const CharacterProgressionModal = React.lazy(() =>
+  import('./CharacterProgressionModal').then((m) => ({ default: m.CharacterProgressionModal }))
+);
 import { MobileControls } from './MobileControls';
 import { DebugMap } from './DebugMap';
 import { NetworkSession } from '../engine/network/NetworkSession';
+import { ConnectionState } from '../engine/network/NetworkProtocol';
 import { QuestManager } from '../engine/progression/QuestManager';
 import { SettingsManager } from '../engine/ui/SettingsManager';
 import { useOrientation } from '../hooks/useOrientation';
@@ -66,7 +73,7 @@ interface GameCanvasProps {
   onExitToMenu: () => void;
 }
 
-export type ModalType = 'none' | 'inventory' | 'crafting' | 'furnace' | 'chest' | 'anvil' | 'dialogue' | 'pause' | 'death' | 'journal' | 'map' | 'contentDebug' | 'engineering';
+export type ModalType = 'none' | 'inventory' | 'crafting' | 'furnace' | 'chest' | 'anvil' | 'dialogue' | 'pause' | 'death' | 'journal' | 'map' | 'character' | 'contentDebug' | 'engineering';
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
   worldId,
@@ -134,9 +141,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [activeChestPos, setActiveChestPos] = useState<[number, number, number] | null>(null);
   const [activeFurnacePos, setActiveFurnacePos] = useState<[number, number, number] | null>(null);
   const [activeAnvilPos, setActiveAnvilPos] = useState<[number, number, number] | null>(null);
+  const [activeCraftingPos, setActiveCraftingPos] = useState<[number, number, number] | null>(null);
   const [activeEngineeringPos, setActiveEngineeringPos] = useState<[number, number, number] | null>(null);
   const [activeDialogueEntity, setActiveDialogueEntity] = useState<EntityState | null>(null);
   const [activeObjective, setActiveObjective] = useState<string>('');
+
+  // Multiplayer Connection State Monitoring & Diagnostics
+  const [netConnectionState, setNetConnectionState] = useState<ConnectionState>('READY');
+  const [netStateReason, setNetStateReason] = useState<string>('');
+  const [reconnectAttempt, setReconnectAttempt] = useState<number>(0);
+  const [maxReconnectAttempts, setMaxReconnectAttempts] = useState<number>(5);
+  const [nextRetryMs, setNextRetryMs] = useState<number>(0);
+  const [showMultiplayerLobby, setShowMultiplayerLobby] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    const session = NetworkSession.getInstance();
+    const unsub = session.onConnectionStateChange((state, reason) => {
+      setNetConnectionState(state);
+      setNetStateReason(reason || '');
+      const prog = session.getReconnectProgress();
+      setReconnectAttempt(prog.attempt);
+      setMaxReconnectAttempts(prog.maxAttempts);
+      setNextRetryMs(prog.nextRetryDelayMs);
+    });
+    return unsub;
+  }, [isMultiplayer]);
 
   // Quest objective tracker
   useEffect(() => {
@@ -275,6 +305,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             setActiveFurnacePos(data);
           } else if (modalType === 'anvil') {
             setActiveAnvilPos(data);
+          } else if (modalType === 'crafting') {
+            setActiveCraftingPos(
+              Array.isArray(data) && data.length === 3
+                ? [Number(data[0]), Number(data[1]), Number(data[2])]
+                : null
+            );
           } else if (modalType === 'engineering') {
             setActiveEngineeringPos(data);
           }
@@ -322,10 +358,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
 
           if (!sessionStarted) {
-            console.warn("[GameCanvas] Realm server offline/unreachable, continuing in singleplayer offline fallback mode.");
+            runtime.stop();
+            const failureReason = NetworkSession.getInstance().connectionState === 'FAILED'
+              ? 'Gagal terhubung ke realm multiplayer: Server tidak merespons atau sesi kedaluwarsa.'
+              : 'Gagal mengotentikasi dan menyinkronkan bootstrap dunia multiplayer.';
+            setInitErrorMessage(failureReason);
+            setStartupState('FAILED');
+            return;
           }
-        } catch (netErr) {
-          console.warn("[GameCanvas] Network connection fallback:", netErr);
+        } catch (netErr: any) {
+          runtime.stop();
+          console.error("[GameCanvas] Multiplayer network connection failed:", netErr);
+          setInitErrorMessage(netErr?.message || 'Gagal terhubung ke server realm multiplayer.');
+          setStartupState('FAILED');
+          return;
         }
       }
 
@@ -534,7 +580,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }}
           targetHit={targetHitState}
           onOpenInventory={() => setModal('inventory')}
-          onOpenCrafting={() => setModal('crafting')}
+          onOpenCrafting={() => {
+            setActiveCraftingPos(null);
+            setModal('crafting');
+          }}
           onToggleCamera={() => {
             if (runtimeRef.current) {
               runtimeRef.current.player.togglePerspective();
@@ -543,9 +592,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           onOpenPause={() => setModal('pause')}
           onToggleDebugMap={() => setModal('map')}
           onOpenJournal={() => setModal('journal')}
+          onOpenCharacter={() => setModal('character')}
           onOpenContentDebug={() => setModal('contentDebug')}
           activeBoss={activeBossState}
           objectiveText={activeObjective}
+          onOpenMultiplayerLobby={() => setShowMultiplayerLobby(true)}
         />
       )}
 
@@ -566,6 +617,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             playerPos={TelemetryStore.state.playerPos}
             playerXp={TelemetryStore.state.xp}
             playerLevel={TelemetryStore.state.level}
+          />
+        </React.Suspense>
+      )}
+
+      {activeModal === 'character' && (
+        <React.Suspense fallback={null}>
+          <CharacterProgressionModal
+            isOpen={true}
+            onClose={() => setModal('none')}
           />
         </React.Suspense>
       )}
@@ -631,7 +691,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             inventory={inventoryState}
             setInventory={setInventoryState}
             onClose={() => setModal('none')}
-            station="crafting_bench"
+            station={activeCraftingPos ? 'crafting_bench' : 'hand'}
+            stationPos={activeCraftingPos}
           />
         </React.Suspense>
       )}
@@ -744,6 +805,103 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Multiplayer Live Connection Overlays */}
+      {isMultiplayer && isWorldLoaded && netConnectionState === 'RECONNECTING' && (
+        <div id="modal-multiplayer-reconnecting" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 select-none animate-fade-in font-sans">
+          <div className="w-full max-w-md bg-[#0d1117] border border-amber-500/40 rounded-3xl p-6 shadow-2xl text-white space-y-4 text-center">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-400/40 flex items-center justify-center text-amber-400 text-2xl font-bold animate-pulse">
+              ⚡
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-black uppercase tracking-wider text-amber-300">Menyambung Ulang ke Realm...</h3>
+              <p className="text-xs text-white/70 font-mono">Koneksi terputus. Sedang mencoba memulihkan sesi secara otomatis.</p>
+            </div>
+            <div className="p-3 bg-black/40 border border-white/5 rounded-2xl space-y-2 text-xs font-mono">
+              <div className="flex justify-between text-white/80">
+                <span>Percobaan Reconnect:</span>
+                <span className="text-amber-400 font-bold">{reconnectAttempt} / {maxReconnectAttempts}</span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className="bg-amber-400 h-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, (reconnectAttempt / maxReconnectAttempts) * 100)}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-white/50 text-left pt-1">
+                Data blok, posisi, dan inventaris kamu tersimpan aman dan akan diverifikasi dengan server authoritative.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => NetworkSession.getInstance().retryNow()}
+                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs cursor-pointer transition shadow"
+              >
+                Coba Sekarang
+              </button>
+              <button
+                onClick={() => {
+                  NetworkSession.getInstance().cancelReconnect();
+                  onExitToMenu();
+                }}
+                className="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs cursor-pointer transition"
+              >
+                Keluar ke Menu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isMultiplayer && isWorldLoaded && netConnectionState === 'FAILED' && (
+        <div id="modal-multiplayer-failed" className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 select-none animate-fade-in font-sans">
+          <div className="w-full max-w-md bg-[#0d1117] border border-rose-500/40 rounded-3xl p-6 shadow-2xl text-white space-y-4 text-center">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-500/10 border border-rose-400/40 flex items-center justify-center text-rose-400 text-2xl font-bold">
+              ✕
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-black uppercase tracking-wider text-rose-400">Koneksi Multiplayer Terputus</h3>
+              <p className="text-xs text-rose-200/80 font-mono">
+                {netStateReason || 'Koneksi ke server realm hilang dan tidak dapat dipulihkan.'}
+              </p>
+            </div>
+            <div className="p-3 bg-rose-950/20 border border-rose-500/20 rounded-2xl text-left text-xs text-white/70 font-mono space-y-1">
+              <p>• Sesi multiplayer telah dihentikan secara aman.</p>
+              <p>• Snapshot inventaris dan posisi terakhir telah tercatat.</p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => NetworkSession.getInstance().retryNow()}
+                className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-400 text-white font-bold rounded-xl text-xs cursor-pointer transition shadow"
+              >
+                Coba Sambung Ulang
+              </button>
+              <button
+                onClick={onExitToMenu}
+                className="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs cursor-pointer transition"
+              >
+                Kembali ke Menu Utama
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Multiplayer Replication & Telemetry Modal */}
+      {showMultiplayerLobby && (
+        <React.Suspense fallback={null}>
+          <MultiplayerLobbyModal
+            isOpen={showMultiplayerLobby}
+            onClose={() => setShowMultiplayerLobby(false)}
+            session={NetworkSession.getInstance()}
+            playerPos={[
+              runtimeRef.current?.player?.position.x || 0,
+              runtimeRef.current?.player?.position.y || 80,
+              runtimeRef.current?.player?.position.z || 0,
+            ]}
+          />
+        </React.Suspense>
       )}
 
       {/* Mobile Portrait Warning Overlay (Prompts user to rotate to landscape) */}

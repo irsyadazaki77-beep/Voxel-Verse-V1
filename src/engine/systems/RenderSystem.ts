@@ -1,11 +1,16 @@
+import * as THREE from 'three';
 import { GameSystem } from './GameSystem';
 import type { GameRuntime } from '../core/GameRuntime';
 import { ITEM_DEFS } from '../items/ItemRegistry';
 import { MiningVisualEngine } from '../world/MiningVisualEngine';
+import { FishingSystem } from './FishingSystem';
 
 export class RenderSystem implements GameSystem {
   public readonly name = 'RenderSystem';
   private runtime: GameRuntime;
+  private rodTipPos: THREE.Vector3 = new THREE.Vector3();
+  private camForward: THREE.Vector3 = new THREE.Vector3();
+  private camRight: THREE.Vector3 = new THREE.Vector3();
 
   constructor(runtime: GameRuntime) {
     this.runtime = runtime;
@@ -56,7 +61,7 @@ export class RenderSystem implements GameSystem {
       );
     }
 
-    // 4. World raycast & Progressive 3D Mining Crack sync
+    // 4. World raycast, Progressive 3D Mining Crack & 3D Fishing Bobber sync
     if (this.runtime.world) {
       const hit = this.runtime.interactionSystem?.currentHit || null;
       this.runtime.world.updateTargetHighlight(hit, placeBlock);
@@ -70,6 +75,15 @@ export class RenderSystem implements GameSystem {
         miningProgress
       );
     }
+
+    this.camForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    this.camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    this.rodTipPos
+      .copy(camera.position)
+      .addScaledVector(this.camForward, 0.72)
+      .addScaledVector(this.camRight, 0.34);
+    this.rodTipPos.y -= 0.18;
+    FishingSystem.updateVisuals(deltaTime, this.rodTipPos);
 
     const renderStart = performance.now();
     

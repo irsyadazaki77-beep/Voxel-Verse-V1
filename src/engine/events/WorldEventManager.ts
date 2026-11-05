@@ -242,6 +242,41 @@ export class WorldEventManager {
     this.triggerEvent(selected, playerPos);
   }
 
+  public static get activeEvent(): (WorldEventInstance & { elapsed: number; intensity: number }) | null {
+    const events = Array.from(this.activeEvents.values());
+    if (events.length === 0) return null;
+    // Prefer cataclysmic events (eclipse, meteor, gejolak_gunung_api, invasion) first
+    const cataclysm = events.find(
+      (e) =>
+        e.type === 'eclipse' ||
+        e.type === 'meteor' ||
+        e.type === 'gejolak_gunung_api' ||
+        e.type === 'invasion' ||
+        e.type === 'aurora'
+    );
+    const chosen = cataclysm || events[0];
+    return {
+      ...chosen,
+      elapsed: 0,
+      intensity: chosen.intensity ?? 1.0,
+    };
+  }
+
+  public static getEventDisplayName(type: WorldEventType | string): string {
+    for (const evt of this.activeEvents.values()) {
+      if (evt.type === type && evt.name) return evt.name;
+    }
+    const labels: Record<string, string> = {
+      meteor: 'Jatuhan Meteorit Starfall',
+      eclipse: 'Gerhana Darah Merah (Blood Eclipse)',
+      gejolak_gunung_api: 'Gejolak Vulkanik & Abu Kesuburan',
+      aurora: 'Cahaya Aurora Ley Aether',
+      invasion: 'Gelombang Makhluk Bayangan',
+      caravan: 'Kafilah Saudagar Pengelana',
+    };
+    return labels[type] || 'Peristiwa Alam Nusantara';
+  }
+
   public static getActiveEvents(): WorldEventInstance[] {
     return Array.from(this.activeEvents.values());
   }

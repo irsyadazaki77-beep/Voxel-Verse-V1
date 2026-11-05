@@ -215,6 +215,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               {/* GRAPHICS TAB */}
               {activeTab === 'graphics' && (
                 <>
+                  {/* VoxelVerse v4.7.0: Adaptive 60 FPS Auto-Tuner & Turbo FPS Mode */}
+                  <div className="p-4 rounded-xl bg-[var(--vv-surface)] border border-emerald-500/40 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-emerald-400" />
+                          <h3 className="text-sm font-bold text-white">
+                            Kalibrasi Performa Adaptif 60 FPS & Mode Turbo
+                          </h3>
+                        </div>
+                        <p className="text-xs text-[var(--vv-text-muted)] leading-relaxed">
+                          Menjaga 60 FPS stabil dengan memprioritaskan ketajaman tekstur jarak dekat (CAS Sharpening), memangkas bayangan jauh, dan mengatur skala resolusi dinamis secara otomatis.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            triggerHaptic('selection');
+                            SettingsManager.toggleTurboFpsMode();
+                          }}
+                          className={`px-3.5 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer whitespace-nowrap ${
+                            settings.graphics.turboFpsMode
+                              ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                              : 'bg-black/40 border-[var(--vv-border)] text-zinc-200 hover:border-emerald-400/50'
+                          }`}
+                        >
+                          {settings.graphics.turboFpsMode ? '⚡ Turbo FPS: AKTIF' : '⚡ Aktifkan Turbo FPS'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            triggerHaptic('medium');
+                            const rt = (window as any).__voxelRuntime;
+                            const curFps = rt?.currentFps || 60;
+                            const curFrameMs = rt?.lastRenderTimeMs ? rt.lastRenderTimeMs + (rt.lastSimTimeMs || 4) : 16.0;
+                            SettingsManager.autoCalibrateFor60Fps(curFps, curFrameMs);
+                          }}
+                          className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          Kalibrasi Otomatis 60 FPS
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-4">
                     <h3 className="text-lg font-bold text-white border-b border-[var(--vv-border-subtle)] pb-2 flex items-center gap-2">
                       <Zap className="w-4 h-4 text-[var(--vv-warning)]" /> Recommended Quality Presets

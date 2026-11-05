@@ -261,6 +261,40 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
     prerequisites: ['q_first_steps'],
   },
 
+  q_sumpah_harmoni_nusantara: {
+    id: 'q_sumpah_harmoni_nusantara',
+    title: 'Sumpah Harmoni & Mahakarya Nusantara',
+    giverName: 'Mahapatih Gadjah Mada (Penjaga Pusaka)',
+    giverSettlement: 'Kraton Wilwatikta',
+    category: 'storyline',
+    tier: 'tier3_ancient',
+    description:
+      'Satukan kejayaan Samudra, Kereta Uap Aether, Harmoni Gamelan, dan Kaldera Merapi dengan mengumpulkan Mutiara Candi Samudra serta Kristal Lahar Merapi.',
+    objectives: [
+      {
+        type: 'collect',
+        description: 'Panen 2 Mutiara Candi Samudra dari Palung Laut',
+        targetId: 'mutiara_candi_samudra',
+        requiredCount: 2,
+      },
+      {
+        type: 'collect',
+        description: 'Kumpulkan 2 Kristal Lahar Merapi dari Erupsi Kaldera',
+        targetId: 'kristal_lahar_merapi',
+        requiredCount: 2,
+      },
+    ],
+    rewards: {
+      xp: 450,
+      items: [
+        { itemId: 'mustika_bintang_jatuh', count: 3 },
+        { itemId: 'keris_pusaka_empu', count: 1 },
+      ],
+      reputation: { settlementId: 'desa_majapahit', amount: 50 },
+    },
+    prerequisites: ['q_first_steps'],
+  },
+
   q_delve_crypt: {
     id: 'q_delve_crypt',
     title: 'Gema Kuil Bawah Tanah & Sentinels',

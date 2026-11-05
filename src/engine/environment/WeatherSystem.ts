@@ -208,6 +208,13 @@ export class WeatherSystem {
     this.scene.add(this.weatherGroup);
   }
 
+  public setWeather(type: WeatherState['type'], intensity: number = 0.85, duration: number = 150): void {
+    this.weather.type = type;
+    this.weather.intensity = type === 'clear' ? 0 : intensity;
+    this.weather.windSpeed = type === 'storm' ? 6.0 : type === 'monsoon_rain' ? 4.8 : type === 'rain' ? 3.5 : 1.8;
+    this.weather.durationLeft = duration;
+  }
+
   public update(deltaTime: number, playerPos: THREE.Vector3, isColdBiome: boolean): void {
     const dt = Math.min(deltaTime, 0.1);
     this.weatherTime += dt;
@@ -218,18 +225,26 @@ export class WeatherSystem {
 
     if (this.weather.durationLeft <= 0) {
       const rand = Math.random();
-      if (rand < 0.50) {
+      if (rand < 0.42) {
         this.weather.type = 'clear';
         this.weather.intensity = 0;
         this.weather.windSpeed = 1.5;
-      } else if (rand < 0.80) {
-        this.weather.type = isColdBiome ? 'snow' : 'rain';
-        this.weather.intensity = 0.8;
-        this.weather.windSpeed = 3.5;
-      } else {
+      } else if (rand < 0.58) {
+        this.weather.type = isColdBiome ? 'snow' : 'rimba_mist';
+        this.weather.intensity = 0.65;
+        this.weather.windSpeed = 1.8;
+      } else if (rand < 0.82) {
+        this.weather.type = isColdBiome ? 'snow' : 'monsoon_rain';
+        this.weather.intensity = 0.85;
+        this.weather.windSpeed = 4.5;
+      } else if (rand < 0.92) {
         this.weather.type = 'storm';
         this.weather.intensity = 1.0;
         this.weather.windSpeed = 6.0;
+      } else {
+        this.weather.type = 'aether_aurora';
+        this.weather.intensity = 0.75;
+        this.weather.windSpeed = 2.2;
       }
       this.weather.durationLeft = 120 + Math.random() * 120;
     }
@@ -257,7 +272,10 @@ export class WeatherSystem {
     const windX = Math.cos(this.weather.windAngle) * windSpeed;
     const windZ = Math.sin(this.weather.windAngle) * windSpeed;
 
-    const isRaining = this.weather.type === 'rain' || this.weather.type === 'storm';
+    const isRaining =
+      this.weather.type === 'rain' ||
+      this.weather.type === 'monsoon_rain' ||
+      this.weather.type === 'storm';
     const targetRainIntensity = isRaining ? this.weather.intensity : 0.0;
     const isSnowing = this.weather.type === 'snow';
     const targetSnowIntensity = isSnowing ? this.weather.intensity : 0.0;
@@ -267,7 +285,8 @@ export class WeatherSystem {
     const newRainInt = THREE.MathUtils.lerp(curRainInt, targetRainIntensity, dt * 2.5);
     this.rainMaterial.uniforms.uIntensity.value = newRainInt;
     this.rainMaterial.uniforms.uTime.value = this.weatherTime;
-    this.rainMaterial.uniforms.uFallSpeed.value = this.weather.type === 'storm' ? 36.0 : 26.0;
+    this.rainMaterial.uniforms.uFallSpeed.value =
+      this.weather.type === 'storm' ? 36.0 : this.weather.type === 'monsoon_rain' ? 32.0 : 26.0;
     this.rainMaterial.uniforms.uWindVector.value.set(windX, 0, windZ);
     this.rainMaterial.uniforms.uPlayerPos.value.copy(playerPos);
     this.rainMaterial.uniforms.uCameraPos.value.copy(playerPos);

@@ -226,6 +226,26 @@ export class WorldGeneratorCore {
           blocks[getIndex(lx, y, lz)] = 28;
         }
 
+        // Underwater Nusantara Reefs: Bioluminescent Coral, Coral Blocks & Giant Pearl Clams
+        if (height <= p.seaLevel - 3 && height >= 8) {
+          const reefNoise = this.detailNoise.noise2D(wx * 0.14 + 310, wz * 0.14 - 210);
+          if (reefNoise > 0.56) {
+            const hash = Math.abs(Math.imul(wx, 73856093) ^ Math.imul(wz, 19349663) ^ this.seed);
+            if (hash % 18 === 0) {
+              // Giant Pearl Clam on the seabed
+              blocks[getIndex(lx, height + 1, lz)] = BlockType.PEARL_CLAM_BLOCK;
+            } else if (hash % 4 === 0) {
+              // Glowing Bioluminescent Coral
+              blocks[getIndex(lx, height, lz)] = BlockType.BIOLUMINESCENT_CORAL;
+              if (hash % 8 === 0 && height + 2 < p.seaLevel) {
+                blocks[getIndex(lx, height + 1, lz)] = BlockType.BIOLUMINESCENT_CORAL;
+              }
+            } else if (hash % 5 === 1) {
+              blocks[getIndex(lx, height, lz)] = BlockType.CORAL_BLOCK;
+            }
+          }
+        }
+
         // Place paddy crops on terraced farmland
         if (isTerracePaddy && height + 1 < 128) {
           blocks[getIndex(lx, height + 1, lz)] = 63; // CROP_WHEAT_3 (Ripe golden rice stalks)

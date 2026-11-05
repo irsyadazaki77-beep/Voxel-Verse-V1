@@ -246,6 +246,35 @@ export class EntityManager {
         ],
       });
     }
+
+    // Spawn Endemic Nusantara Fauna (Tameable with Cooked Meat / Wheat)
+    const endemicSpawns: { id: string; defId: string; offset: [number, number] }[] = [
+      { id: 'endemic_harimau_1', defId: 'harimau_sumatera', offset: [16, -14] },
+      { id: 'endemic_komodo_1', defId: 'komodo_purba', offset: [-18, 15] },
+      { id: 'endemic_cenderawasih_1', defId: 'cenderawasih_emas', offset: [12, 18] },
+    ];
+    for (const sp of endemicSpawns) {
+      const def = CREATURE_REGISTRY[sp.defId];
+      if (!def) continue;
+      const ex = playerPos.x + sp.offset[0];
+      const ez = playerPos.z + sp.offset[1];
+      const ey = world.getSpawnHeight(ex, ez);
+      this.spawnEntity({
+        id: sp.id,
+        type: 'passive',
+        name: def.name,
+        position: [ex, ey, ez],
+        velocity: [0, 0, 0],
+        rotation: Math.random() * Math.PI * 2,
+        health: def.baseHealth,
+        maxHealth: def.baseHealth,
+        damage: def.baseDamage,
+        speed: def.baseSpeed,
+        aiState: 'wander',
+        modelType: def.modelType,
+        drops: def.drops,
+      });
+    }
   }
 
   private updateEntityAI(state: EntityState, ePos: THREE.Vector3, playerPos: THREE.Vector3, distToPlayer: number, world: VoxelWorld, isNight: boolean, timeOfDay: number = 12) {
@@ -380,9 +409,47 @@ export class EntityManager {
         }
       }
     } 
-    // Passive Wildlife (Deer, Stag, Boar)
+    // Passive Wildlife & Tamed Companions (Deer, Stag, Boar, Livestock)
     else if (state.type === 'passive') {
-      if ((state.health < state.maxHealth && distToPlayer < 20) || distToPlayer < 5) {
+      if (state.isTamed) {
+        const cmd = state.command || 'FOLLOW';
+        if (cmd === 'STAY') {
+          state.aiState = 'idle';
+          state.path = [];
+          state.velocity[0] = 0;
+          state.velocity[2] = 0;
+          const toPlayerX = playerPos.x - ePos.x;
+          const toPlayerZ = playerPos.z - ePos.z;
+          state.rotation = Math.atan2(toPlayerX, toPlayerZ);
+        } else if (cmd === 'FOLLOW') {
+          if (distToPlayer > 3.2) {
+            state.aiState = 'chase';
+            const toPlayerX = playerPos.x - ePos.x;
+            const toPlayerZ = playerPos.z - ePos.z;
+            const len = Math.hypot(toPlayerX, toPlayerZ) || 1;
+            const followSpeed = Math.max(state.speed * 1.35, 3.8);
+            state.velocity[0] = (toPlayerX / len) * followSpeed;
+            state.velocity[2] = (toPlayerZ / len) * followSpeed;
+            state.rotation = Math.atan2(toPlayerX, toPlayerZ);
+          } else {
+            state.aiState = 'idle';
+            state.velocity[0] *= 0.5;
+            state.velocity[2] *= 0.5;
+          }
+        } else {
+          // GUARD / ROAM around player or home
+          if (Math.random() < 0.15 && (!state.path || state.path.length === 0)) {
+            state.aiState = Math.random() < 0.5 ? 'idle' : 'roam';
+            if (state.aiState === 'roam') {
+              const dx = (Math.random() - 0.5) * 10;
+              const dz = (Math.random() - 0.5) * 10;
+              EntityManager._tempVecB.set(playerPos.x + dx, ePos.y, playerPos.z + dz);
+              const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 10);
+              if (path) state.path = path;
+            }
+          }
+        }
+      } else if ((state.health < state.maxHealth && distToPlayer < 20) || (distToPlayer < 4.2 && !(state.trustMeter && state.trustMeter > 0))) {
         state.aiState = 'flee';
         state.path = [];
         const fleeX = ePos.x - playerPos.x;
@@ -416,8 +483,90 @@ export class EntityManager {
         }
       }
     }
-    // Friendly NPCs & Nusantara Living Settlement Schedules
+    // Friendly NPCs, Recruited Village Guards & Nusantara Living Settlement Schedules
     else if (state.type === 'npc') {
+      if ((state as any).isRecruitedGuard) {
+        const cmd = state.command || 'FOLLOW';
+        // Scan for nearest hostile or boss within 15m using spatialGrid (3x3 chunk cells, zero-allocation)
+        let nearestEnemyId: string | null = null;
+        let nearestEnemyDistSq = 15 * 15;
+        let enemyPos: [number, number, number] | null = null;
+
+        const gcx = Math.floor(ePos.x / CHUNK_SIZE_X);
+        const gcz = Math.floor(ePos.z / CHUNK_SIZE_Z);
+        for (let ox = -1; ox <= 1; ox++) {
+          for (let oz = -1; oz <= 1; oz++) {
+            const cell = this.spatialGrid.get(`${gcx + ox},${gcz + oz}`);
+            if (!cell) continue;
+            for (const otherId of cell) {
+              if (otherId === state.id) continue;
+              const entry = this.entities.get(otherId);
+              if (!entry) continue;
+              const oState = entry.state;
+              if (
+                oState.health > 0 &&
+                (oState.type === 'hostile' || oState.type === 'boss' || oState.isBoss)
+              ) {
+                const edx = oState.position[0] - ePos.x;
+                const edz = oState.position[2] - ePos.z;
+                const dSq = edx * edx + edz * edz;
+                if (dSq < nearestEnemyDistSq) {
+                  nearestEnemyDistSq = dSq;
+                  nearestEnemyId = otherId;
+                  enemyPos = oState.position;
+                }
+              }
+            }
+          }
+        }
+
+        if (nearestEnemyId && enemyPos) {
+          const edx = enemyPos[0] - ePos.x;
+          const edz = enemyPos[2] - ePos.z;
+          const eDist = Math.hypot(edx, edz) || 1;
+          state.rotation = Math.atan2(edx, edz);
+
+          if (eDist <= 2.8) {
+            state.aiState = 'attack';
+            state.velocity[0] = 0;
+            state.velocity[2] = 0;
+            if (now - (state.lastAttackTime || 0) > 1250) {
+              state.lastAttackTime = now;
+              this.attackEntity(nearestEnemyId, state.damage || 24, ePos, false, 0, 0.8, 18);
+            }
+          } else {
+            state.aiState = 'chase';
+            const spd = Math.max(state.speed || 3.8, 3.8);
+            state.velocity[0] = (edx / eDist) * spd;
+            state.velocity[2] = (edz / eDist) * spd;
+          }
+          return;
+        }
+
+        if (cmd === 'STAY') {
+          state.aiState = 'idle';
+          state.velocity[0] = 0;
+          state.velocity[2] = 0;
+          return;
+        }
+
+        if (distToPlayer > 3.4) {
+          state.aiState = 'chase';
+          const toPlayerX = playerPos.x - ePos.x;
+          const toPlayerZ = playerPos.z - ePos.z;
+          const len = Math.hypot(toPlayerX, toPlayerZ) || 1;
+          const followSpd = Math.max(state.speed || 3.8, 3.8);
+          state.velocity[0] = (toPlayerX / len) * followSpd;
+          state.velocity[2] = (toPlayerZ / len) * followSpd;
+          state.rotation = Math.atan2(toPlayerX, toPlayerZ);
+        } else {
+          state.aiState = 'idle';
+          state.velocity[0] *= 0.4;
+          state.velocity[2] *= 0.4;
+        }
+        return;
+      }
+
       if (distToPlayer < 4.5) {
         state.aiState = 'idle';
         state.path = [];
@@ -431,49 +580,97 @@ export class EntityManager {
         (state as any).schedulePhase = phase;
         (state as any).scheduleActivity = sched.activityName;
 
-        let ox = 0;
-        let oz = 0;
-        if (sched.targetLandmark === 'farm') { ox = -10; oz = 8; }
-        else if (sched.targetLandmark === 'docks') { ox = 14; oz = 12; }
-        else if (sched.targetLandmark === 'workshop') { ox = -8; oz = -8; }
-        else if (sched.targetLandmark === 'market') { ox = 6; oz = -4; }
-        else if (sched.targetLandmark === 'pendopo') { ox = 0; oz = 0; }
-        else if (sched.targetLandmark === 'shrine') { ox = 0; oz = 10; }
-        else if (sched.targetLandmark === 'gate') { ox = 14; oz = 0; }
-        else if (sched.targetLandmark === 'engineering') { ox = -12; oz = 2; }
-        else { ox = 0; oz = 0; }
+        let targetX = homeX;
+        let targetZ = homeZ;
 
-        const targetX = homeX + ox;
-        const targetZ = homeZ + oz;
+        if (role === 'guard' && phase === 'night') {
+          // 1. Night Watch Patrol Cycle for Guards
+          const waypoints = NPCScheduleManager.getGuardPatrolWaypoints([homeX, homeY, homeZ]);
+          const wpIdx = ((state as any).patrolWpIndex || 0) % waypoints.length;
+          const currentWp = waypoints[wpIdx];
+          targetX = currentWp[0];
+          targetZ = currentWp[2];
+
+          const dWpSq = (ePos.x - targetX) * (ePos.x - targetX) + (ePos.z - targetZ) * (ePos.z - targetZ);
+          if (dWpSq < 2.5) {
+            // Reached sentry post: linger briefly on watch then cycle to next gate
+            const linger = ((state as any).wpLingerTimer || 0) + 0.05;
+            (state as any).wpLingerTimer = linger;
+            if (linger > 3.0) {
+              (state as any).wpLingerTimer = 0;
+              (state as any).patrolWpIndex = (wpIdx + 1) % waypoints.length;
+            }
+          }
+        } else if (phase === 'evening' && role !== 'guard') {
+          // 2. Evening Cultural Gathering at Pendopo / Gamelan
+          const orderIdx = parseInt(state.id.replace(/\D/g, ''), 10) || 0;
+          const gatherPos = NPCScheduleManager.getPendopoGatheringTarget(role, [homeX, homeY, homeZ], orderIdx);
+          targetX = gatherPos[0];
+          targetZ = gatherPos[2];
+        } else if (phase === 'night' && role !== 'guard') {
+          // 3. Resting safely in residential quarters
+          targetX = homeX - 3.5;
+          targetZ = homeZ - 3.5;
+        } else {
+          // 4. Standard Daytime & Morning Workplace Landmarks
+          let ox = 0;
+          let oz = 0;
+          if (sched.targetLandmark === 'farm') { ox = -10; oz = 8; }
+          else if (sched.targetLandmark === 'docks') { ox = 14; oz = 12; }
+          else if (sched.targetLandmark === 'workshop') { ox = -8; oz = -8; }
+          else if (sched.targetLandmark === 'market') { ox = 6; oz = -4; }
+          else if (sched.targetLandmark === 'pendopo') { ox = 0; oz = 0; }
+          else if (sched.targetLandmark === 'shrine') { ox = 0; oz = 10; }
+          else if (sched.targetLandmark === 'gate') { ox = 14; oz = 0; }
+          else if (sched.targetLandmark === 'engineering') { ox = -12; oz = 2; }
+          targetX = homeX + ox;
+          targetZ = homeZ + oz;
+        }
+
         const dx = ePos.x - targetX;
         const dz = ePos.z - targetZ;
         const distSq = dx * dx + dz * dz;
 
-        if (distSq > 16) {
-          state.aiState = 'return';
+        if (distSq > 9) {
+          state.aiState = role === 'guard' && phase === 'night' ? 'patrol' : 'return';
           EntityManager._tempVecB.set(targetX, homeY, targetZ);
           const lastPf = (state as any).lastPathfindTime || 0;
-          if (now - lastPf > 2500) {
+          if (now - lastPf > 2200) {
             (state as any).lastPathfindTime = now;
-            const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 16);
+            const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 18);
             if (path && path.length > 0) {
               state.path = path;
             } else {
               const len = Math.hypot(dx, dz) || 1;
-              state.velocity[0] = (-dx / len) * (state.speed * 0.8);
-              state.velocity[2] = (-dz / len) * (state.speed * 0.8);
+              const spd = role === 'guard' ? state.speed * 0.9 : state.speed * 0.8;
+              state.velocity[0] = (-dx / len) * spd;
+              state.velocity[2] = (-dz / len) * spd;
               state.rotation = Math.atan2(-dx, -dz);
             }
           }
         } else {
-          // Leisurely roaming / idle at landmark
-          state.aiState = sched.animationState === 'work' ? 'wander' : 'idle';
-          if (Math.random() < 0.1 && (!state.path || state.path.length === 0)) {
-            const rx = (Math.random() - 0.5) * 4;
-            const rz = (Math.random() - 0.5) * 4;
-            EntityManager._tempVecB.set(targetX + rx, homeY, targetZ + rz);
-            const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 6);
-            if (path) state.path = path;
+          // Arrived at destination landmark
+          if (phase === 'evening' && role !== 'guard') {
+            state.aiState = 'idle';
+            // Face inward toward the Pendopo center
+            const toCenterX = homeX - ePos.x;
+            const toCenterZ = homeZ - ePos.z;
+            state.rotation = Math.atan2(toCenterX, toCenterZ);
+            state.velocity[0] *= 0.2;
+            state.velocity[2] *= 0.2;
+          } else if (phase === 'night' && role !== 'guard') {
+            state.aiState = 'sleep';
+            state.velocity[0] = 0;
+            state.velocity[2] = 0;
+          } else {
+            state.aiState = sched.animationState === 'work' ? 'wander' : 'idle';
+            if (Math.random() < 0.1 && (!state.path || state.path.length === 0)) {
+              const rx = (Math.random() - 0.5) * 4;
+              const rz = (Math.random() - 0.5) * 4;
+              EntityManager._tempVecB.set(targetX + rx, homeY, targetZ + rz);
+              const path = Pathfinder.findPath(world, ePos, EntityManager._tempVecB, 6);
+              if (path) state.path = path;
+            }
           }
         }
       }
@@ -484,9 +681,10 @@ export class EntityManager {
   public update(deltaTime: number, world: VoxelWorld, playerPos: THREE.Vector3, isNight: boolean, damagePlayer?: (dmg: number, src: string) => void, timeOfDay: number = 12): void {
     const dt = Math.min(deltaTime, 0.1);
     this.spawnTimer += dt;
+    this.frameCount = (this.frameCount + 1) & 0x7fffffff;
     
-    if (Math.random() < 0.05) { // Roughly every second
-        Pathfinder.cleanCache();
+    if ((this.frameCount & 63) === 0) { // Every ~1 second without Math.random()
+      Pathfinder.cleanCache();
     }
     const now = Date.now();
 
@@ -675,21 +873,46 @@ export class EntityManager {
         this.updateEntityAI(state, EntityManager._tempVecA, playerPos, distToPlayer, world, isNight, timeOfDay);
       }
 
+      const isNagaBoss = state.modelType === 'naga_antaboga' || state.modelType === 'naga_baruklinting';
+      const isButoIjoBoss = state.modelType === 'buto_ijo_colossus';
+      if (isNagaBoss) {
+        const hpRatio = state.health / Math.max(1, state.maxHealth);
+        // Phase 2 (65% - 30% HP): Aerial Hover & Magma Volley; Phase 3 (<30% HP): Crater Barrage
+        state.attackRange = hpRatio <= 0.65 ? 15.0 : 5.5;
+      } else if (isButoIjoBoss) {
+        state.attackRange = 6.2;
+      }
+
       if (state.aiState === 'attack' && (state.type === 'hostile' || state.type === 'boss' || state.isBoss)) {
          if (now - (state.lastAttackTime || 0) > (state.attackCooldown || 1500)) {
              state.lastAttackTime = now;
              if (mesh.userData.rig) {
                CreatureAnimationEngine.triggerAttack(mesh.userData.rig);
              }
-             if (state.isBoss || state.type === 'boss' || state.modelType === 'batara_kala_colossus') {
+             if (state.isBoss || state.type === 'boss' || state.modelType === 'batara_kala_colossus' || isNagaBoss || isButoIjoBoss) {
+               const hpRatio = state.health / Math.max(1, state.maxHealth);
                GameEventBus.emit('BOSS_ATTACK_TELEGRAPH', {
                  bossId: id,
                  bossName: state.name,
                  position: [playerPos.x, Math.floor(playerPos.y), playerPos.z],
                  damage: state.damage,
-                 radius: state.modelType === 'batara_kala_colossus' ? 5.8 : 4.2,
-                 duration: (state.health / state.maxHealth <= 0.25) ? 1.05 : 1.3,
+                 radius: isNagaBoss ? (hpRatio <= 0.3 ? 6.5 : 4.8) : isButoIjoBoss ? (hpRatio <= 0.35 ? 6.4 : 5.2) : state.modelType === 'batara_kala_colossus' ? 5.8 : 4.2,
+                 duration: hpRatio <= 0.3 ? 0.95 : 1.25,
                });
+               // Phase 3 Naga Baruklinting or Buto Ijo calls down secondary shockwave rings around the player
+               if ((isNagaBoss || isButoIjoBoss) && hpRatio <= 0.38) {
+                 const angle = Math.random() * Math.PI * 2;
+                 const ox = Math.cos(angle) * 5.0;
+                 const oz = Math.sin(angle) * 5.0;
+                 GameEventBus.emit('BOSS_ATTACK_TELEGRAPH', {
+                   bossId: `${id}_crater`,
+                   bossName: isButoIjoBoss ? 'Lindu Gada Buto Ijo' : 'Lontaran Kawah Baruklinting',
+                   position: [playerPos.x + ox, Math.floor(playerPos.y), playerPos.z + oz],
+                   damage: Math.round(state.damage * 0.85),
+                   radius: 4.2,
+                   duration: 1.15,
+                 });
+               }
              } else if (damagePlayer) {
                  damagePlayer(state.damage, state.name);
              }
@@ -770,11 +993,20 @@ export class EntityManager {
         }
       }
 
-      // Update 3D Mesh
+      // Update 3D Mesh (with Phase 2 Aerial Levitation for Naga Baruklinting / Antaboga)
       const oldCx = Math.floor(mesh.position.x / CHUNK_SIZE_X);
       const oldCz = Math.floor(mesh.position.z / CHUNK_SIZE_Z);
       
-      mesh.position.set(state.position[0], state.position[1], state.position[2]);
+      let hoverOffset = 0;
+      if (state.modelType === 'naga_antaboga' || state.modelType === 'naga_baruklinting') {
+        const hpRatio = state.health / Math.max(1, state.maxHealth);
+        if (hpRatio <= 0.65 && hpRatio > 0.28) {
+          hoverOffset = 2.8 + Math.sin(now * 0.004) * 0.55;
+        } else if (hpRatio <= 0.28) {
+          hoverOffset = 1.4 + Math.sin(now * 0.008) * 0.45;
+        }
+      }
+      mesh.position.set(state.position[0], state.position[1] + hoverOffset, state.position[2]);
       
       const newCx = Math.floor(state.position[0] / CHUNK_SIZE_X);
       const newCz = Math.floor(state.position[2] / CHUNK_SIZE_Z);
@@ -786,20 +1018,31 @@ export class EntityManager {
       }
       mesh.rotation.y = state.rotation;
 
-      // Creature Visual 3.0 Hierarchical Procedural Animation
+      // 3-Tier Distance & Shadow Culling
+      // Tier 0 (< 22m => distSq < 484): Full 60Hz rig animation & shadow
+      // Tier 1 (22m - 42m => distSq < 1764): 30Hz rig animation, no dynamic shadow casting on small entities
+      // Tier 2 (> 42m => distSq >= 1764): 15Hz rig animation, simplified bobbing
       const rig = mesh.userData.rig as CreatureRig | undefined;
       if (rig) {
-        CreatureAnimationEngine.update(dt, rig, state, distToPlayerSq2D, this.frameCount);
+        if (distToPlayerSq2D < 484 || state.isBoss || state.type === 'boss') {
+          CreatureAnimationEngine.update(dt, rig, state, distToPlayerSq2D, this.frameCount);
+        } else if (distToPlayerSq2D < 1764) {
+          if ((this.frameCount & 1) === 0) {
+            CreatureAnimationEngine.update(dt * 2, rig, state, distToPlayerSq2D, this.frameCount);
+          }
+        } else if ((this.frameCount & 3) === 0) {
+          CreatureAnimationEngine.update(dt * 4, rig, state, distToPlayerSq2D, this.frameCount);
+        }
       } else {
         // Fallback bobbing if model has no rig
         const isMoving = Math.abs(state.velocity[0]) > 0.1 || Math.abs(state.velocity[2]) > 0.1;
         if (isMoving) {
-          mesh.position.y += Math.abs(Math.sin(Date.now() * 0.01)) * 0.08;
+          mesh.position.y += Math.abs(Math.sin(now * 0.01)) * 0.08;
         }
       }
 
-      // Despawn distant entities
-      if (distToPlayerSq2D > 6400 && state.type !== 'npc') { // 80m squared = 6400
+      // Despawn distant entities (never despawn NPCs, bosses, or tamed companions)
+      if (distToPlayerSq2D > 6400 && state.type !== 'npc' && !state.isTamed && !state.isBoss && state.type !== 'boss') { // 80m squared = 6400
         if (rig) {
           CreatureAnimationEngine.cleanup(rig);
         }
@@ -863,7 +1106,17 @@ export class EntityManager {
     state.health = Math.max(0, state.health - damage);
 
     // Apply Poise Damage and Check Stagger
-    const isBoss = state.type === 'boss' || state.modelType.includes('boss') || state.modelType === 'void_sovereign' || state.modelType === 'ruin_sentinel';
+    const isBoss =
+      state.type === 'boss' ||
+      state.isBoss ||
+      state.modelType.includes('boss') ||
+      state.modelType === 'void_sovereign' ||
+      state.modelType === 'ruin_sentinel' ||
+      state.modelType === 'batara_kala_colossus' ||
+      state.modelType === 'naga_antaboga' ||
+      state.modelType === 'hyang_batara_bhumi' ||
+      state.modelType === 'candi_sentinel' ||
+      state.modelType === 'raksasa_ulin';
     const poiseResult = PoiseSystem.applyPoiseDamage(entityId, poiseDamage, isBoss ? 160 : 55, isBoss);
     const isStaggered = !!poiseResult.staggered;
     if (isStaggered) {
@@ -894,7 +1147,17 @@ export class EntityManager {
 
     const killed = state.health <= 0;
     if (killed) {
-      const isBoss = state.type === 'boss' || state.modelType.includes('boss') || state.modelType === 'void_sovereign' || state.modelType === 'ruin_sentinel';
+      const isBoss =
+        state.type === 'boss' ||
+        state.isBoss ||
+        state.modelType.includes('boss') ||
+        state.modelType === 'void_sovereign' ||
+        state.modelType === 'ruin_sentinel' ||
+        state.modelType === 'batara_kala_colossus' ||
+        state.modelType === 'naga_antaboga' ||
+        state.modelType === 'hyang_batara_bhumi' ||
+        state.modelType === 'candi_sentinel' ||
+        state.modelType === 'raksasa_ulin';
       
       // Emit to GameEventBus
       GameEventBus.emit('ENTITY_KILLED', {
@@ -932,7 +1195,17 @@ export class EntityManager {
   public getActiveBossState(playerPos: THREE.Vector3, maxDistance: number = 45): BossCombatState | null {
     for (const [id, entry] of this.entities.entries()) {
       const { state } = entry;
-      const isBoss = state.type === 'boss' || state.modelType.includes('boss') || state.modelType === 'void_sovereign' || state.modelType === 'ruin_sentinel';
+      const isBoss =
+        state.type === 'boss' ||
+        state.isBoss ||
+        state.modelType.includes('boss') ||
+        state.modelType === 'void_sovereign' ||
+        state.modelType === 'ruin_sentinel' ||
+        state.modelType === 'batara_kala_colossus' ||
+        state.modelType === 'naga_antaboga' ||
+        state.modelType === 'hyang_batara_bhumi' ||
+        state.modelType === 'candi_sentinel' ||
+        state.modelType === 'raksasa_ulin';
       if (isBoss) {
         const dist = Math.sqrt(
           (state.position[0] - playerPos.x) ** 2 +
@@ -946,9 +1219,9 @@ export class EntityManager {
             modelType: state.modelType,
             health: state.health,
             maxHealth: state.maxHealth,
-            phase: state.health < state.maxHealth * 0.4 ? 2 : 1,
-            maxPhases: 2,
-            enraged: state.health < state.maxHealth * 0.3,
+            phase: state.health < state.maxHealth * 0.25 ? 3 : state.health < state.maxHealth * 0.6 ? 2 : 1,
+            maxPhases: 3,
+            enraged: state.health < state.maxHealth * 0.25,
             position: state.position,
           };
         }
@@ -957,15 +1230,67 @@ export class EntityManager {
     return null;
   }
 
-  public spawnBoss(type: 'ruin_sentinel' | 'boss_void_sovereign' | 'void_sovereign' | 'batara_kala_colossus', position: [number, number, number], world: VoxelWorld): string {
+  public spawnBoss(
+    type: 'ruin_sentinel' | 'boss_void_sovereign' | 'void_sovereign' | 'batara_kala_colossus' | 'naga_antaboga' | 'buto_ijo_colossus',
+    position: [number, number, number],
+    world: VoxelWorld
+  ): string {
     const id = `boss_${type}_${Date.now()}`;
-    const spawnY = world.getSpawnHeight(position[0], position[2]);
+    const spawnY = position[1] < 55 ? position[1] : world.getSpawnHeight(position[0], position[2]);
     const actualPos: [number, number, number] = [position[0], spawnY, position[2]];
 
-    if (type === 'batara_kala_colossus') {
+    if (type === 'buto_ijo_colossus') {
       this.spawnEntity({
         id,
         type: 'boss',
+        isBoss: true,
+        name: 'Raksasa Buto Ijo Penjaga Candi',
+        position: actualPos,
+        velocity: [0, 0, 0],
+        rotation: 0,
+        health: 1500,
+        maxHealth: 1500,
+        damage: 48,
+        speed: 2.4,
+        aiState: 'wander',
+        modelType: 'buto_ijo_colossus',
+        drops: [
+          { itemId: 'gada_pusaka_buto_ijo', chance: 1.0, count: [1, 1] },
+          { itemId: 'mustika_zamrud_khatulistiwa', chance: 1.0, count: [2, 3] },
+          { itemId: 'kitab_silat_nusantara', chance: 0.9, count: [1, 1] },
+          { itemId: 'aether_crystal', chance: 1.0, count: [14, 24] },
+          { itemId: 'gold_ingot', chance: 1.0, count: [8, 14] },
+        ],
+      });
+    } else if (type === 'naga_antaboga' || type === ('naga_baruklinting' as any)) {
+      this.spawnEntity({
+        id,
+        type: 'boss',
+        isBoss: true,
+        name: 'Naga Lahar Baruklinting (Sang Hyang Antaboga)',
+        position: actualPos,
+        velocity: [0, 0, 0],
+        rotation: 0,
+        health: 1650,
+        maxHealth: 1650,
+        damage: 52,
+        speed: 2.5,
+        aiState: 'wander',
+        modelType: 'naga_antaboga',
+        drops: [
+          { itemId: 'keris_naga_baruklinting', chance: 1.0, count: [1, 1] },
+          { itemId: 'mustika_naga_pusaka', chance: 1.0, count: [1, 1] },
+          { itemId: 'tombak_trisula_naga', chance: 0.85, count: [1, 1] },
+          { itemId: 'sisik_emas_naga', chance: 1.0, count: [3, 6] },
+          { itemId: 'aether_crystal', chance: 1.0, count: [14, 28] },
+          { itemId: 'mythril_ingot', chance: 1.0, count: [8, 14] },
+        ],
+      });
+    } else if (type === 'batara_kala_colossus') {
+      this.spawnEntity({
+        id,
+        type: 'boss',
+        isBoss: true,
         name: 'Batara Kala Underchamber Colossus',
         position: actualPos,
         velocity: [0, 0, 0],
@@ -988,6 +1313,7 @@ export class EntityManager {
       this.spawnEntity({
         id,
         type: 'boss',
+        isBoss: true,
         name: 'Ancient Ruin Sentinel',
         position: actualPos,
         velocity: [0, 0, 0],
@@ -1009,6 +1335,7 @@ export class EntityManager {
       this.spawnEntity({
         id,
         type: 'boss',
+        isBoss: true,
         name: 'The Void Sovereign',
         position: actualPos,
         velocity: [0, 0, 0],

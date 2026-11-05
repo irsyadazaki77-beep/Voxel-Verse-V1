@@ -10,6 +10,7 @@ interface CraftingModalProps {
   inventory: (ItemStack | null)[];
   setInventory: React.Dispatch<React.SetStateAction<(ItemStack | null)[]>>;
   station?: 'hand' | 'crafting_bench' | 'anvil';
+  stationPos?: [number, number, number] | null;
   onClose: () => void;
   onCraftSuccess?: (recipe: CraftingRecipe) => void;
 }
@@ -18,6 +19,7 @@ export const CraftingModal: React.FC<CraftingModalProps> = ({
   inventory,
   setInventory,
   station = 'crafting_bench',
+  stationPos = null,
   onClose,
   onCraftSuccess,
 }) => {
@@ -41,10 +43,11 @@ export const CraftingModal: React.FC<CraftingModalProps> = ({
 
   const handleCraft = (recipe: CraftingRecipe) => {
     const netSession = NetworkSession.getInstance();
+    const stationContext = activeStation === 'crafting_bench' ? 'bench' : activeStation;
     if (netSession.isMultiplayerActive && netSession.isConnected()) {
       // Optimistic local craft evaluation: verify client-side prerequisites first
       if (CraftingSystem.canCraft(recipe, inventory, craftQuantity)) {
-        netSession.sendCraftRequest(recipe.id, craftQuantity, activeStation);
+        netSession.sendCraftRequest(recipe.id, craftQuantity, stationContext, stationPos || undefined);
         if (onCraftSuccess) onCraftSuccess(recipe);
       }
     } else {
