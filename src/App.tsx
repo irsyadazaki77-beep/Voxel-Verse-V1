@@ -8,14 +8,8 @@ import { GameMode } from './types';
 import { MainMenu } from './components/MainMenu';
 import { WorldPreset } from './engine/world/WorldConfig';
 import { ErrorBoundary } from './components/ErrorBoundary';
-
-const GameCanvas = React.lazy(() =>
-  import('./components/GameCanvas').then((m) => ({ default: m.GameCanvas }))
-);
-
-const NusantaraHeritageViewer = React.lazy(() =>
-  import('./components/NusantaraHeritageViewer').then((m) => ({ default: m.NusantaraHeritageViewer }))
-);
+import { GameCanvas } from './components/GameCanvas';
+import { NusantaraHeritageViewer } from './components/NusantaraHeritageViewer';
 
 const VoxelVerseLoadingFallback: React.FC<{ message?: string }> = ({
   message = 'Memuat Dunia VoxelVerse...',

@@ -11,6 +11,26 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+        'lucide-react',
+        'three',
+        'three/addons/controls/OrbitControls.js',
+        'three/examples/jsm/postprocessing/EffectComposer.js',
+        'three/examples/jsm/postprocessing/RenderPass.js',
+        'three/examples/jsm/postprocessing/UnrealBloomPass.js',
+        'three/examples/jsm/postprocessing/ShaderPass.js',
+        'three/examples/jsm/postprocessing/SMAAPass.js',
+        'three/examples/jsm/postprocessing/FXAAPass.js',
+        'three/examples/jsm/postprocessing/OutputPass.js',
+        'three/examples/jsm/postprocessing/SSAOPass.js',
+      ],
+    },
     build: {
       chunkSizeWarningLimit: 800,
       rollupOptions: {

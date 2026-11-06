@@ -36,6 +36,10 @@ import { NetworkSession } from '../engine/network/NetworkSession';
 import { CharacterProgressionManager } from '../engine/progression/CharacterProgressionManager';
 import { MahakaryaNusantaraModal } from './MahakaryaNusantaraModal';
 import { MahakaryaNusantaraSystem } from '../engine/systems/MahakaryaNusantaraSystem';
+import { NusantaraSanctumSilatSubakSystem } from '../engine/systems/NusantaraSanctumSilatSubakSystem';
+import { MaritimeVesselSystem } from '../engine/systems/MaritimeVesselSystem';
+import { VernacularHologramSystem } from '../engine/systems/VernacularHologramSystem';
+import { AerialFlightAndSiegeSystem } from '../engine/systems/AerialFlightAndSiegeSystem';
 
 interface HUDProps {
   hotbar: (ItemStack | null)[];
@@ -1011,30 +1015,22 @@ export const HUD: React.FC<HUDProps> = ({
       } else if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const rt = (window as any).__voxelRuntime;
         if (rt) {
-          import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-            ({ NusantaraSanctumSilatSubakSystem }) => {
-              NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt.audio);
-            }
-          );
+          NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt.audio);
         }
       } else if (e.code === 'KeyG' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const rt = (window as any).__voxelRuntime;
         if (rt && rt.player && rt.stats) {
-          import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-            ({ NusantaraSanctumSilatSubakSystem }) => {
-              if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
-                NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
-                  rt.entities,
-                  rt.player,
-                  rt.stats,
-                  rt.audio,
-                  rt.particles
-                );
-              } else {
-                NusantaraSanctumSilatSubakSystem.cycleAjianUltimate(rt.audio);
-              }
-            }
-          );
+          if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
+            NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
+              rt.entities,
+              rt.player,
+              rt.stats,
+              rt.audio,
+              rt.particles
+            );
+          } else {
+            NusantaraSanctumSilatSubakSystem.cycleAjianUltimate(rt.audio);
+          }
         }
       } else if (e.code === 'KeyN' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         setMahakaryaInitialTab('SAMUDRA_KERETA');
@@ -1652,18 +1648,14 @@ export const HUD: React.FC<HUDProps> = ({
                   onClick={() => {
                     const rt = (window as any).__voxelRuntime;
                     if (rt && rt.world && rt.entities && rt.player) {
-                      import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                        ({ NusantaraSanctumSilatSubakSystem }) => {
-                          NusantaraSanctumSilatSubakSystem.excavateUndergroundCandiSanctum(
-                            rt.world,
-                            rt.entities,
-                            rt.player,
-                            rt.audio,
-                            rt.particles,
-                            rt.stats,
-                            (itemId, count) => rt.addItemToInventory(itemId, count)
-                          );
-                        }
+                      NusantaraSanctumSilatSubakSystem.excavateUndergroundCandiSanctum(
+                        rt.world,
+                        rt.entities,
+                        rt.player,
+                        rt.audio,
+                        rt.particles,
+                        rt.stats,
+                        (itemId, count) => rt.addItemToInventory(itemId, count)
                       );
                     }
                     setShowQuickTools(false);
@@ -1999,8 +1991,7 @@ export const HUD: React.FC<HUDProps> = ({
 
             const showSilatStrip =
               !!nusantaraV46 &&
-              (nusantaraV46.tenagaDalam > 0 ||
-                nusantaraV46.subakWheelCount > 0 ||
+              (nusantaraV46.subakWheelCount > 0 ||
                 nusantaraV46.wayangActive ||
                 heldDef?.category === 'weapon' ||
                 heldId === 'kitab_silat_nusantara' ||
@@ -2045,9 +2036,7 @@ export const HUD: React.FC<HUDProps> = ({
                           onClick={() => {
                             const rt = (window as any).__voxelRuntime;
                             if (rt && rt.player) {
-                              import('../engine/systems/MaritimeVesselSystem').then(({ MaritimeVesselSystem }) => {
-                                MaritimeVesselSystem.engageDivingAnchor(rt.player, rt.stats, rt.world);
-                              });
+                              MaritimeVesselSystem.engageDivingAnchor(rt.player, rt.stats, rt.world);
                             }
                           }}
                           className="px-2.5 py-1 rounded-lg bg-cyan-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
@@ -2070,9 +2059,7 @@ export const HUD: React.FC<HUDProps> = ({
                           <button
                             onClick={() => {
                               const rt = (window as any).__voxelRuntime;
-                              import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
-                                VernacularHologramSystem.cycleTemplate(rt?.audio);
-                              });
+                              VernacularHologramSystem.cycleTemplate(rt?.audio);
                             }}
                             className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-mono text-[10px] cursor-pointer"
                           >
@@ -2081,9 +2068,7 @@ export const HUD: React.FC<HUDProps> = ({
                           <button
                             onClick={() => {
                               const rt = (window as any).__voxelRuntime;
-                              import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
-                                VernacularHologramSystem.rotateHologram(rt?.audio);
-                              });
+                              VernacularHologramSystem.rotateHologram(rt?.audio);
                             }}
                             className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-sky-200 font-mono text-[10px] cursor-pointer"
                           >
@@ -2093,9 +2078,7 @@ export const HUD: React.FC<HUDProps> = ({
                             onClick={() => {
                               const rt = (window as any).__voxelRuntime;
                               if (rt && rt.world) {
-                                import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
-                                  VernacularHologramSystem.constructActiveHologram(rt.world, rt.audio, rt.particles);
-                                });
+                                VernacularHologramSystem.constructActiveHologram(rt.world, rt.audio, rt.particles);
                               }
                             }}
                             className="px-2.5 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
@@ -2176,27 +2159,23 @@ export const HUD: React.FC<HUDProps> = ({
                           onClick={() => {
                             const rt = (window as any).__voxelRuntime;
                             if (!rt || !rt.player) return;
-                            import('../engine/systems/AerialFlightAndSiegeSystem').then(
-                              ({ AerialFlightAndSiegeSystem }) => {
-                                if (AerialFlightAndSiegeSystem.mode !== 'none') {
-                                  AerialFlightAndSiegeSystem.dismount(rt.audio);
-                                } else if (heldId === 'layang_naga_batik') {
-                                  AerialFlightAndSiegeSystem.deployDragonKiteGlider(
-                                    rt.player.position,
-                                    rt.player.yaw,
-                                    rt.audio,
-                                    rt.particles
-                                  );
-                                } else {
-                                  AerialFlightAndSiegeSystem.summonAndMountGaruda(
-                                    rt.player.position,
-                                    rt.player.yaw,
-                                    rt.audio,
-                                    rt.particles
-                                  );
-                                }
-                              }
-                            );
+                            if (AerialFlightAndSiegeSystem.mode !== 'none') {
+                              AerialFlightAndSiegeSystem.dismount(rt.audio);
+                            } else if (heldId === 'layang_naga_batik') {
+                              AerialFlightAndSiegeSystem.deployDragonKiteGlider(
+                                rt.player.position,
+                                rt.player.yaw,
+                                rt.audio,
+                                rt.particles
+                              );
+                            } else {
+                              AerialFlightAndSiegeSystem.summonAndMountGaruda(
+                                rt.player.position,
+                                rt.player.yaw,
+                                rt.audio,
+                                rt.particles
+                              );
+                            }
                           }}
                           className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer shrink-0"
                         >
@@ -2227,18 +2206,14 @@ export const HUD: React.FC<HUDProps> = ({
                             onClick={() => {
                               const rt = (window as any).__voxelRuntime;
                               if (!rt || !rt.player || !rt.world || !rt.entities) return;
-                              import('../engine/systems/AerialFlightAndSiegeSystem').then(
-                                ({ AerialFlightAndSiegeSystem }) => {
-                                  AerialFlightAndSiegeSystem.triggerVillageSiege(
-                                    rt.world,
-                                    rt.entities,
-                                    rt.player.position,
-                                    rt.audio,
-                                    rt.particles,
-                                    (itemId, count) => rt.addItemToInventory(itemId, count),
-                                    (xp) => rt.stats?.addXP(xp)
-                                  );
-                                }
+                              AerialFlightAndSiegeSystem.triggerVillageSiege(
+                                rt.world,
+                                rt.entities,
+                                rt.player.position,
+                                rt.audio,
+                                rt.particles,
+                                (itemId, count) => rt.addItemToInventory(itemId, count),
+                                (xp) => rt.stats?.addXP(xp)
                               );
                             }}
                             disabled={!!activeVillageSiege?.active}
@@ -2250,16 +2225,12 @@ export const HUD: React.FC<HUDProps> = ({
                             onClick={() => {
                               const rt = (window as any).__voxelRuntime;
                               if (!rt || !rt.player) return;
-                              import('../engine/systems/AerialFlightAndSiegeSystem').then(
-                                ({ AerialFlightAndSiegeSystem }) => {
-                                  AerialFlightAndSiegeSystem.releaseSkyLanterns(
-                                    rt.player.position,
-                                    6,
-                                    rt.audio,
-                                    rt.particles,
-                                    rt.stats
-                                  );
-                                }
+                              AerialFlightAndSiegeSystem.releaseSkyLanterns(
+                                rt.player.position,
+                                6,
+                                rt.audio,
+                                rt.particles,
+                                rt.stats
                               );
                             }}
                             className="px-2.5 py-1 rounded-lg bg-amber-500/25 border border-amber-400/50 text-amber-200 font-mono font-bold text-[10px] cursor-pointer"
@@ -2280,18 +2251,14 @@ export const HUD: React.FC<HUDProps> = ({
                           onClick={() => {
                             const rt = (window as any).__voxelRuntime;
                             if (!rt || !rt.world || !rt.entities || !rt.player) return;
-                            import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                              ({ NusantaraSanctumSilatSubakSystem }) => {
-                                NusantaraSanctumSilatSubakSystem.excavateUndergroundCandiSanctum(
-                                  rt.world,
-                                  rt.entities,
-                                  rt.player,
-                                  rt.audio,
-                                  rt.particles,
-                                  rt.stats,
-                                  (itemId, count) => rt.addItemToInventory(itemId, count)
-                                );
-                              }
+                            NusantaraSanctumSilatSubakSystem.excavateUndergroundCandiSanctum(
+                              rt.world,
+                              rt.entities,
+                              rt.player,
+                              rt.audio,
+                              rt.particles,
+                              rt.stats,
+                              (itemId, count) => rt.addItemToInventory(itemId, count)
                             );
                           }}
                           className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
@@ -2310,15 +2277,11 @@ export const HUD: React.FC<HUDProps> = ({
                           onClick={() => {
                             const rt = (window as any).__voxelRuntime;
                             if (!rt || !rt.world || !rt.player) return;
-                            import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                              ({ NusantaraSanctumSilatSubakSystem }) => {
-                                NusantaraSanctumSilatSubakSystem.deploySubakWaterwheel(
-                                  rt.world,
-                                  rt.player,
-                                  rt.audio,
-                                  rt.particles
-                                );
-                              }
+                            NusantaraSanctumSilatSubakSystem.deploySubakWaterwheel(
+                              rt.world,
+                              rt.player,
+                              rt.audio,
+                              rt.particles
                             );
                           }}
                           className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
@@ -2339,16 +2302,12 @@ export const HUD: React.FC<HUDProps> = ({
                           onClick={() => {
                             const rt = (window as any).__voxelRuntime;
                             if (!rt || !rt.world || !rt.player) return;
-                            import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                              ({ NusantaraSanctumSilatSubakSystem }) => {
-                                NusantaraSanctumSilatSubakSystem.deployWayangStageAndNightMarket(
-                                  rt.world,
-                                  rt.player,
-                                  rt.audio,
-                                  rt.particles,
-                                  rt.stats
-                                );
-                              }
+                            NusantaraSanctumSilatSubakSystem.deployWayangStageAndNightMarket(
+                              rt.world,
+                              rt.player,
+                              rt.audio,
+                              rt.particles,
+                              rt.stats
                             );
                           }}
                           className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
@@ -2404,11 +2363,7 @@ export const HUD: React.FC<HUDProps> = ({
                     <button
                       onClick={() => {
                         const rt = (window as any).__voxelRuntime;
-                        import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                          ({ NusantaraSanctumSilatSubakSystem }) => {
-                            NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt?.audio);
-                          }
-                        );
+                        NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt?.audio);
                       }}
                       title={`${nusantaraV46.stanceBonusText} — Klik atau tekan [V] untuk ganti Kuda-Kuda`}
                       className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 text-zinc-200 font-medium cursor-pointer transition-colors"
@@ -2433,21 +2388,17 @@ export const HUD: React.FC<HUDProps> = ({
                       onClick={() => {
                         const rt = (window as any).__voxelRuntime;
                         if (!rt || !rt.player || !rt.stats) return;
-                        import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                          ({ NusantaraSanctumSilatSubakSystem }) => {
-                            if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
-                              NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
-                                rt.entities,
-                                rt.player,
-                                rt.stats,
-                                rt.audio,
-                                rt.particles
-                              );
-                            } else {
-                              NusantaraSanctumSilatSubakSystem.cycleAjianUltimate(rt.audio);
-                            }
-                          }
-                        );
+                        if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
+                          NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
+                            rt.entities,
+                            rt.player,
+                            rt.stats,
+                            rt.audio,
+                            rt.particles
+                          );
+                        } else {
+                          NusantaraSanctumSilatSubakSystem.cycleAjianUltimate(rt.audio);
+                        }
                       }}
                       title="Klik atau tekan [G] untuk pilih / lepaskan Ajian Sakti Pusaka"
                       className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-medium cursor-pointer transition-colors ${

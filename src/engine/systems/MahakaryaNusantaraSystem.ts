@@ -211,7 +211,7 @@ export class MahakaryaNusantaraSystem {
   public static gamelanBlessingTimer: number = 0;
 
   // 4. Companion Khodam & Tournament Arena State
-  public static activeKhodamId: KhodamCompanionId | null = 'MACAN_PUTIH';
+  public static activeKhodamId: KhodamCompanionId | null = null;
   public static khodamMesh: THREE.Group | null = null;
   public static khodamAttackTimer: number = 0;
   public static khodamOrbitAngle: number = 0;
@@ -923,13 +923,22 @@ export class MahakaryaNusantaraSystem {
     particles?: ParticleManager
   ): void {
     const root = this.getOrCreateRootGroup();
+
+    // Toggle off if clicking the already-active Khodam
+    if (this.activeKhodamId === khodamId && this.khodamMesh) {
+      root.remove(this.khodamMesh);
+      this.khodamMesh = null;
+      this.activeKhodamId = null;
+      return;
+    }
+
     this.activeKhodamId = khodamId;
 
     if (this.khodamMesh) {
       root.remove(this.khodamMesh);
     }
     this.khodamMesh = this.buildKhodamMesh(khodamId);
-    this.khodamMesh.position.set(player.position.x + 1.8, player.position.y + 1.8, player.position.z + 1.8);
+    this.khodamMesh.position.set(player.position.x + 2.8, player.position.y + 2.1, player.position.z + 2.8);
     root.add(this.khodamMesh);
 
     const def = KHODAM_COMPANIONS[khodamId];
@@ -1133,7 +1142,8 @@ export class MahakaryaNusantaraSystem {
     outfitId: NusantaraWardrobeId,
     player: PlayerController,
     stats?: PlayerStats,
-    audio?: SoundSynthesizer
+    audio?: SoundSynthesizer,
+    silent: boolean = false
   ): void {
     this.activeWardrobeId = outfitId;
     const def = NUSANTARA_WARDROBE_OUTFITS[outfitId];
@@ -1162,45 +1172,48 @@ export class MahakaryaNusantaraSystem {
       roughness: 0.15,
     });
 
-    // Flowing Royal Batik Cape on Back
-    const cape = new THREE.Mesh(new THREE.BoxGeometry(0.68, 1.15, 0.06), capeMat);
-    cape.position.set(0, 0.88, -0.26);
-    cape.rotation.x = 0.14;
+    // Flowing Royal Batik Cape on Back (+Z is back of avatar in Three.js)
+    const cape = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.95, 0.05), capeMat);
+    cape.position.set(0, 0.82, 0.18);
+    cape.rotation.x = -0.12;
     ornament.add(cape);
 
     // Gold Trim Border at Bottom of Cape
-    const capeHem = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.1, 0.07), trimMat);
-    capeHem.position.set(0, 0.34, -0.33);
+    const capeHem = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.08, 0.06), trimMat);
+    capeHem.position.set(0, 0.36, 0.24);
     ornament.add(capeHem);
 
     // Left & Right Golden Senopati Pauldrons
-    const leftPauldron = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.34), trimMat);
-    leftPauldron.position.set(-0.46, 1.38, 0);
-    const rightPauldron = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.34), trimMat);
-    rightPauldron.position.set(0.46, 1.38, 0);
+    const leftPauldron = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.26), trimMat);
+    leftPauldron.position.set(-0.36, 1.24, 0);
+    const rightPauldron = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.26), trimMat);
+    rightPauldron.position.set(0.36, 1.24, 0);
     ornament.add(leftPauldron, rightPauldron);
 
     // Kuluk / Mahkota / Udeng Headpiece
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.24, 0.22, 8), crownMat);
-    crown.position.set(0, 1.88, 0);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.21, 0.16, 8), crownMat);
+    crown.position.set(0, 1.76, 0);
     ornament.add(crown);
 
-    player.playerGroup.add(ornament);
+    // Only visible in 3rd-person or Photo Mode — never block 1st-person camera!
+    ornament.visible = player.cameraMode !== 'first_person' || this.photoModeActive;
+    player.avatarMesh.add(ornament);
     this.wardrobeOrnamentGroup = ornament;
 
     if (stats) {
       stats.maxHealth = 100 + def.armorBonus;
       stats.health = Math.min(stats.maxHealth, stats.health + 15);
     }
-    audio?.playItemCollect();
-
-    NotificationManager.push({
-      title: `👘 Busana Aktif: ${def.name}`,
-      message: `${def.originRegion} · ${def.bonusSummary}`,
-      priority: 'HIGH',
-      colorTheme: 'amber',
-      durationMs: 3600,
-    });
+    if (!silent) {
+      audio?.playItemCollect();
+      NotificationManager.push({
+        title: `👘 Busana Aktif: ${def.name}`,
+        message: `${def.originRegion} · ${def.bonusSummary}`,
+        priority: 'HIGH',
+        colorTheme: 'amber',
+        durationMs: 3600,
+      });
+    }
   }
 
   // ============================================================================
@@ -1285,20 +1298,15 @@ export class MahakaryaNusantaraSystem {
   ): void {
     this.elapsedTime += dt;
 
-    // Ensure initial Khodam & Wardrobe ornament are attached once
-    if (!this.wardrobeOrnamentGroup && player?.playerGroup) {
-      this.equipWardrobeOutfit(this.activeWardrobeId, player);
-    }
-    if (this.activeKhodamId && !this.khodamMesh && player) {
-      const root = this.getOrCreateRootGroup();
-      this.khodamMesh = this.buildKhodamMesh(this.activeKhodamId);
-      this.khodamMesh.position.copy(player.position).addScalar(1.5);
-      root.add(this.khodamMesh);
+    // Keep wardrobe ornament strictly hidden in First-Person mode so it never blocks the camera
+    if (this.wardrobeOrnamentGroup) {
+      this.wardrobeOrnamentGroup.visible =
+        player.cameraMode !== 'first_person' || this.photoModeActive;
     }
 
     // 0. If 3D Free-Cam Photo Mode is active, smoothly damp free-cam movement
     if (this.photoModeActive && camera) {
-      player.playerGroup.visible = true;
+      player.avatarMesh.visible = true;
       const moveSpeed = 12.0 * dt;
       _tmpForward.set(-Math.sin(this.photoCamYaw), 0, -Math.cos(this.photoCamYaw)).normalize();
       _tmpRight.set(Math.cos(this.photoCamYaw), 0, -Math.sin(this.photoCamYaw)).normalize();
@@ -1437,10 +1445,10 @@ export class MahakaryaNusantaraSystem {
 
     // 4. Update 3D Companion Khodam & Pendekar Tournament Arena
     if (this.activeKhodamId && this.khodamMesh) {
-      this.khodamOrbitAngle += dt * 1.45;
-      const targetX = player.position.x + Math.cos(this.khodamOrbitAngle) * 1.9;
-      const targetZ = player.position.z + Math.sin(this.khodamOrbitAngle) * 1.9;
-      const targetY = player.position.y + 1.55 + Math.sin(this.elapsedTime * 3.2) * 0.22;
+      this.khodamOrbitAngle += dt * 1.25;
+      const targetX = player.position.x + Math.cos(this.khodamOrbitAngle) * 2.8;
+      const targetZ = player.position.z + Math.sin(this.khodamOrbitAngle) * 2.8;
+      const targetY = player.position.y + 2.15 + Math.sin(this.elapsedTime * 3.2) * 0.22;
 
       _tmpVecA.set(targetX, targetY, targetZ);
       this.khodamMesh.position.lerp(_tmpVecA, 1 - Math.exp(-8 * dt));
@@ -1626,13 +1634,11 @@ export class MahakaryaNusantaraSystem {
     const root = this.getOrCreateRootGroup();
     if (!data || typeof data !== 'object') return;
 
-    if (data.activeKhodamId && KHODAM_COMPANIONS[data.activeKhodamId as KhodamCompanionId]) {
-      this.activeKhodamId = data.activeKhodamId as KhodamCompanionId;
-    }
+    this.activeKhodamId = null;
     if (data.activeWardrobeId && NUSANTARA_WARDROBE_OUTFITS[data.activeWardrobeId as NusantaraWardrobeId]) {
       this.activeWardrobeId = data.activeWardrobeId as NusantaraWardrobeId;
       if (player) {
-        this.equipWardrobeOutfit(this.activeWardrobeId, player);
+        this.equipWardrobeOutfit(this.activeWardrobeId, player, undefined, undefined, true);
       }
     }
     if (data.gamelanScale === 'PELOG' || data.gamelanScale === 'SLENDRO') {

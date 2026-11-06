@@ -8,49 +8,20 @@ import { SaveManager } from '../engine/storage/SaveManager';
 import { HUD } from './HUD';
 import { LoadingScreen } from './LoadingScreen';
 import { TelemetryStore } from '../engine/ui/TelemetryStore';
-const InventoryModal = React.lazy(() =>
-  import('./InventoryModal').then((m) => ({ default: m.InventoryModal }))
-);
-const ChestModal = React.lazy(() =>
-  import('./ChestModal').then((m) => ({ default: m.ChestModal }))
-);
-const DeathModal = React.lazy(() =>
-  import('./DeathModal').then((m) => ({ default: m.DeathModal }))
-);
-
-const CraftingModal = React.lazy(() =>
-  import('./CraftingModal').then((m) => ({ default: m.CraftingModal }))
-);
-const FurnaceModal = React.lazy(() =>
-  import('./FurnaceModal').then((m) => ({ default: m.FurnaceModal }))
-);
-const AnvilModal = React.lazy(() =>
-  import('./AnvilModal').then((m) => ({ default: m.AnvilModal }))
-);
-const DialogueModal = React.lazy(() =>
-  import('./DialogueModal').then((m) => ({ default: m.DialogueModal }))
-);
-const PauseMenu = React.lazy(() =>
-  import('./PauseMenu').then((m) => ({ default: m.PauseMenu }))
-);
-const JournalModal = React.lazy(() =>
-  import('./JournalModal').then((m) => ({ default: m.JournalModal }))
-);
-const MapModal = React.lazy(() =>
-  import('./MapModal').then((m) => ({ default: m.MapModal }))
-);
-const ContentDebugModal = React.lazy(() =>
-  import('./ContentDebugModal').then((m) => ({ default: m.ContentDebugModal }))
-);
-const EngineeringModal = React.lazy(() =>
-  import('./EngineeringModal').then((m) => ({ default: m.EngineeringModal }))
-);
-const MultiplayerLobbyModal = React.lazy(() =>
-  import('./MultiplayerLobbyModal').then((m) => ({ default: m.MultiplayerLobbyModal }))
-);
-const CharacterProgressionModal = React.lazy(() =>
-  import('./CharacterProgressionModal').then((m) => ({ default: m.CharacterProgressionModal }))
-);
+import { InventoryModal } from './InventoryModal';
+import { ChestModal } from './ChestModal';
+import { DeathModal } from './DeathModal';
+import { CraftingModal } from './CraftingModal';
+import { FurnaceModal } from './FurnaceModal';
+import { AnvilModal } from './AnvilModal';
+import { DialogueModal } from './DialogueModal';
+import { PauseMenu } from './PauseMenu';
+import { JournalModal } from './JournalModal';
+import { MapModal } from './MapModal';
+import { ContentDebugModal } from './ContentDebugModal';
+import { EngineeringModal } from './EngineeringModal';
+import { MultiplayerLobbyModal } from './MultiplayerLobbyModal';
+import { CharacterProgressionModal } from './CharacterProgressionModal';
 import { MobileControls } from './MobileControls';
 import { DebugMap } from './DebugMap';
 import { NetworkSession } from '../engine/network/NetworkSession';

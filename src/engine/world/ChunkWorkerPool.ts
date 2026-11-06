@@ -1,4 +1,4 @@
-import { WorkerTaskInput, WorkerTaskResult, GenerateTaskInput, MeshTaskInput, GenerateTaskResult, MeshTaskResult } from './WorldWorker';
+import type { WorkerTaskInput, WorkerTaskResult, GenerateTaskInput, MeshTaskInput, GenerateTaskResult, MeshTaskResult } from './WorldWorker';
 import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { Logger } from '../ui/Logger';
 import { TransferableMeshData, VoxelMesher } from './VoxelMesher';

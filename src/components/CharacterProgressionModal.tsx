@@ -28,6 +28,7 @@ import { WeaponArchetypes } from '../engine/combat/WeaponArchetypes';
 import { BlueprintSystem } from '../engine/engineering/BlueprintSystem';
 import { NotificationManager } from '../engine/ui/NotificationManager';
 import { NusantaraSanctumSilatSubakSystem } from '../engine/systems/NusantaraSanctumSilatSubakSystem';
+import { AerialFlightAndSiegeSystem } from '../engine/systems/AerialFlightAndSiegeSystem';
 
 interface CharacterProgressionModalProps {
   isOpen: boolean;
@@ -929,19 +930,17 @@ export const CharacterProgressionModal: React.FC<CharacterProgressionModalProps>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => {
-                          if (!rt || !rt.player || !rt.world) return;
-                          import('../engine/systems/AerialFlightAndSiegeSystem').then(
-                            ({ AerialFlightAndSiegeSystem }) => {
-                              AerialFlightAndSiegeSystem.startVillageSiege(
-                                rt.world,
-                                rt.player,
-                                rt.entities,
-                                rt.audio,
-                                rt.particles
-                              );
-                              onClose();
-                            }
+                          if (!rt || !rt.player || !rt.world || !rt.entities) return;
+                          AerialFlightAndSiegeSystem.triggerVillageSiege(
+                            rt.world,
+                            rt.entities,
+                            rt.player.position,
+                            rt.audio,
+                            rt.particles,
+                            (itemId: string, count: number) => rt.addItemToInventory(itemId, count),
+                            (xp: number) => rt.stats?.addXP(xp)
                           );
+                          onClose();
                         }}
                         className="py-2 px-3 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 font-medium text-xs cursor-pointer"
                       >

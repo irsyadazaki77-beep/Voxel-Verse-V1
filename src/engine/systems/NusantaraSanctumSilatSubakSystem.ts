@@ -213,6 +213,7 @@ export class NusantaraSanctumSilatSubakSystem {
         polygonOffsetUnits: -1,
       });
       this.silatAuraRing = new THREE.Mesh(ringGeo, ringMat);
+      this.silatAuraRing.visible = false;
       this.rootGroup.add(this.silatAuraRing);
     }
     return this.rootGroup;
@@ -951,10 +952,7 @@ export class NusantaraSanctumSilatSubakSystem {
     this.addTenagaDalam(dt * 2.2); // Gentle passive meditation charge
 
     if (this.silatAuraRing) {
-      this.silatAuraRing.position.set(player.position.x, player.position.y - 0.72, player.position.z);
-      const pulse = 1.0 + Math.sin(this.auraPhase) * 0.06;
-      this.silatAuraRing.scale.set(pulse, pulse, 1);
-      this.silatAuraRing.rotation.z += dt * 0.8;
+      this.silatAuraRing.visible = false;
     }
 
     // 2. Update Active Ajian 3D Shockwave Rings

@@ -49,7 +49,7 @@ export interface MeshTaskResult {
 
 export type WorkerTaskResult = GenerateTaskResult | MeshTaskResult;
 
-if (typeof self !== 'undefined') {
+if (typeof self !== 'undefined' && typeof window === 'undefined') {
   let generatorCore: WorldGeneratorCore | null = null;
   let currentSeed = -1;
   let currentPreset: WorldPreset | null = null;
