@@ -11,6 +11,42 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '5.1.0',
+    date: '2026-11-05',
+    title: 'Penyempurnaan Stabilitas, Penyatuan Dock Taktis HUD, Fisika Kendaraan Presisi & Ketahanan Save/Load Nusantara',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Penyatuan Dock Taktis Bawah & Navigasi Modal Lebih Ringkas',
+        items: [
+          'Menyatukan Kartu Aksi Pusaka Kontekstual dengan Baris Status Silat, Tenaga Dalam, Khodam, dan Berkah Gamelan/Wayang ke dalam satu Dock Taktis terpadu di atas bar Vitals yang dapat dilipat dengan tombol [B].',
+          'Menyempurnakan hirarki penutupan popover HUD dengan tombol [Escape] serta memastikan seluruh angka metrik dinamis menggunakan format tabular-nums bebas lompatan tata letak.'
+        ]
+      },
+      {
+        category: '2. Validasi Save/Load Menyeluruh untuk Sistem Nusantara & RPG',
+        items: [
+          'Menambahkan serialisasi dan rekonstruksi otomatis 3D pada SaveManager & PersistenceSystem untuk Kincir Air Subak, Panggung Wayang Kulit, Pendopo Gamelan, Lokomotif Uap Aether, Mesin Bor Tambang, Khodam Pendamping, serta Busana Jubah Batik.',
+          'Memastikan status Kuda-Kuda Silat, Tenaga Dalam, Ajian Sakti, serta Character Progression tersimpan utuh lintas sesi di IndexedDB dan LocalStorage.'
+        ]
+      },
+      {
+        category: '3. Peningkatan Fisika Kendaraan Bahari, Kapal Selam, Kereta Uap & Garuda',
+        items: [
+          'Menerapkan redaman eksponensial independen frame-rate (THREE.MathUtils.damp) pada kemudi Kapal Phinisi, Perahu Cadik, Kapal Selam Nanggala Kencana, dan terbang Garuda Kencana.',
+          'Menambahkan proteksi batas dasar laut (seabed floor clamping) pada Kapal Selam serta batas aman tukikan daratan pada terbang Garuda/Layang Naga.'
+        ]
+      },
+      {
+        category: '4. Polesan Visual Anti Z-Fighting, Pencahayaan Cuaca Ekstrem & Audio Gamelan',
+        items: [
+          'Mengaktifkan polygonOffset pada seluruh cincin aura Silat, gelombang kejut Ajian, sonar kapal, dan marka serangan Boss di lantai agar bebas kedipan Z-fighting.',
+          'Menyelaraskan eksposur adaptif dan musik Gamelan prosedural secara otomatis saat cuaca Erupsi Merapi maupun Badai Petir Khatulistiwa berlangsung.'
+        ]
+      }
+    ]
+  },
+  {
     version: '5.0.0',
     date: '2026-11-01',
     title: 'Penyempurnaan Agung Nusantara: Dock Pintasan Terpadu, Kombo Keris 3-Tahap & Hit-Stop, Atmosfer Kunang-Kunang 3D, Rutinitas Desa & Optimasi 60 FPS',

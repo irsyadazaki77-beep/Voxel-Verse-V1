@@ -1322,22 +1322,34 @@ export class MahakaryaNusantaraSystem {
       }
     }
 
-    // 1. Update 3D Submarine Nanggala Kencana
+    // 1. Update 3D Submarine Nanggala Kencana (Smooth Damping & Seabed Floor Protection)
     if (this.submarineActive && this.submarineMesh) {
       stats.oxygen = stats.maxOxygen; // Pressurized hull keeps oxygen 100% full
       if (this.submarinePropeller) {
         this.submarinePropeller.rotation.z += dt * 16.0;
       }
-      if (player.keys.jump) {
-        player.velocity.y = 6.5;
-      } else if (player.keys.crouch) {
-        player.velocity.y = -6.5;
+      const targetSubVelY = player.keys.jump ? 6.5 : player.keys.crouch ? -6.5 : 0;
+      if (player.keys.jump || player.keys.crouch) {
+        player.velocity.y = THREE.MathUtils.damp(player.velocity.y, targetSubVelY, 10, dt);
       }
-      this.submarineMesh.position.lerp(player.position, 1 - Math.exp(-14 * dt));
+      // Prevent submarine from clipping below solid seabed terrain
+      const seaFloorY = world.getSpawnHeight(Math.floor(player.position.x), Math.floor(player.position.z));
+      if (player.position.y < seaFloorY + 1.2) {
+        player.position.y = seaFloorY + 1.2;
+        if (player.velocity.y < 0) player.velocity.y = 0;
+      }
+      this.submarineMesh.position.lerp(player.position, 1 - Math.exp(-16 * dt));
       this.submarineMesh.rotation.y = THREE.MathUtils.damp(
         this.submarineMesh.rotation.y,
         player.yaw,
-        10,
+        12,
+        dt
+      );
+      const targetSubPitch = THREE.MathUtils.clamp(-player.velocity.y * 0.045, -0.28, 0.28);
+      this.submarineMesh.rotation.x = THREE.MathUtils.damp(
+        this.submarineMesh.rotation.x,
+        targetSubPitch,
+        8,
         dt
       );
     }
@@ -1585,6 +1597,104 @@ export class MahakaryaNusantaraSystem {
       photoFov: Math.round(this.photoFov),
       photoFrame: this.photoFrame,
     };
+  }
+
+  public static serialize(): Record<string, any> {
+    return {
+      activeKhodamId: this.activeKhodamId,
+      activeWardrobeId: this.activeWardrobeId,
+      gamelanScale: this.gamelanScale,
+      gamelanBlessingTimer: Math.round(this.gamelanBlessingTimer),
+      gamelanStageBuilt: this.gamelanStageBuilt,
+      gamelanStagePos:
+        this.gamelanStageBuilt && this.gamelanGroup
+          ? [this.gamelanGroup.position.x, this.gamelanGroup.position.y, this.gamelanGroup.position.z]
+          : null,
+      quarryTotalMined: this.quarryTotalMined,
+      oceanCandiBuilt: this.oceanCandiBuilt,
+      oceanCandiPos: this.oceanCandiPos,
+      locomotiveActive: this.locomotiveActive,
+      locomotiveOrigin: this.locomotiveActive
+        ? [this.locomotiveOrigin.x, this.locomotiveOrigin.y, this.locomotiveOrigin.z]
+        : null,
+      quarryPositions: this.quarryRigs.map((r) => [r.pos.x, r.pos.y, r.pos.z]),
+    };
+  }
+
+  public static deserialize(data?: Record<string, any> | null, player?: PlayerController): void {
+    this.reset();
+    const root = this.getOrCreateRootGroup();
+    if (!data || typeof data !== 'object') return;
+
+    if (data.activeKhodamId && KHODAM_COMPANIONS[data.activeKhodamId as KhodamCompanionId]) {
+      this.activeKhodamId = data.activeKhodamId as KhodamCompanionId;
+    }
+    if (data.activeWardrobeId && NUSANTARA_WARDROBE_OUTFITS[data.activeWardrobeId as NusantaraWardrobeId]) {
+      this.activeWardrobeId = data.activeWardrobeId as NusantaraWardrobeId;
+      if (player) {
+        this.equipWardrobeOutfit(this.activeWardrobeId, player);
+      }
+    }
+    if (data.gamelanScale === 'PELOG' || data.gamelanScale === 'SLENDRO') {
+      this.gamelanScale = data.gamelanScale;
+    }
+    if (typeof data.gamelanBlessingTimer === 'number') {
+      this.gamelanBlessingTimer = Math.max(0, data.gamelanBlessingTimer);
+    }
+    if (typeof data.quarryTotalMined === 'number') {
+      this.quarryTotalMined = Math.max(0, data.quarryTotalMined);
+    }
+    if (typeof data.oceanCandiBuilt === 'boolean') {
+      this.oceanCandiBuilt = data.oceanCandiBuilt;
+    }
+    if (Array.isArray(data.oceanCandiPos) && data.oceanCandiPos.length === 3) {
+      this.oceanCandiPos = [
+        Number(data.oceanCandiPos[0]),
+        Number(data.oceanCandiPos[1]),
+        Number(data.oceanCandiPos[2]),
+      ];
+    }
+
+    if (data.gamelanStageBuilt && Array.isArray(data.gamelanStagePos) && data.gamelanStagePos.length === 3) {
+      this.gamelanGroup = this.buildGamelanEnsembleMesh();
+      this.gamelanGroup.position.set(
+        Number(data.gamelanStagePos[0]),
+        Number(data.gamelanStagePos[1]),
+        Number(data.gamelanStagePos[2])
+      );
+      this.gamelanGroup.visible = true;
+      this.gamelanStageBuilt = true;
+      root.add(this.gamelanGroup);
+    }
+
+    if (data.locomotiveActive && Array.isArray(data.locomotiveOrigin) && data.locomotiveOrigin.length === 3) {
+      this.locomotiveMesh = this.buildSteamLocomotiveMesh();
+      root.add(this.locomotiveMesh);
+      this.locomotiveOrigin.set(
+        Number(data.locomotiveOrigin[0]),
+        Number(data.locomotiveOrigin[1]),
+        Number(data.locomotiveOrigin[2])
+      );
+      this.locomotiveAngle = 0;
+      this.locomotiveActive = true;
+      this.locomotiveMesh.visible = true;
+    }
+
+    if (Array.isArray(data.quarryPositions)) {
+      for (const posArr of data.quarryPositions) {
+        if (!Array.isArray(posArr) || posArr.length !== 3) continue;
+        const { group: quarryGroup, drillHead } = this.buildQuarryDrillMesh();
+        const qPos = new THREE.Vector3(Number(posArr[0]), Number(posArr[1]), Number(posArr[2]));
+        quarryGroup.position.copy(qPos);
+        root.add(quarryGroup);
+        this.quarryRigs.push({
+          pos: qPos,
+          group: quarryGroup,
+          drillHead,
+          timer: 0,
+        });
+      }
+    }
   }
 
   public static reset(): void {

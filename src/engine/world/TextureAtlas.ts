@@ -1676,6 +1676,16 @@ export class TextureAtlas {
         return 'bioluminescent_coral';
       case BlockType.PEARL_CLAM_BLOCK:
         return 'pearl_clam_block';
+      case BlockType.ANDESITE_CANDI_STONE:
+        return 'carved_andesite';
+      case BlockType.MOSSY_CANDI_STONE:
+        return 'moss_stone';
+      case BlockType.CARVED_CANDI_RELIEF:
+        return 'carved_andesite';
+      case BlockType.PRISMATIC_CRYSTAL:
+        return 'crystal_brick';
+      case BlockType.ANCIENT_ALTAR:
+        return 'aether_altar_core';
 
       // Aether Expanse & Anomaly Blocks
       case BlockType.AETHER_STONE:

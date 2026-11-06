@@ -18,6 +18,8 @@ import { DungeonExpeditionManager } from '../dungeon/DungeonExpeditionManager';
 import { AetherAnomalyManager } from '../anomaly/AetherAnomalyManager';
 import { AetherNetworkManager } from '../engineering/AetherNetworkManager';
 import { CharacterProgressionManager } from '../progression/CharacterProgressionManager';
+import { NusantaraSanctumSilatSubakSystem } from './NusantaraSanctumSilatSubakSystem';
+import { MahakaryaNusantaraSystem } from './MahakaryaNusantaraSystem';
 import { GameEventBus } from '../events/GameEventBus';
 import { Logger } from '../ui/Logger';
 
@@ -194,6 +196,10 @@ export class PersistenceSystem implements GameSystem {
         machines: AetherNetworkManager.getInstance().serialize(),
       },
       characterProgression: CharacterProgressionManager.serialize(),
+      nusantaraState: {
+        silat: NusantaraSanctumSilatSubakSystem.serialize(),
+        mahakarya: MahakaryaNusantaraSystem.serialize(),
+      },
     };
   }
 

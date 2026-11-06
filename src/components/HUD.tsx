@@ -1048,6 +1048,14 @@ export const HUD: React.FC<HUDProps> = ({
         }
       } else if (e.code === 'KeyB' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         setPusakaCardMinimized(prev => !prev);
+      } else if (e.code === 'Escape') {
+        if (showMahakaryaModal) {
+          setShowMahakaryaModal(false);
+        } else if (showQuickTools) {
+          setShowQuickTools(false);
+        } else if (showProfiler) {
+          setShowProfiler(false);
+        }
       } else if (e.code === 'F5') {
         e.preventDefault();
         const rt = (window as any).__voxelRuntime;
@@ -1058,7 +1066,7 @@ export const HUD: React.FC<HUDProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [showMahakaryaModal, showQuickTools, showProfiler]);
 
   useEffect(() => {
     setAnomalyStatus(AetherAnomalyManager.status);
@@ -1963,11 +1971,12 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         )}
 
-        {/* FASE 1 PENYEMPURNAAN: Single Collapsible Contextual Pusaka & Vehicle Card (Docked above Hotbar) */}
+        {/* Unified Tactical Dock: Single Collapsible Contextual Pusaka, Vehicle & Silat Strip (Docked above Vitals) */}
         {!zenHudMode &&
           (() => {
             const heldId = hotbar[activeHotbarIndex]?.itemId;
-            const hasActiveContext =
+            const heldDef = heldId ? ITEM_DEFS[heldId] : null;
+            const hasSpecialContext =
               !!activeVessel ||
               !!activeHologram ||
               !!activeTreasureHint ||
@@ -1988,563 +1997,511 @@ export const HUD: React.FC<HUDProps> = ({
               heldId === 'lontar_erupsi_vulkanik' ||
               heldId === 'kamera_sinematik_nusantara';
 
-            if (!hasActiveContext) return null;
+            const showSilatStrip =
+              !!nusantaraV46 &&
+              (nusantaraV46.tenagaDalam > 0 ||
+                nusantaraV46.subakWheelCount > 0 ||
+                nusantaraV46.wayangActive ||
+                heldDef?.category === 'weapon' ||
+                heldId === 'kitab_silat_nusantara' ||
+                (!!mahakaryaV48 &&
+                  (mahakaryaV48.gamelanBlessingTimer > 0 ||
+                    mahakaryaV48.submarineActive ||
+                    mahakaryaV48.locomotiveRiding ||
+                    !!mahakaryaV48.activeKhodamName)));
 
-            if (pusakaCardMinimized) {
-              return (
-                <button
-                  onClick={() => setPusakaCardMinimized(false)}
-                  className="px-3 py-1 rounded-full bg-slate-950/92 hover:bg-slate-900 border border-amber-400/40 text-[10px] font-mono text-amber-200 pointer-events-auto shadow-md cursor-pointer flex items-center gap-1.5"
-                >
-                  <span>▴ Buka Aksi Pusaka Kontekstual</span>
-                  <kbd className="px-1 rounded bg-white/10 text-[9px] text-amber-300">B</kbd>
-                </button>
-              );
-            }
+            if (!hasSpecialContext && !showSilatStrip) return null;
 
             return (
-              <div className="w-full max-w-[440px] rounded-2xl bg-slate-950/95 border border-amber-400/40 px-3.5 py-2.5 shadow-2xl pointer-events-auto flex flex-col gap-2">
-                {/* Card Header with Collapse Button [B] */}
-                <div className="flex items-center justify-between border-b border-white/10 pb-1">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300">
-                    ✦ Panel Aksi Pusaka Kontekstual
-                  </span>
-                  <button
-                    onClick={() => setPusakaCardMinimized(true)}
-                    title="Lipat Kartu Pusaka [B]"
-                    className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/15 text-[9px] font-mono text-zinc-300 cursor-pointer"
-                  >
-                    ▾ Lipat [B]
-                  </button>
-                </div>
+              <div className="flex flex-col items-center gap-1.5 w-full max-w-[480px] pointer-events-auto">
+                {/* 1. Expandable Contextual Pusaka & Vehicle Action Row */}
+                {hasSpecialContext && !pusakaCardMinimized && (
+                  <div className="w-full rounded-xl bg-slate-950/95 border border-amber-400/35 px-3 py-2 shadow-xl flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-1">
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300">
+                        ✦ Aksi Pusaka & Kendaraan Kontekstual
+                      </span>
+                      <button
+                        onClick={() => setPusakaCardMinimized(true)}
+                        title="Lipat Panel Pusaka [B]"
+                        className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/15 text-[9px] font-mono text-zinc-300 cursor-pointer"
+                      >
+                        ▾ Lipat [B]
+                      </button>
+                    </div>
 
-                {/* 1. Maritime Vessel Helm */}
-                {activeVessel && (
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-cyan-300">
-                        {activeVessel.name} ({activeVessel.speedKnots.toFixed(1)} Knots)
-                      </span>
-                      <span className="font-mono text-[9px] text-zinc-400">
-                        Haluan {activeVessel.headingDeg}° · Kedalaman {activeVessel.seaFloorDepth}m
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const rt = (window as any).__voxelRuntime;
-                        if (rt && rt.player) {
-                          import('../engine/systems/MaritimeVesselSystem').then(({ MaritimeVesselSystem }) => {
-                            MaritimeVesselSystem.engageDivingAnchor(rt.player, rt.stats, rt.world);
-                          });
-                        }
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-cyan-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
-                    >
-                      ⚓ Selam Palung
-                    </button>
-                  </div>
-                )}
-
-                {/* 2. Vernacular Hologram Architect */}
-                {activeHologram && !activeVessel && (
-                  <div className="flex items-center justify-between gap-1.5 text-[10px]">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-sky-300">{activeHologram.name}</span>
-                      <span className="font-mono text-[9px] text-zinc-400">
-                        {activeHologram.region} · Rotasi {activeHologram.rotationDeg}°
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          const rt = (window as any).__voxelRuntime;
-                          import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
-                            VernacularHologramSystem.cycleTemplate(rt?.audio);
-                          });
-                        }}
-                        className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-mono text-[10px] cursor-pointer"
-                      >
-                        Desain
-                      </button>
-                      <button
-                        onClick={() => {
-                          const rt = (window as any).__voxelRuntime;
-                          import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
-                            VernacularHologramSystem.rotateHologram(rt?.audio);
-                          });
-                        }}
-                        className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-sky-200 font-mono text-[10px] cursor-pointer"
-                      >
-                        90°
-                      </button>
-                      <button
-                        onClick={() => {
-                          const rt = (window as any).__voxelRuntime;
-                          if (rt && rt.world) {
-                            import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
-                              VernacularHologramSystem.constructActiveHologram(rt.world, rt.audio, rt.particles);
-                            });
-                          }
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
-                      >
-                        Bangun
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. Treasure Compass */}
-                {activeTreasureHint && !activeVessel && !activeHologram && (
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-amber-300">{activeTreasureHint.mapName}</span>
-                      <span className="font-mono text-[9px] text-zinc-300">
-                        Arah {activeTreasureHint.bearing} · Jarak {Math.round(activeTreasureHint.distance)}m
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => {
-                          const rt = (window as any).__voxelRuntime;
-                          if (rt && rt.world && rt.player) {
-                            const fwd = rt.player.getForwardVector();
-                            const dx = Math.floor(rt.player.position.x + fwd.x * 3.0);
-                            const dz = Math.floor(rt.player.position.z + fwd.z * 3.0);
-                            const dy = rt.world.getSpawnHeight(dx, dz);
-                            rt.world.setBlock(dx, dy, dz, 11);
-                            rt.addItemToInventory('coastal_pearl', 2);
-                            rt.addItemToInventory('starfall_ore', 3);
-                            rt.audio?.playAncientGong();
-                          }
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
-                      >
-                        ⛏️ Gali Harta
-                      </button>
-                      <button
-                        onClick={() => {
-                          const rt = (window as any).__voxelRuntime;
-                          if (rt && rt.entities && rt.player && rt.world) {
-                            const fwd = rt.player.getForwardVector();
-                            const sx = Math.floor(rt.player.position.x + fwd.x * 10);
-                            const sz = Math.floor(rt.player.position.z + fwd.z * 10);
-                            const sy = rt.world.getSpawnHeight(sx, sz);
-                            rt.entities.spawnBoss('naga_antaboga', [sx, sy, sz], rt.world);
-                          }
-                        }}
-                        className="px-2 py-1 rounded-lg bg-rose-500/25 border border-rose-400/50 text-rose-200 font-mono font-bold text-[10px] cursor-pointer"
-                      >
-                        Boss Naga
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. Aerial Flight (Garuda / Dragon Kite Glider) */}
-                {(activeAerialFlight || heldId === 'peluit_garuda_kencana' || heldId === 'layang_naga_batik') && (
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-amber-300">
-                        {activeAerialFlight?.mode === 'garuda'
-                          ? 'Garuda Kencana Dirgantara 3D'
-                          : activeAerialFlight?.mode === 'glider'
-                          ? 'Layang-Layang Naga Batik 3D'
-                          : heldId === 'layang_naga_batik'
-                          ? 'Layang Naga Batik 3D'
-                          : 'Garuda Kencana 3D'}
-                      </span>
-                      <span className="font-mono text-[9px] text-sky-300">
-                        {activeAerialFlight
-                          ? `Ketinggian ${activeAerialFlight.altitude}m · Kecepatan ${activeAerialFlight.speed} m/s`
-                          : 'Klik tombol di kanan atau Klik Kanan untuk mengudara'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const rt = (window as any).__voxelRuntime;
-                        if (!rt || !rt.player) return;
-                        import('../engine/systems/AerialFlightAndSiegeSystem').then(
-                          ({ AerialFlightAndSiegeSystem }) => {
-                            if (AerialFlightAndSiegeSystem.mode !== 'none') {
-                              AerialFlightAndSiegeSystem.dismount(rt.audio);
-                            } else if (heldId === 'layang_naga_batik') {
-                              AerialFlightAndSiegeSystem.deployDragonKiteGlider(
-                                rt.player.position,
-                                rt.player.yaw,
-                                rt.audio,
-                                rt.particles
-                              );
-                            } else {
-                              AerialFlightAndSiegeSystem.summonAndMountGaruda(
-                                rt.player.position,
-                                rt.player.yaw,
-                                rt.audio,
-                                rt.particles
-                              );
+                    {/* Maritime Vessel Helm */}
+                    {activeVessel && (
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-cyan-300 tabular-nums">
+                            {activeVessel.name} ({activeVessel.speedKnots.toFixed(1)} Knots)
+                          </span>
+                          <span className="font-mono text-[9px] text-zinc-400 tabular-nums">
+                            Haluan {activeVessel.headingDeg}° · Kedalaman {activeVessel.seaFloorDepth}m
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const rt = (window as any).__voxelRuntime;
+                            if (rt && rt.player) {
+                              import('../engine/systems/MaritimeVesselSystem').then(({ MaritimeVesselSystem }) => {
+                                MaritimeVesselSystem.engageDivingAnchor(rt.player, rt.stats, rt.world);
+                              });
                             }
-                          }
-                        );
-                      }}
-                      className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer shrink-0"
-                    >
-                      {activeAerialFlight ? '⏬ Mendarat' : '🦅 Terbang'}
-                    </button>
-                  </div>
-                )}
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-cyan-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                        >
+                          ⚓ Selam Palung
+                        </button>
+                      </div>
+                    )}
 
-                {/* 5. Village Siege & Sky Lanterns */}
-                {(activeVillageSiege || heldId === 'kentongan_siaga_desa' || heldId === 'lampion_terbang_nusantara') && (
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-white">
-                        {activeVillageSiege?.festivalActive
-                          ? `Festival Lampion (${activeVillageSiege.festivalTimer}d)`
-                          : activeVillageSiege?.active
-                          ? `Pertahanan Desa Gelombang ${activeVillageSiege.wave}/${activeVillageSiege.maxWaves}`
-                          : 'Kentongan Siaga & Festival Lampion'}
-                      </span>
-                      <span className="font-mono text-[9px] text-amber-300">
-                        {activeVillageSiege?.active
-                          ? `Integritas Balai Desa: ${activeVillageSiege.villageIntegrity}%`
-                          : 'Pertahankan Balai Desa atau lepaskan 6 Lampion Terbang 3D'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => {
-                          const rt = (window as any).__voxelRuntime;
-                          if (!rt || !rt.player || !rt.world || !rt.entities) return;
-                          import('../engine/systems/AerialFlightAndSiegeSystem').then(
-                            ({ AerialFlightAndSiegeSystem }) => {
-                              AerialFlightAndSiegeSystem.triggerVillageSiege(
-                                rt.world,
-                                rt.entities,
-                                rt.player.position,
-                                rt.audio,
-                                rt.particles,
-                                (itemId, count) => rt.addItemToInventory(itemId, count),
-                                (xp) => rt.stats?.addXP(xp)
-                              );
-                            }
-                          );
-                        }}
-                        disabled={!!activeVillageSiege?.active}
-                        className="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-mono font-bold text-[10px] disabled:opacity-40 cursor-pointer"
-                      >
-                        🥁 Siaga
-                      </button>
-                      <button
-                        onClick={() => {
-                          const rt = (window as any).__voxelRuntime;
-                          if (!rt || !rt.player) return;
-                          import('../engine/systems/AerialFlightAndSiegeSystem').then(
-                            ({ AerialFlightAndSiegeSystem }) => {
-                              AerialFlightAndSiegeSystem.releaseSkyLanterns(
-                                rt.player.position,
-                                6,
-                                rt.audio,
-                                rt.particles,
-                                rt.stats
-                              );
-                            }
-                          );
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-amber-500/25 border border-amber-400/50 text-amber-200 font-mono font-bold text-[10px] cursor-pointer"
-                      >
-                        🏮 Lampion
-                      </button>
-                    </div>
-                  </div>
-                )}
+                    {/* Vernacular Hologram Architect */}
+                    {activeHologram && !activeVessel && (
+                      <div className="flex items-center justify-between gap-1.5 text-[10px]">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-sky-300">{activeHologram.name}</span>
+                          <span className="font-mono text-[9px] text-zinc-400 tabular-nums">
+                            {activeHologram.region} · Rotasi {activeHologram.rotationDeg}°
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              const rt = (window as any).__voxelRuntime;
+                              import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
+                                VernacularHologramSystem.cycleTemplate(rt?.audio);
+                              });
+                            }}
+                            className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-mono text-[10px] cursor-pointer"
+                          >
+                            Desain
+                          </button>
+                          <button
+                            onClick={() => {
+                              const rt = (window as any).__voxelRuntime;
+                              import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
+                                VernacularHologramSystem.rotateHologram(rt?.audio);
+                              });
+                            }}
+                            className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-sky-200 font-mono text-[10px] cursor-pointer"
+                          >
+                            90°
+                          </button>
+                          <button
+                            onClick={() => {
+                              const rt = (window as any).__voxelRuntime;
+                              if (rt && rt.world) {
+                                import('../engine/systems/VernacularHologramSystem').then(({ VernacularHologramSystem }) => {
+                                  VernacularHologramSystem.constructActiveHologram(rt.world, rt.audio, rt.particles);
+                                });
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                          >
+                            Bangun
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
-                {/* 6. Candi Bawah Tanah / Silat / Subak / Wayang (v4.6) */}
-                {nusantaraV46 && heldId === 'kompas_candi_bawah_tanah' && (
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <span className="text-emerald-300 font-bold">
-                      Ekspedisi Candi Bawah Tanah & Boss Buto Ijo 3D
-                    </span>
-                    <button
-                      onClick={() => {
-                        const rt = (window as any).__voxelRuntime;
-                        if (!rt || !rt.world || !rt.entities || !rt.player) return;
-                        import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                          ({ NusantaraSanctumSilatSubakSystem }) => {
-                            NusantaraSanctumSilatSubakSystem.excavateUndergroundCandiSanctum(
-                              rt.world,
-                              rt.entities,
-                              rt.player,
-                              rt.audio,
-                              rt.particles,
-                              rt.stats,
-                              (itemId, count) => rt.addItemToInventory(itemId, count)
+                    {/* Treasure Compass */}
+                    {activeTreasureHint && !activeVessel && !activeHologram && (
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-amber-300">{activeTreasureHint.mapName}</span>
+                          <span className="font-mono text-[9px] text-zinc-300 tabular-nums">
+                            Arah {activeTreasureHint.bearing} · Jarak {Math.round(activeTreasureHint.distance)}m
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              const rt = (window as any).__voxelRuntime;
+                              if (rt && rt.world && rt.player) {
+                                const fwd = rt.player.getForwardVector();
+                                const dx = Math.floor(rt.player.position.x + fwd.x * 3.0);
+                                const dz = Math.floor(rt.player.position.z + fwd.z * 3.0);
+                                const dy = rt.world.getSpawnHeight(dx, dz);
+                                rt.world.setBlock(dx, dy, dz, 11);
+                                rt.addItemToInventory('coastal_pearl', 2);
+                                rt.addItemToInventory('starfall_ore', 3);
+                                rt.audio?.playAncientGong();
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                          >
+                            ⛏️ Gali Harta
+                          </button>
+                          <button
+                            onClick={() => {
+                              const rt = (window as any).__voxelRuntime;
+                              if (rt && rt.entities && rt.player && rt.world) {
+                                const fwd = rt.player.getForwardVector();
+                                const sx = Math.floor(rt.player.position.x + fwd.x * 10);
+                                const sz = Math.floor(rt.player.position.z + fwd.z * 10);
+                                const sy = rt.world.getSpawnHeight(sx, sz);
+                                rt.entities.spawnBoss('naga_antaboga', [sx, sy, sz], rt.world);
+                              }
+                            }}
+                            className="px-2 py-1 rounded-lg bg-rose-500/25 border border-rose-400/50 text-rose-200 font-mono font-bold text-[10px] cursor-pointer"
+                          >
+                            Boss Naga
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Aerial Flight (Garuda / Dragon Kite Glider) */}
+                    {(activeAerialFlight || heldId === 'peluit_garuda_kencana' || heldId === 'layang_naga_batik') && (
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-amber-300">
+                            {activeAerialFlight?.mode === 'garuda'
+                              ? 'Garuda Kencana Dirgantara 3D'
+                              : activeAerialFlight?.mode === 'glider'
+                              ? 'Layang-Layang Naga Batik 3D'
+                              : heldId === 'layang_naga_batik'
+                              ? 'Layang Naga Batik 3D'
+                              : 'Garuda Kencana 3D'}
+                          </span>
+                          <span className="font-mono text-[9px] text-sky-300 tabular-nums">
+                            {activeAerialFlight
+                              ? `Ketinggian ${activeAerialFlight.altitude}m · Kecepatan ${activeAerialFlight.speed} m/s`
+                              : 'Klik tombol di kanan atau Klik Kanan untuk mengudara'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const rt = (window as any).__voxelRuntime;
+                            if (!rt || !rt.player) return;
+                            import('../engine/systems/AerialFlightAndSiegeSystem').then(
+                              ({ AerialFlightAndSiegeSystem }) => {
+                                if (AerialFlightAndSiegeSystem.mode !== 'none') {
+                                  AerialFlightAndSiegeSystem.dismount(rt.audio);
+                                } else if (heldId === 'layang_naga_batik') {
+                                  AerialFlightAndSiegeSystem.deployDragonKiteGlider(
+                                    rt.player.position,
+                                    rt.player.yaw,
+                                    rt.audio,
+                                    rt.particles
+                                  );
+                                } else {
+                                  AerialFlightAndSiegeSystem.summonAndMountGaruda(
+                                    rt.player.position,
+                                    rt.player.yaw,
+                                    rt.audio,
+                                    rt.particles
+                                  );
+                                }
+                              }
                             );
-                          }
-                        );
-                      }}
-                      className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
-                    >
-                      🏛️ Buka Candi 3D
-                    </button>
-                  </div>
-                )}
+                          }}
+                          className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer shrink-0"
+                        >
+                          {activeAerialFlight ? '⏬ Mendarat' : '🦅 Terbang'}
+                        </button>
+                      </div>
+                    )}
 
-                {nusantaraV46 && heldId === 'kitab_silat_nusantara' && (
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <span className="text-amber-300 font-bold">
-                      {nusantaraV46.stanceName} ({nusantaraV46.tenagaDalam}% Tenaga Dalam)
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          const rt = (window as any).__voxelRuntime;
-                          import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                            ({ NusantaraSanctumSilatSubakSystem }) => {
-                              NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt?.audio);
-                            }
-                          );
-                        }}
-                        className="px-2 py-1 rounded-lg bg-white/10 text-white font-mono text-[10px] cursor-pointer"
-                      >
-                        Kuda-Kuda [V]
-                      </button>
-                      <button
-                        onClick={() => {
-                          const rt = (window as any).__voxelRuntime;
-                          if (!rt || !rt.player || !rt.stats) return;
-                          import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                            ({ NusantaraSanctumSilatSubakSystem }) => {
-                              if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
-                                NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
+                    {/* Village Siege & Sky Lanterns */}
+                    {(activeVillageSiege || heldId === 'kentongan_siaga_desa' || heldId === 'lampion_terbang_nusantara') && (
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-white tabular-nums">
+                            {activeVillageSiege?.festivalActive
+                              ? `Festival Lampion (${activeVillageSiege.festivalTimer}d)`
+                              : activeVillageSiege?.active
+                              ? `Pertahanan Desa Gelombang ${activeVillageSiege.wave}/${activeVillageSiege.maxWaves}`
+                              : 'Kentongan Siaga & Festival Lampion'}
+                          </span>
+                          <span className="font-mono text-[9px] text-amber-300 tabular-nums">
+                            {activeVillageSiege?.active
+                              ? `Integritas Balai Desa: ${activeVillageSiege.villageIntegrity}%`
+                              : 'Pertahankan Balai Desa atau lepaskan 6 Lampion Terbang 3D'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => {
+                              const rt = (window as any).__voxelRuntime;
+                              if (!rt || !rt.player || !rt.world || !rt.entities) return;
+                              import('../engine/systems/AerialFlightAndSiegeSystem').then(
+                                ({ AerialFlightAndSiegeSystem }) => {
+                                  AerialFlightAndSiegeSystem.triggerVillageSiege(
+                                    rt.world,
+                                    rt.entities,
+                                    rt.player.position,
+                                    rt.audio,
+                                    rt.particles,
+                                    (itemId, count) => rt.addItemToInventory(itemId, count),
+                                    (xp) => rt.stats?.addXP(xp)
+                                  );
+                                }
+                              );
+                            }}
+                            disabled={!!activeVillageSiege?.active}
+                            className="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-mono font-bold text-[10px] disabled:opacity-40 cursor-pointer"
+                          >
+                            🥁 Siaga
+                          </button>
+                          <button
+                            onClick={() => {
+                              const rt = (window as any).__voxelRuntime;
+                              if (!rt || !rt.player) return;
+                              import('../engine/systems/AerialFlightAndSiegeSystem').then(
+                                ({ AerialFlightAndSiegeSystem }) => {
+                                  AerialFlightAndSiegeSystem.releaseSkyLanterns(
+                                    rt.player.position,
+                                    6,
+                                    rt.audio,
+                                    rt.particles,
+                                    rt.stats
+                                  );
+                                }
+                              );
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-amber-500/25 border border-amber-400/50 text-amber-200 font-mono font-bold text-[10px] cursor-pointer"
+                          >
+                            🏮 Lampion
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Candi Bawah Tanah / Silat / Subak / Wayang (v4.6) */}
+                    {nusantaraV46 && heldId === 'kompas_candi_bawah_tanah' && (
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <span className="text-emerald-300 font-bold">
+                          Ekspedisi Candi Bawah Tanah & Boss Buto Ijo 3D
+                        </span>
+                        <button
+                          onClick={() => {
+                            const rt = (window as any).__voxelRuntime;
+                            if (!rt || !rt.world || !rt.entities || !rt.player) return;
+                            import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                              ({ NusantaraSanctumSilatSubakSystem }) => {
+                                NusantaraSanctumSilatSubakSystem.excavateUndergroundCandiSanctum(
+                                  rt.world,
                                   rt.entities,
                                   rt.player,
-                                  rt.stats,
                                   rt.audio,
-                                  rt.particles
+                                  rt.particles,
+                                  rt.stats,
+                                  (itemId, count) => rt.addItemToInventory(itemId, count)
                                 );
-                              } else {
-                                NusantaraSanctumSilatSubakSystem.meditateFocusTenagaDalam(
+                              }
+                            );
+                          }}
+                          className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                        >
+                          🏛️ Buka Candi 3D
+                        </button>
+                      </div>
+                    )}
+
+                    {nusantaraV46 && heldId === 'kincir_air_subak' && (
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <span className="text-emerald-300 font-bold tabular-nums">
+                          Kincir Subak Aktif: {nusantaraV46.subakWheelCount} · Panen: {nusantaraV46.subakTotalHarvested}
+                        </span>
+                        <button
+                          onClick={() => {
+                            const rt = (window as any).__voxelRuntime;
+                            if (!rt || !rt.world || !rt.player) return;
+                            import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                              ({ NusantaraSanctumSilatSubakSystem }) => {
+                                NusantaraSanctumSilatSubakSystem.deploySubakWaterwheel(
+                                  rt.world,
                                   rt.player,
                                   rt.audio,
                                   rt.particles
                                 );
                               }
-                            }
-                          );
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                            );
+                          }}
+                          className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                        >
+                          🌾 Bangun Subak 3D
+                        </button>
+                      </div>
+                    )}
+
+                    {nusantaraV46 && heldId === 'panggung_wayang_kulit' && (
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <span className="text-amber-300 font-bold tabular-nums">
+                          {nusantaraV46.wayangActive
+                            ? `${nusantaraV46.wayangLakonName} (${nusantaraV46.wayangLakonTimer}d)`
+                            : 'Panggung Wayang Kulit 3D'}
+                        </span>
+                        <button
+                          onClick={() => {
+                            const rt = (window as any).__voxelRuntime;
+                            if (!rt || !rt.world || !rt.player) return;
+                            import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                              ({ NusantaraSanctumSilatSubakSystem }) => {
+                                NusantaraSanctumSilatSubakSystem.deployWayangStageAndNightMarket(
+                                  rt.world,
+                                  rt.player,
+                                  rt.audio,
+                                  rt.particles,
+                                  rt.stats
+                                );
+                              }
+                            );
+                          }}
+                          className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                        >
+                          🎪 Dirikan Wayang 3D
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Mahakarya Nusantara Items (Submarine, Steam Train, Gamelan, Khodam, Volcano, Photo Mode) */}
+                    {(heldId === 'kapal_selam_nanggala' ||
+                      heldId === 'lokomotif_uap_aether' ||
+                      heldId === 'gamelan_angklung_pusaka' ||
+                      heldId === 'mustika_khodam_pendamping' ||
+                      heldId === 'lontar_erupsi_vulkanik' ||
+                      heldId === 'kamera_sinematik_nusantara') && (
+                      <div className="flex items-center justify-between gap-2 text-[10px]">
+                        <span className="text-amber-200 font-bold truncate">
+                          {ITEM_DEFS[heldId]?.name || heldId} — Klik Kanan untuk aktifkan di 3D
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (heldId === 'gamelan_angklung_pusaka') setMahakaryaInitialTab('GAMELAN_STUDIO');
+                            else if (heldId === 'mustika_khodam_pendamping' || heldId === 'lontar_erupsi_vulkanik')
+                              setMahakaryaInitialTab('KHODAM_ARENA');
+                            else if (heldId === 'kamera_sinematik_nusantara') setMahakaryaInitialTab('BUSANA_FOTO');
+                            else setMahakaryaInitialTab('SAMUDRA_KERETA');
+                            setShowMahakaryaModal(true);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer shrink-0"
+                        >
+                          Buka Panel [N]
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 2. Unified Compact Tactical Strip (Silat Stance, Tenaga Dalam, Blessings & Pusaka Toggle [B]) */}
+                {nusantaraV46 && (
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/92 border border-white/10 shadow-md text-[10px] font-mono">
+                    {hasSpecialContext && pusakaCardMinimized && (
+                      <button
+                        onClick={() => setPusakaCardMinimized(false)}
+                        title="Buka Aksi Pusaka Kontekstual [B]"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 cursor-pointer"
                       >
-                        {nusantaraV46.ajianReady ? `Lepas ${nusantaraV46.ajianName}` : 'Fokus Tenaga'}
+                        <span>▴ Pusaka</span>
+                        <kbd className="text-[8px] text-amber-300">B</kbd>
                       </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        const rt = (window as any).__voxelRuntime;
+                        import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
+                          ({ NusantaraSanctumSilatSubakSystem }) => {
+                            NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt?.audio);
+                          }
+                        );
+                      }}
+                      title={`${nusantaraV46.stanceBonusText} — Klik atau tekan [V] untuk ganti Kuda-Kuda`}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 text-zinc-200 font-medium cursor-pointer transition-colors"
+                    >
+                      <span>{nusantaraV46.stanceName}</span>
+                      <kbd className="text-[8px] text-zinc-400">V</kbd>
+                    </button>
+
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-14 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-150 ${
+                            nusantaraV46.ajianReady ? 'bg-amber-400' : 'bg-sky-400'
+                          }`}
+                          style={{ width: `${Math.min(100, nusantaraV46.tenagaDalam)}%` }}
+                        />
+                      </div>
+                      <span className="text-zinc-300 tabular-nums">{nusantaraV46.tenagaDalam}%</span>
                     </div>
-                  </div>
-                )}
 
-                {nusantaraV46 && heldId === 'kincir_air_subak' && (
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <span className="text-emerald-300 font-bold">
-                      Kincir Subak Aktif: {nusantaraV46.subakWheelCount} · Panen: {nusantaraV46.subakTotalHarvested}
-                    </span>
                     <button
                       onClick={() => {
                         const rt = (window as any).__voxelRuntime;
-                        if (!rt || !rt.world || !rt.player) return;
+                        if (!rt || !rt.player || !rt.stats) return;
                         import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
                           ({ NusantaraSanctumSilatSubakSystem }) => {
-                            NusantaraSanctumSilatSubakSystem.deploySubakWaterwheel(
-                              rt.world,
-                              rt.player,
-                              rt.audio,
-                              rt.particles
-                            );
+                            if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
+                              NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
+                                rt.entities,
+                                rt.player,
+                                rt.stats,
+                                rt.audio,
+                                rt.particles
+                              );
+                            } else {
+                              NusantaraSanctumSilatSubakSystem.cycleAjianUltimate(rt.audio);
+                            }
                           }
                         );
                       }}
-                      className="px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
+                      title="Klik atau tekan [G] untuk pilih / lepaskan Ajian Sakti Pusaka"
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-medium cursor-pointer transition-colors ${
+                        nusantaraV46.ajianReady
+                          ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
+                          : 'bg-white/5 hover:bg-white/10 text-zinc-300'
+                      }`}
                     >
-                      🌾 Bangun Subak 3D
+                      <span>{nusantaraV46.ajianName}</span>
+                      <kbd className="text-[8px] text-zinc-400">G</kbd>
                     </button>
-                  </div>
-                )}
 
-                {nusantaraV46 && heldId === 'panggung_wayang_kulit' && (
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <span className="text-amber-300 font-bold">
-                      {nusantaraV46.wayangActive
-                        ? `${nusantaraV46.wayangLakonName} (${nusantaraV46.wayangLakonTimer}d)`
-                        : 'Panggung Wayang Kulit 3D'}
-                    </span>
-                    <button
-                      onClick={() => {
-                        const rt = (window as any).__voxelRuntime;
-                        if (!rt || !rt.world || !rt.player) return;
-                        import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                          ({ NusantaraSanctumSilatSubakSystem }) => {
-                            NusantaraSanctumSilatSubakSystem.deployWayangStageAndNightMarket(
-                              rt.world,
-                              rt.player,
-                              rt.audio,
-                              rt.particles,
-                              rt.stats
-                            );
-                          }
-                        );
-                      }}
-                      className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer"
-                    >
-                      🎪 Dirikan Wayang 3D
-                    </button>
-                  </div>
-                )}
+                    {nusantaraV46.subakWheelCount > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 tabular-nums">
+                        Subak {nusantaraV46.subakWheelCount}x
+                      </span>
+                    )}
 
-                {/* 7. Mahakarya Nusantara Items (Submarine, Steam Train, Gamelan, Khodam, Volcano, Photo Mode) */}
-                {(heldId === 'kapal_selam_nanggala' ||
-                  heldId === 'lokomotif_uap_aether' ||
-                  heldId === 'gamelan_angklung_pusaka' ||
-                  heldId === 'mustika_khodam_pendamping' ||
-                  heldId === 'lontar_erupsi_vulkanik' ||
-                  heldId === 'kamera_sinematik_nusantara') && (
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <span className="text-amber-200 font-bold truncate">
-                      {ITEM_DEFS[heldId]?.name || heldId} — Klik Kanan untuk mengaktifkan di dunia 3D
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (heldId === 'gamelan_angklung_pusaka') setMahakaryaInitialTab('GAMELAN_STUDIO');
-                        else if (heldId === 'mustika_khodam_pendamping' || heldId === 'lontar_erupsi_vulkanik')
-                          setMahakaryaInitialTab('KHODAM_ARENA');
-                        else if (heldId === 'kamera_sinematik_nusantara') setMahakaryaInitialTab('BUSANA_FOTO');
-                        else setMahakaryaInitialTab('SAMUDRA_KERETA');
-                        setShowMahakaryaModal(true);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-mono font-bold text-[10px] cursor-pointer shrink-0"
-                    >
-                      Buka Panel [N]
-                    </button>
+                    {nusantaraV46.wayangActive && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 tabular-nums">
+                        {nusantaraV46.wayangLakonName} ({nusantaraV46.wayangLakonTimer}d)
+                      </span>
+                    )}
+
+                    {mahakaryaV48 && mahakaryaV48.gamelanBlessingTimer > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 tabular-nums">
+                        Harmoni Gamelan ({mahakaryaV48.gamelanBlessingTimer}d)
+                      </span>
+                    )}
+
+                    {mahakaryaV48 && (
+                      <>
+                        <span className="text-zinc-600" aria-hidden="true">·</span>
+                        <button
+                          onClick={() => {
+                            setMahakaryaInitialTab('KHODAM_ARENA');
+                            setShowMahakaryaModal(true);
+                          }}
+                          className="text-emerald-300 hover:text-emerald-200 cursor-pointer whitespace-nowrap tabular-nums"
+                          title="Klik untuk membuka Panel Khodam, Kapal Selam, Kereta Uap & Gamelan [N]"
+                        >
+                          {mahakaryaV48.submarineActive
+                            ? `Kapal Selam (${mahakaryaV48.submarineDepth}m)`
+                            : mahakaryaV48.locomotiveRiding
+                            ? 'Lokomotif Uap Aether'
+                            : mahakaryaV48.activeKhodamName || 'Mahakarya [N]'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
             );
           })()}
-
-        {/* Contextual Pencak Silat Stance, Tenaga Dalam, Buffs & Subak/Wayang/Mahakarya Pill */}
-        {nusantaraV46 &&
-          !zenHudMode &&
-          (nusantaraV46.tenagaDalam > 0 ||
-            nusantaraV46.subakWheelCount > 0 ||
-            nusantaraV46.wayangActive ||
-            (mahakaryaV48 &&
-              (mahakaryaV48.gamelanBlessingTimer > 0 ||
-                mahakaryaV48.submarineActive ||
-                mahakaryaV48.locomotiveRiding ||
-                mahakaryaV48.activeKhodamName)) ||
-            (() => {
-              const activeSlot = hotbar[activeHotbarIndex];
-              const itemDef = activeSlot ? ITEM_DEFS[activeSlot.itemId] : null;
-              return (
-                itemDef?.category === 'weapon' ||
-                activeSlot?.itemId === 'kitab_silat_nusantara'
-              );
-            })()) && (
-          <div className="flex flex-wrap items-center justify-center gap-2 px-2.5 py-1 rounded-full bg-slate-950/92 border border-white/10 pointer-events-auto shadow-md text-[10px] font-mono">
-            <button
-              onClick={() => {
-                const rt = (window as any).__voxelRuntime;
-                import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                  ({ NusantaraSanctumSilatSubakSystem }) => {
-                    NusantaraSanctumSilatSubakSystem.cycleSilatStance(rt?.audio);
-                  }
-                );
-              }}
-              title={`${nusantaraV46.stanceBonusText} — Klik atau tekan [V] untuk ganti Kuda-Kuda`}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 text-zinc-200 font-medium cursor-pointer transition-colors"
-            >
-              <span>{nusantaraV46.stanceName}</span>
-              <kbd className="text-[8px] text-zinc-400">V</kbd>
-            </button>
-
-            <div className="flex items-center gap-1.5">
-              <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-150 ${
-                    nusantaraV46.ajianReady ? 'bg-amber-400' : 'bg-sky-400'
-                  }`}
-                  style={{ width: `${Math.min(100, nusantaraV46.tenagaDalam)}%` }}
-                />
-              </div>
-              <span className="text-zinc-300 tabular-nums">{nusantaraV46.tenagaDalam}%</span>
-            </div>
-
-            <button
-              onClick={() => {
-                const rt = (window as any).__voxelRuntime;
-                if (!rt || !rt.player || !rt.stats) return;
-                import('../engine/systems/NusantaraSanctumSilatSubakSystem').then(
-                  ({ NusantaraSanctumSilatSubakSystem }) => {
-                    if (NusantaraSanctumSilatSubakSystem.tenagaDalam >= 100) {
-                      NusantaraSanctumSilatSubakSystem.unleashAjianUltimate(
-                        rt.entities,
-                        rt.player,
-                        rt.stats,
-                        rt.audio,
-                        rt.particles
-                      );
-                    } else {
-                      NusantaraSanctumSilatSubakSystem.cycleAjianUltimate(rt.audio);
-                    }
-                  }
-                );
-              }}
-              title="Klik atau tekan [G] untuk pilih / lepaskan Ajian Sakti Pusaka"
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-full font-medium cursor-pointer transition-colors ${
-                nusantaraV46.ajianReady
-                  ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
-                  : 'bg-white/5 hover:bg-white/10 text-zinc-300'
-              }`}
-            >
-              <span>{nusantaraV46.ajianName}</span>
-              <kbd className="text-[8px] text-zinc-400">G</kbd>
-            </button>
-
-            {nusantaraV46.subakWheelCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 tabular-nums">
-                Subak {nusantaraV46.subakWheelCount}x
-              </span>
-            )}
-
-            {nusantaraV46.wayangActive && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 tabular-nums">
-                {nusantaraV46.wayangLakonName} ({nusantaraV46.wayangLakonTimer}d)
-              </span>
-            )}
-
-            {mahakaryaV48 && mahakaryaV48.gamelanBlessingTimer > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 tabular-nums">
-                Harmoni Gamelan ({mahakaryaV48.gamelanBlessingTimer}d)
-              </span>
-            )}
-
-            {mahakaryaV48 && (
-              <>
-                <span className="text-zinc-600" aria-hidden="true">·</span>
-                <button
-                  onClick={() => {
-                    setMahakaryaInitialTab('KHODAM_ARENA');
-                    setShowMahakaryaModal(true);
-                  }}
-                  className="text-emerald-300 hover:text-emerald-200 cursor-pointer whitespace-nowrap"
-                  title="Klik untuk membuka Panel Khodam, Kapal Selam, Kereta Uap & Gamelan [N]"
-                >
-                  {mahakaryaV48.submarineActive
-                    ? `Kapal Selam (${mahakaryaV48.submarineDepth}m)`
-                    : mahakaryaV48.locomotiveRiding
-                    ? 'Lokomotif Uap Aether'
-                    : mahakaryaV48.activeKhodamName || 'Mahakarya [N]'}
-                </button>
-              </>
-            )}
-          </div>
-        )}
 
         {/* VoxelVerse v4.8.0: Collapsible Bottom Dock Modal for Submarine, Steam Train, 3D Gamelan, Khodam, Wardrobe & 3D Photo Mode */}
         <MahakaryaNusantaraModal

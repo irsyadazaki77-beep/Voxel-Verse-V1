@@ -288,7 +288,7 @@ export const QUEST_REGISTRY: Record<string, QuestDef> = {
       xp: 450,
       items: [
         { itemId: 'mustika_bintang_jatuh', count: 3 },
-        { itemId: 'keris_pusaka_empu', count: 1 },
+        { itemId: 'kris_pusaka', count: 1 },
       ],
       reputation: { settlementId: 'desa_majapahit', amount: 50 },
     },

@@ -49,6 +49,7 @@ export class AerialFlightAndSiegeSystem {
   public static bankRollAngle: number = 0;
   private static wingAnimPhase: number = 0;
   private static particleTimer: number = 0;
+  private static pendingTakeoffBoostY: number = 0;
 
   public static get mode(): AerialFlightMode {
     return this.flightMode;
@@ -311,10 +312,11 @@ export class AerialFlightAndSiegeSystem {
     this.flightMode = targetMode;
     this.wingFlapCooldown = 0;
 
-    // Give immediate takeoff lift
+    // Give immediate takeoff lift (and queue for next update frame if called with dummy velocity)
     const boostY = targetMode === 'garuda' ? 11.5 : 7.5;
     playerPos.y += 0.6;
     playerVel.y = Math.max(playerVel.y, boostY);
+    this.pendingTakeoffBoostY = boostY;
 
     if (this.garudaMeshGroup) this.garudaMeshGroup.visible = targetMode === 'garuda';
     if (this.gliderMeshGroup) this.gliderMeshGroup.visible = targetMode === 'glider';
@@ -609,6 +611,10 @@ export class AerialFlightAndSiegeSystem {
 
     // 1. Update Aerial Flight Mode (Garuda Kencana 3D or Dragon Kite Glider)
     if (this.flightMode !== 'none') {
+      if (this.pendingTakeoffBoostY > 0) {
+        playerVel.y = Math.max(playerVel.y, this.pendingTakeoffBoostY);
+        this.pendingTakeoffBoostY = 0;
+      }
       this.wingFlapCooldown = Math.max(0, this.wingFlapCooldown - dt);
       this.wingAnimPhase += dt * (keys.jump ? 11.0 : this.flightMode === 'garuda' ? 6.5 : 3.5);
 
@@ -638,35 +644,37 @@ export class AerialFlightAndSiegeSystem {
       const targetCruiseSpeed = this.flightMode === 'garuda' ? (keys.sprint ? 16.5 : 11.8) : (keys.sprint ? 13.5 : 9.6);
 
       if (keys.forward) {
-        playerVel.x += (forwardX * targetCruiseSpeed - playerVel.x) * Math.min(1, dt * 6.0);
-        playerVel.z += (forwardZ * targetCruiseSpeed - playerVel.z) * Math.min(1, dt * 6.0);
+        playerVel.x = THREE.MathUtils.damp(playerVel.x, forwardX * targetCruiseSpeed, 6.5, dt);
+        playerVel.z = THREE.MathUtils.damp(playerVel.z, forwardZ * targetCruiseSpeed, 6.5, dt);
       } else if (!keys.backward) {
         // Gentle forward glide momentum
         const glideSpeed = this.flightMode === 'garuda' ? 5.2 : 6.4;
-        playerVel.x += (forwardX * glideSpeed - playerVel.x) * Math.min(1, dt * 3.0);
-        playerVel.z += (forwardZ * glideSpeed - playerVel.z) * Math.min(1, dt * 3.0);
+        playerVel.x = THREE.MathUtils.damp(playerVel.x, forwardX * glideSpeed, 3.2, dt);
+        playerVel.z = THREE.MathUtils.damp(playerVel.z, forwardZ * glideSpeed, 3.2, dt);
       }
 
-      // Vertical lift & glide physics
+      // Vertical lift & glide physics with ground clearance protection
+      const groundHeight = world.getSpawnHeight(bx, bz);
       if (keys.jump) {
         const climbSpeed = this.flightMode === 'garuda' ? 9.2 : 5.5;
-        playerVel.y = THREE.MathUtils.lerp(playerVel.y, climbSpeed, Math.min(1, dt * 8.0));
+        playerVel.y = THREE.MathUtils.damp(playerVel.y, climbSpeed, 8.5, dt);
         this.isDiving = false;
       } else if (keys.sprint && !keys.jump) {
-        // Swoop / Dive
+        // Swoop / Dive with automatic terrain pull-up clearance
         this.isDiving = true;
-        playerVel.y = THREE.MathUtils.lerp(playerVel.y, -9.5, Math.min(1, dt * 5.0));
+        const targetDiveVel = playerPos.y <= groundHeight + 2.8 ? -1.0 : -9.5;
+        playerVel.y = THREE.MathUtils.damp(playerVel.y, targetDiveVel, 5.5, dt);
       } else if (this.inThermalUpdraft) {
         // Thermal updraft automatic lift
         this.isDiving = false;
         const thermalLift = this.flightMode === 'glider' ? 4.8 : 3.2;
-        playerVel.y = THREE.MathUtils.lerp(playerVel.y, thermalLift, Math.min(1, dt * 4.5));
+        playerVel.y = THREE.MathUtils.damp(playerVel.y, thermalLift, 4.8, dt);
       } else {
         // Smooth low-gravity soaring descent
         this.isDiving = false;
         const sinkRate = this.flightMode === 'garuda' ? -0.65 : -1.45;
         if (playerVel.y < sinkRate) {
-          playerVel.y = THREE.MathUtils.lerp(playerVel.y, sinkRate, Math.min(1, dt * 7.0));
+          playerVel.y = THREE.MathUtils.damp(playerVel.y, sinkRate, 7.5, dt);
         }
       }
 
@@ -679,7 +687,7 @@ export class AerialFlightAndSiegeSystem {
 
       // Bank roll animation based on left/right steering
       const targetBank = keys.left ? 0.28 : keys.right ? -0.28 : 0;
-      this.bankRollAngle = THREE.MathUtils.lerp(this.bankRollAngle, targetBank, Math.min(1, dt * 8.0));
+      this.bankRollAngle = THREE.MathUtils.damp(this.bankRollAngle, targetBank, 8.5, dt);
 
       // Position & animate 3D Garuda or Dragon Kite Glider relative to player
       if (this.garudaMeshGroup && this.flightMode === 'garuda') {

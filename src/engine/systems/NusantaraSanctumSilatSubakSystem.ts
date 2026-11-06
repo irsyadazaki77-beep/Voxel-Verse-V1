@@ -208,6 +208,9 @@ export class NusantaraSanctumSilatSubakSystem {
         transparent: true,
         opacity: 0.42,
         depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
       });
       this.silatAuraRing = new THREE.Mesh(ringGeo, ringMat);
       this.rootGroup.add(this.silatAuraRing);
@@ -572,6 +575,9 @@ export class NusantaraSanctumSilatSubakSystem {
       transparent: true,
       opacity: 0.9,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(origin.x, origin.y + 0.15, origin.z);
@@ -1117,6 +1123,102 @@ export class NusantaraSanctumSilatSubakSystem {
       sanctumCenter: this.lastSanctumPos,
       sanctumBossAlive,
     };
+  }
+
+  public static serialize(): Record<string, any> {
+    return {
+      activeStance: this.activeStance,
+      activeAjian: this.activeAjian,
+      tenagaDalam: Math.round(this.tenagaDalam),
+      activeLakon: this.activeLakon,
+      lakonTimerRemaining: Math.round(this.lakonTimerRemaining),
+      totalSubakHarvested: this.totalSubakHarvested,
+      sanctumsExcavated: this.sanctumsExcavated,
+      lastSanctumPos: this.lastSanctumPos,
+      subakWheelPositions: this.subakWheels.map((w) => ({
+        x: w.position.x,
+        y: w.position.y,
+        z: w.position.z,
+        rotY: w.group.rotation.y,
+        totalHarvested: w.totalHarvested,
+      })),
+      wayangStagePositions: this.wayangStages.map((s) => ({
+        x: s.position.x,
+        y: s.position.y,
+        z: s.position.z,
+        rotY: s.group.rotation.y,
+      })),
+    };
+  }
+
+  public static deserialize(data?: Record<string, any> | null): void {
+    this.reset();
+    const root = this.getOrCreateRootGroup();
+    if (!data || typeof data !== 'object') return;
+
+    if (data.activeStance && SILAT_STANCES[data.activeStance as SilatStanceId]) {
+      this.activeStance = data.activeStance as SilatStanceId;
+      if (this.silatAuraRing && this.silatAuraRing.material instanceof THREE.MeshBasicMaterial) {
+        this.silatAuraRing.material.color.setHex(SILAT_STANCES[this.activeStance].colorInt);
+      }
+    }
+    if (data.activeAjian && AJIAN_ULTIMATES[data.activeAjian as AjianUltimateId]) {
+      this.activeAjian = data.activeAjian as AjianUltimateId;
+    }
+    if (typeof data.tenagaDalam === 'number') {
+      this.tenagaDalam = Math.max(0, Math.min(100, data.tenagaDalam));
+    }
+    if (data.activeLakon && WAYANG_LAKONS[data.activeLakon as WayangLakonId]) {
+      this.activeLakon = data.activeLakon as WayangLakonId;
+      this.lakonTimerRemaining = typeof data.lakonTimerRemaining === 'number' ? Math.max(0, data.lakonTimerRemaining) : 0;
+    }
+    if (typeof data.totalSubakHarvested === 'number') {
+      this.totalSubakHarvested = Math.max(0, data.totalSubakHarvested);
+    }
+    if (typeof data.sanctumsExcavated === 'number') {
+      this.sanctumsExcavated = Math.max(0, data.sanctumsExcavated);
+    }
+    if (Array.isArray(data.lastSanctumPos) && data.lastSanctumPos.length === 3) {
+      this.lastSanctumPos = [
+        Number(data.lastSanctumPos[0]),
+        Number(data.lastSanctumPos[1]),
+        Number(data.lastSanctumPos[2]),
+      ];
+    }
+
+    if (Array.isArray(data.subakWheelPositions)) {
+      for (const item of data.subakWheelPositions) {
+        if (!item || typeof item.x !== 'number') continue;
+        const { group, wheelGroup } = this.buildSubakWaterwheelMesh();
+        group.position.set(item.x, item.y, item.z);
+        group.rotation.y = typeof item.rotY === 'number' ? item.rotY : 0;
+        root.add(group);
+        this.subakWheels.push({
+          id: `subak_restored_${this.subakWheels.length}`,
+          position: new THREE.Vector3(item.x, item.y, item.z),
+          group,
+          wheelGroup,
+          harvestTimer: 0,
+          totalHarvested: typeof item.totalHarvested === 'number' ? item.totalHarvested : 0,
+        });
+      }
+    }
+
+    if (Array.isArray(data.wayangStagePositions)) {
+      for (const item of data.wayangStagePositions) {
+        if (!item || typeof item.x !== 'number') continue;
+        const built = this.buildWayangStageMesh();
+        built.group.position.set(item.x, item.y, item.z);
+        built.group.rotation.y = typeof item.rotY === 'number' ? item.rotY : 0;
+        root.add(built.group);
+        this.wayangStages.push({
+          id: `wayang_restored_${this.wayangStages.length}`,
+          position: new THREE.Vector3(item.x, item.y, item.z),
+          ...built,
+          animTime: 0,
+        });
+      }
+    }
   }
 
   public static reset(): void {

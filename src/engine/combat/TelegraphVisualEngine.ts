@@ -78,6 +78,9 @@ export class TelegraphVisualEngine {
       opacity: 0.85,
       side: THREE.DoubleSide,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     });
     const outerRing = new THREE.Mesh(outerGeo, outerMat);
     group.add(outerRing);
@@ -91,6 +94,9 @@ export class TelegraphVisualEngine {
       opacity: 0.35,
       side: THREE.DoubleSide,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     });
     const fillDisk = new THREE.Mesh(fillGeo, fillMat);
     fillDisk.scale.set(0.01, 0.01, 1);
@@ -104,6 +110,9 @@ export class TelegraphVisualEngine {
       opacity: 0.5,
       side: THREE.DoubleSide,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     });
     const rippleRing = new THREE.Mesh(rippleGeo, rippleMat);
     group.add(rippleRing);

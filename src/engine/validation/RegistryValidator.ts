@@ -10,6 +10,7 @@ import { TreasureMapSystem } from '../exploration/TreasureMapSystem';
 import { INITIAL_BOUNTY_CONTRACTS } from '../exploration/BountyContractManager';
 import { BLOCK_DEFS } from '../world/BlockRegistry';
 import { TextureAtlas } from '../world/TextureAtlas';
+import { REGIONAL_ENGINEERING_RECIPES } from '../engineering/RegionalEngineeringRegistry';
 
 export interface ValidationSubResult {
   category: string;
@@ -254,10 +255,14 @@ export class RegistryValidator {
         }
 
         if (q.rewards.unlockedRecipe) {
-          const matchingRecipe = recipeIds.has(q.rewards.unlockedRecipe) ||
-            CRAFTING_RECIPES.some((r) => r.output.itemId === q.rewards?.unlockedRecipe);
+          const recId = q.rewards.unlockedRecipe;
+          const matchingRecipe =
+            recipeIds.has(recId) ||
+            CRAFTING_RECIPES.some((r) => r.output.itemId === recId) ||
+            Boolean(REGIONAL_ENGINEERING_RECIPES[recId]) ||
+            Boolean(ITEM_DEFS[recId]);
           if (!matchingRecipe) {
-            warnings.push(`Quest '${key}' references unlockedRecipe '${q.rewards.unlockedRecipe}' which is not in CRAFTING_RECIPES.`);
+            warnings.push(`Quest '${key}' references unlockedRecipe '${recId}' which is not in CRAFTING_RECIPES.`);
           }
         }
       }
@@ -376,7 +381,10 @@ export class RegistryValidator {
 
       if (art.unlockedRecipes) {
         art.unlockedRecipes.forEach((recId) => {
-          const exists = CRAFTING_RECIPES.some((r) => r.id === recId || r.output.itemId === recId);
+          const exists =
+            CRAFTING_RECIPES.some((r) => r.id === recId || r.output.itemId === recId) ||
+            Boolean(REGIONAL_ENGINEERING_RECIPES[recId]) ||
+            Boolean(ITEM_DEFS[recId]);
           if (!exists) {
             warnings.push(`Artifact '${key}' unlocks recipe '${recId}' which does not exist in CRAFTING_RECIPES.`);
           }

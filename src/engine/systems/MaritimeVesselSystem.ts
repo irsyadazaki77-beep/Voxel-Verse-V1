@@ -197,6 +197,10 @@ export class MaritimeVesselSystem {
         transparent: true,
         opacity: 0.0,
         side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
       });
       const sonarRing = new THREE.Mesh(sonarGeo, sonarMat);
       sonarRing.position.set(0, 0.15, 0);
@@ -537,7 +541,7 @@ export class MaritimeVesselSystem {
 
       // Wave bobbing oscillation
       const waveOffset = Math.sin(this.waveClock * 2.2 + vessel.position.x * 0.35 + vessel.position.z * 0.35) * 0.06;
-      vessel.position.y = THREE.MathUtils.lerp(vessel.position.y, waterTopY + waveOffset, Math.min(1, dt * 8));
+      vessel.position.y = THREE.MathUtils.damp(vessel.position.y, waterTopY + waveOffset, 9, dt);
 
       // 2. Piloted Sailing Controls (Helm Steering & Sail Thrust)
       let turnInput = 0;
@@ -557,8 +561,8 @@ export class MaritimeVesselSystem {
           targetSpeed = -vessel.maxSpeed * 0.35;
         }
 
-        const accel = playerKeys.forward || playerKeys.backward ? 3.8 : 2.2;
-        vessel.currentSpeed = THREE.MathUtils.lerp(vessel.currentSpeed, targetSpeed, Math.min(1, dt * accel));
+        const accel = playerKeys.forward || playerKeys.backward ? 4.2 : 2.5;
+        vessel.currentSpeed = THREE.MathUtils.damp(vessel.currentSpeed, targetSpeed, accel, dt);
 
         // Forward direction along -Z in Three.js player coordinate convention
         this._tempForward.set(-Math.sin(vessel.yaw), 0, -Math.cos(vessel.yaw));
@@ -599,7 +603,7 @@ export class MaritimeVesselSystem {
           }
         }
       } else {
-        vessel.currentSpeed = THREE.MathUtils.lerp(vessel.currentSpeed, 0, Math.min(1, dt * 4));
+        vessel.currentSpeed = THREE.MathUtils.damp(vessel.currentSpeed, 0, 4.5, dt);
       }
 
       // 3. Measure Ocean Trench Depth Periodically
@@ -621,8 +625,8 @@ export class MaritimeVesselSystem {
         Math.min(0.09, Math.max(-0.05, vessel.currentSpeed * 0.008)) +
         Math.sin(this.waveClock * 2.1 + vessel.position.x * 0.2) * 0.025;
 
-      vessel.roll = THREE.MathUtils.lerp(vessel.roll, targetRoll, Math.min(1, dt * 6));
-      vessel.pitch = THREE.MathUtils.lerp(vessel.pitch, targetPitch, Math.min(1, dt * 6));
+      vessel.roll = THREE.MathUtils.damp(vessel.roll, targetRoll, 7, dt);
+      vessel.pitch = THREE.MathUtils.damp(vessel.pitch, targetPitch, 7, dt);
 
       vessel.mesh.position.copy(vessel.position);
       vessel.mesh.rotation.set(vessel.pitch, vessel.yaw, vessel.roll, 'YXZ');
@@ -631,13 +635,14 @@ export class MaritimeVesselSystem {
       const sailScaleZ = vessel.sailDeployed
         ? 0.92 + Math.min(0.35, Math.abs(vessel.currentSpeed) * 0.025)
         : 0.25;
-      vessel.sailGroup.scale.z = THREE.MathUtils.lerp(vessel.sailGroup.scale.z, sailScaleZ, Math.min(1, dt * 5));
+      vessel.sailGroup.scale.z = THREE.MathUtils.damp(vessel.sailGroup.scale.z, sailScaleZ, 6, dt);
 
       if (vessel.rudderMesh) {
-        vessel.rudderMesh.rotation.y = THREE.MathUtils.lerp(
+        vessel.rudderMesh.rotation.y = THREE.MathUtils.damp(
           vessel.rudderMesh.rotation.y,
           -turnInput * 0.45,
-          Math.min(1, dt * 10)
+          12,
+          dt
         );
       }
 

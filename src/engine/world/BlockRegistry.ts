@@ -1651,7 +1651,7 @@ export const BLOCK_DEFS: Record<number, BlockDef> = {
     requiredTool: 'pickaxe',
     solid: true,
     color: [0.38, 0.40, 0.42],
-    dropItem: 'carved_andesite_stone',
+    dropItem: 'carved_andesite',
     soundType: 'stone',
   },
   [BlockType.MOSSY_CANDI_STONE]: {
@@ -1663,7 +1663,7 @@ export const BLOCK_DEFS: Record<number, BlockDef> = {
     requiredTool: 'pickaxe',
     solid: true,
     color: [0.32, 0.42, 0.30],
-    dropItem: 'carved_andesite_stone',
+    dropItem: 'carved_andesite',
     soundType: 'stone',
   },
   [BlockType.CARVED_CANDI_RELIEF]: {
@@ -1675,7 +1675,7 @@ export const BLOCK_DEFS: Record<number, BlockDef> = {
     requiredTool: 'pickaxe',
     solid: true,
     color: [0.44, 0.46, 0.48],
-    dropItem: 'carved_andesite_stone',
+    dropItem: 'carved_andesite',
     soundType: 'stone',
   },
   [BlockType.PRISMATIC_CRYSTAL]: {

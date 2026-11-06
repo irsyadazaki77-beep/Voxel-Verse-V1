@@ -400,6 +400,8 @@ export class SaveManager {
     const artifactState = raw?.artifactState || undefined;
     const dungeonExpedition = raw?.dungeonExpedition || undefined;
     const aetherEngineering = typeof raw?.aetherEngineering === 'object' && raw.aetherEngineering ? raw.aetherEngineering : { machines: {} };
+    const characterProgression = typeof raw?.characterProgression === 'object' && raw.characterProgression ? raw.characterProgression : undefined;
+    const nusantaraState = typeof raw?.nusantaraState === 'object' && raw.nusantaraState ? raw.nusantaraState : undefined;
 
     return {
       version,
@@ -454,6 +456,8 @@ export class SaveManager {
       questRewardsClaimed,
       clearedDungeons,
       aetherEngineering,
+      characterProgression,
+      nusantaraState,
     };
   }
 

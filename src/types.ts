@@ -594,6 +594,10 @@ export interface WorldSaveData {
     blueprints?: any[];
   };
   characterProgression?: any;
+  nusantaraState?: {
+    silat?: Record<string, any>;
+    mahakarya?: Record<string, any>;
+  };
 }
 
 // ==========================================

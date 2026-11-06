@@ -510,6 +510,8 @@ export class GameRuntime {
     this.scene.add(CataclysmVisualEngine.getOrCreateRootGroup());
     this.scene.add(VernacularHologramSystem.hologramGroup);
     this.scene.add(AerialFlightAndSiegeSystem.getOrCreateRootGroup());
+    NusantaraSanctumSilatSubakSystem.deserialize(worldData?.nusantaraState?.silat);
+    MahakaryaNusantaraSystem.deserialize(worldData?.nusantaraState?.mahakarya, this.player);
     this.scene.add(NusantaraSanctumSilatSubakSystem.getOrCreateRootGroup());
     this.scene.add(MahakaryaNusantaraSystem.getOrCreateRootGroup());
 

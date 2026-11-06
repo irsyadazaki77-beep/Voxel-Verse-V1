@@ -3,6 +3,7 @@ import { GameSystem } from './GameSystem';
 import type { GameRuntime } from '../core/GameRuntime';
 import { WorldEventManager } from '../events/WorldEventManager';
 import { MaritimeVesselSystem } from './MaritimeVesselSystem';
+import { MahakaryaNusantaraSystem } from './MahakaryaNusantaraSystem';
 
 export class EnvironmentSystem implements GameSystem {
   public readonly name = 'EnvironmentSystem';
@@ -114,10 +115,17 @@ export class EnvironmentSystem implements GameSystem {
         targetExposure += 0.22;
       }
 
-      // Smooth lerp exposure to target
+      // Extreme Weather Event atmospheric exposure tuning
+      if (MahakaryaNusantaraSystem.weatherEventId === 'VOLCANIC_ERUPTION') {
+        targetExposure += 0.06;
+      } else if (MahakaryaNusantaraSystem.weatherEventId === 'EQUATORIAL_THUNDERSTORM') {
+        targetExposure -= 0.05;
+      }
+
+      // Smooth damp exposure to target
       const curExposure = this.runtime.renderer.toneMappingExposure;
-      const lerpSpeed = weather?.isLightningFlash ? 14.0 : 2.0;
-      this.runtime.renderer.toneMappingExposure += (targetExposure - curExposure) * Math.min(1.0, deltaTime * lerpSpeed);
+      const dampLambda = weather?.isLightningFlash ? 14.0 : 2.5;
+      this.runtime.renderer.toneMappingExposure = THREE.MathUtils.damp(curExposure, targetExposure, dampLambda, deltaTime);
     }
 
     if (clouds) {
@@ -181,7 +189,11 @@ export class EnvironmentSystem implements GameSystem {
       this.runtime.audio.updateAmbientGamelan(deltaTime, {
         biomeName: biome?.name || 'Emerald Highlands',
         timeOfDay: sky.timeOfDay,
-        isCombatOrCataclysm: !!WorldEventManager.activeEvent || !!this.runtime.activeBoss,
+        isCombatOrCataclysm:
+          !!WorldEventManager.activeEvent ||
+          !!this.runtime.activeBoss ||
+          MahakaryaNusantaraSystem.weatherEventId === 'VOLCANIC_ERUPTION' ||
+          MahakaryaNusantaraSystem.arenaActive,
         isUnderwater: player.isEyesInWater,
         isSailing: !!MaritimeVesselSystem.activeVesselId,
       });
