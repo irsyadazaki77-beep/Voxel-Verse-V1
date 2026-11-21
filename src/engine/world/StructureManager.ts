@@ -3,6 +3,7 @@ import { VoxelBlockPlacement, StructureGenerator } from './StructureGenerator';
 import { NusantaraSettlementGenerator } from './NusantaraSettlementGenerator';
 import { NusantaraBuildingKit } from './NusantaraBuildingKit';
 import { Rotation90 } from './BlockState';
+import { SEA_LEVEL } from './WorldConfig';
 
 export interface BoundingBox {
   minX: number;
@@ -29,7 +30,7 @@ export interface StructureInstance {
 }
 
 export class StructureManager {
-  private static cell_size = 96;
+  private static cell_size = 80;
   private static maxCacheSize = 256;
   private static cache = new Map<string, StructureInstance>();
 
@@ -71,8 +72,8 @@ export class StructureManager {
 
     const cellHash = Math.abs(Math.imul(cellX, 73856093) ^ Math.imul(cellZ, 19349663) ^ Math.imul(worldSeed, 83492791));
     
-    // Density control: Only 1 in 6 cells has a structure
-    if (cellHash % 6 !== 0) return null;
+    // Density control (v7.5.0): 1 in 3 cells has a Nusantara landmark or village
+    if (cellHash % 3 !== 0) return null;
 
     const originX = cellX * this.cell_size + (cellHash % this.cell_size);
     const originZ = cellZ * this.cell_size + ((cellHash >> 4) % this.cell_size);
@@ -96,15 +97,16 @@ export class StructureManager {
     }
 
     const originY = getTerrainHeight(originX, originZ);
-    if (originY < 60) return null; // Avoid putting structures deep underwater
+    // v7.5.0 Fix: SEA_LEVEL is 28 (previous `< 60` check rejected ~95% of normal Overworld land!)
+    if (originY < SEA_LEVEL + 1 || originY > 92) return null;
     
-    // Water proximity check for Borneo Riverlands
-    if (region.id === 'borneo_riverlands' && originY > 66) {
-      return null; // Reject river structures if they are too far from water/too high up
+    // Water proximity check for Borneo Riverlands (within 14 blocks of river/sea level)
+    if (region.id === 'borneo_riverlands' && originY > SEA_LEVEL + 14) {
+      return null;
     }
 
-    // 1 in 8 structures is a full settlement
-    if (cellHash % 8 === 0) {
+    // 1 in 5 structures is a full Nusantara settlement
+    if (cellHash % 5 === 0) {
       type = 'settlement';
       placements = NusantaraSettlementGenerator.generateSettlement(
         region.id, 

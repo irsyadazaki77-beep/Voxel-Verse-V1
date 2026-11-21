@@ -44,6 +44,65 @@ export class WorldGeneratorCore {
     this.oreNoise = new SimplexNoise(seed + 999);
   }
 
+  /**
+   * v7.5.0: Deterministic Stratovolcano & Lava Caldera Macro-Landform Evaluator
+   * Places majestic Nusantara volcanoes (Merapi / Bromo style) in 1 of 2 regional 512x512 cells.
+   */
+  public getVolcanoInfo(wx: number, wz: number): {
+    inVolcano: boolean;
+    inCaldera: boolean;
+    heightDelta: number;
+    calderaLavaY: number;
+    distRatio: number;
+  } {
+    const CELL = 512;
+    const vxCell = Math.floor(wx / CELL);
+    const vzCell = Math.floor(wz / CELL);
+    // Keep immediate spawn cell (0,0) clear of giant volcanoes so new players spawn in pleasant valleys
+    if (vxCell === 0 && vzCell === 0) {
+      return { inVolcano: false, inCaldera: false, heightDelta: 0, calderaLavaY: 0, distRatio: 1 };
+    }
+    const vHash = Math.abs(Math.imul(vxCell, 73856093) ^ Math.imul(vzCell, 19349663) ^ Math.imul(this.seed, 2654435761));
+    if (vHash % 2 !== 0) {
+      return { inVolcano: false, inCaldera: false, heightDelta: 0, calderaLavaY: 0, distRatio: 1 };
+    }
+
+    const centerX = vxCell * CELL + 128 + (vHash % 256);
+    const centerZ = vzCell * CELL + 128 + ((vHash >> 8) % 256);
+    const radius = 64 + (vHash % 20); // 64..83m volcanic cone radius
+    const dist = Math.hypot(wx - centerX, wz - centerZ);
+    if (dist >= radius) {
+      return { inVolcano: false, inCaldera: false, heightDelta: 0, calderaLavaY: 0, distRatio: 1 };
+    }
+
+    const distRatio = dist / radius;
+    const peakBoost = 54 + ((vHash >> 4) % 14); // +54..+67m soaring volcanic cone
+    const calderaRadius = 11.5;
+
+    if (dist < calderaRadius) {
+      // Sunken glowing caldera bowl at summit
+      const bowlRatio = 1.0 - dist / calderaRadius;
+      const bowlDepth = bowlRatio * 14.0;
+      const coneAtRim = Math.pow(1.0 - calderaRadius / radius, 1.35) * peakBoost;
+      return {
+        inVolcano: true,
+        inCaldera: true,
+        heightDelta: Math.max(12, coneAtRim - bowlDepth),
+        calderaLavaY: Math.max(1, Math.floor(bowlRatio * 6)), // Relative molten lava depth inside the sunken crater bowl
+        distRatio,
+      };
+    }
+
+    const coneProfile = Math.pow(1.0 - distRatio, 1.35) * peakBoost;
+    return {
+      inVolcano: true,
+      inCaldera: false,
+      heightDelta: coneProfile,
+      calderaLavaY: 84,
+      distRatio,
+    };
+  }
+
   public getTerrainHeight(wx: number, wz: number): number {
     const p = this.params;
     const cont = this.contNoise.fbm2D(wx * p.continentalnessScale, wz * p.continentalnessScale, 4, 0.45);
@@ -54,6 +113,23 @@ export class WorldGeneratorCore {
     const tp = this.regionManager.getBlendedTerrainProfile(wx, wz);
 
     let baseHeight = 30 + tp.heightOffset + cont * 26 + (1.0 - Math.abs(erosion)) * 12 + (detail * 5 * tp.roughness);
+
+    // v7.5.0 Landform 1: Raja Ampat Karst Sea Stacks & Archipelago Pillars rising out of coastal seas
+    if (cont < -0.10 && cont > -0.48) {
+      const stackNoise = this.peaksNoise.noise2D(wx * 0.032 + 410, wz * 0.032 - 310);
+      if (stackNoise > 0.52) {
+        const pillarFactor = Math.min(1.0, (stackNoise - 0.52) / 0.22);
+        const targetPillarH = p.seaLevel + 10 + Math.pow(pillarFactor, 0.65) * 18;
+        baseHeight = Math.max(baseHeight, targetPillarH);
+      }
+    }
+
+    // v7.5.0 Landform 2: Stepped Highland Mesa / Lembah Harau Plateaus
+    if (cont > 0.24 && erosion < -0.26) {
+      const plateauStrength = Math.min(1.0, (-erosion - 0.26) / 0.25);
+      const mesaHeight = 64 + Math.round((detail + 1.0) * 2.0) * 4;
+      baseHeight = baseHeight * (1.0 - plateauStrength * 0.75) + mesaHeight * (plateauStrength * 0.75);
+    }
 
     // Sheer karst & limestone cliff walls (Toraja / Eastern Isles / Papua)
     if (tp.cliffStrength && tp.cliffStrength > 0.05 && peaks > 0.40) {
@@ -66,10 +142,16 @@ export class WorldGeneratorCore {
       baseHeight += Math.pow((peaks - 0.46) * 2.1, 1.8) * p.mountainHeightScale * tp.mountainScale;
     }
 
+    // v7.5.0 Landform 3: Towering Nusantara Stratovolcano & Lava Caldera
+    const volcano = this.getVolcanoInfo(wx, wz);
+    if (volcano.inVolcano) {
+      baseHeight = Math.max(p.seaLevel + 8, baseHeight * 0.55 + 22) + volcano.heightDelta;
+    }
+
     // Valley & River calculation with region river width and valley depth
     const riverWidth = 0.035 * (tp.riverWidthMult || 1.0);
     const rVal = Math.abs(this.riverNoise.fbm2D(wx * p.riverFrequency, wz * p.riverFrequency, 3, 0.5));
-    const isRiver = cont > -0.2 && rVal < riverWidth;
+    const isRiver = !volcano.inVolcano && cont > -0.2 && rVal < riverWidth;
     if (isRiver) {
       const extraDepth = tp.valleyDepth || 0;
       const riverDepth = Math.floor((riverWidth - rVal) * (180 + extraDepth * 3.5));
@@ -77,7 +159,7 @@ export class WorldGeneratorCore {
     }
 
     // Sawah Bertingkat / Subak stepped agricultural terracing
-    if (tp.terraceStrength && tp.terraceStrength > 0.05 && baseHeight > p.seaLevel + 1 && baseHeight < 88) {
+    if (!volcano.inVolcano && tp.terraceStrength && tp.terraceStrength > 0.05 && baseHeight > p.seaLevel + 1 && baseHeight < 88) {
       const step = tp.terraceStep || 3;
       const terracedH = Math.round(baseHeight / step) * step;
       baseHeight = (1.0 - tp.terraceStrength) * baseHeight + tp.terraceStrength * terracedH;
@@ -140,11 +222,18 @@ export class WorldGeneratorCore {
         let subBlock = 1;     // DIRT
         let deepBlock = 3;    // STONE
 
-        if (cont < -0.35) {
+        const volcano = this.getVolcanoInfo(wx, wz);
+
+        if (volcano.inVolcano && volcano.distRatio < 0.72) {
+          // Volcanic basalt flanks & glowing magma rock rim
+          surfaceBlock = volcano.inCaldera ? BlockType.MAGMA_ROCK : BlockType.BASALT;
+          subBlock = BlockType.BASALT;
+          deepBlock = BlockType.BASALT;
+        } else if (cont < -0.35 && height < p.seaLevel) {
           surfaceBlock = 6;
           subBlock = 3;
-        } else if (height <= p.seaLevel + 2 && cont < -0.22) {
-          surfaceBlock = 5;
+        } else if (height <= p.seaLevel + 3 && height >= p.seaLevel - 1 && cont < -0.08) {
+          surfaceBlock = 5; // Coastal golden beach sand
           subBlock = 5;
         } else if (temp > 0.5 && humid < 0.2) {
           surfaceBlock = 5;
@@ -152,7 +241,7 @@ export class WorldGeneratorCore {
         } else if (temp > 0.5 && humid < 0.35) {
           surfaceBlock = 7;
           subBlock = 50;
-        } else if (temp < -0.35 || height > 76) {
+        } else if (temp < -0.35 || (height > 82 && !volcano.inVolcano)) {
           surfaceBlock = 38; // SNOW
           subBlock = 38;
         } else if (temp > 0.65 && humid < 0.1) {
@@ -220,6 +309,83 @@ export class WorldGeneratorCore {
           }
 
           blocks[getIndex(lx, y, lz)] = block;
+        }
+
+        // v7.5.0: Fill Stratovolcano Summit Caldera with glowing Molten Lava Pool
+        if (volcano.inCaldera && volcano.calderaLavaY > 0) {
+          const lavaTop = Math.min(CHUNK_SIZE_Y - 5, height + volcano.calderaLavaY);
+          for (let y = height + 1; y <= lavaTop; y++) {
+            blocks[getIndex(lx, y, lz)] = BlockType.LAVA;
+          }
+        }
+
+        // v7.5.0: 3 Rich Underground Cave Biomes (Bioluminescent Karst, Aether Crystal Geode, Volcanic Magma Chamber)
+        const caveBiomeVal = this.detailNoise.noise2D(wx * 0.018 + 777, wz * 0.018 - 555);
+        const colHash = Math.abs(Math.imul(wx, 73856093) ^ Math.imul(wz, 19349663) ^ this.seed);
+        for (let y = 5; y < Math.min(height - 3, 52); y++) {
+          const cur = blocks[getIndex(lx, y, lz)];
+          const below = blocks[getIndex(lx, y - 1, lz)];
+          const above = blocks[getIndex(lx, y + 1, lz)];
+
+          // Cave Floor Decorations (AIR with solid block below)
+          if (cur === BlockType.AIR && below !== BlockType.AIR && below !== BlockType.WATER && below !== BlockType.LAVA) {
+            if (y < 16) {
+              // Volcanic Magma Chamber floor
+              blocks[getIndex(lx, y - 1, lz)] = (colHash % 3 === 0) ? BlockType.MAGMA_ROCK : BlockType.BASALT;
+            } else if (caveBiomeVal > 0.35) {
+              // Aether Crystal Geode floor
+              blocks[getIndex(lx, y - 1, lz)] = BlockType.CRYSTAL_BRICK;
+              if ((colHash + y) % 7 === 0) {
+                blocks[getIndex(lx, y, lz)] = ((colHash + y) % 14 === 0) ? BlockType.PRISMATIC_CRYSTAL : BlockType.AETHER_CRYSTAL_ORE;
+              }
+            } else if (humid > 0.48 || caveBiomeVal < -0.15) {
+              // Bioluminescent Karst Cavern floor
+              blocks[getIndex(lx, y - 1, lz)] = BlockType.MOSS_STONE;
+              if ((colHash + y) % 5 === 0) {
+                blocks[getIndex(lx, y, lz)] = BlockType.LUMINESCENT_MUSHROOM;
+              }
+            }
+          }
+          // Cave Ceiling Stalactites (AIR with solid stone above)
+          if (cur === BlockType.AIR && above === BlockType.STONE && y > 12 && (colHash + y) % 19 === 0) {
+            blocks[getIndex(lx, y, lz)] = BlockType.STONE;
+            if (y - 1 > 6 && blocks[getIndex(lx, y - 1, lz)] === BlockType.AIR && colHash % 2 === 0) {
+              blocks[getIndex(lx, y - 1, lz)] = BlockType.STONE;
+            }
+          }
+        }
+
+        // v7.5.0: Rare Floating Aether Sky-Sanctuaries high in Overworld sky (y = 88..102)
+        const SKY_CELL = 384;
+        const scx = Math.floor(wx / SKY_CELL);
+        const scz = Math.floor(wz / SKY_CELL);
+        if (scx !== 0 || scz !== 0) {
+          const sHash = Math.abs(Math.imul(scx, 83492791) ^ Math.imul(scz, 19349663) ^ this.seed);
+          if (sHash % 4 === 0) {
+            const islandX = scx * SKY_CELL + 96 + (sHash % 192);
+            const islandZ = scz * SKY_CELL + 96 + ((sHash >> 6) % 192);
+            const iRadius = 11 + (sHash % 5);
+            const iDist = Math.hypot(wx - islandX, wz - islandZ);
+            if (iDist <= iRadius) {
+              const topY = 96;
+              const thickness = Math.max(2, Math.floor((1.0 - iDist / iRadius) * 10));
+              for (let y = topY - thickness; y <= topY; y++) {
+                if (y > height + 10 && y < CHUNK_SIZE_Y - 2) {
+                  let skyBlock = BlockType.AETHER_STONE;
+                  if (y === topY) skyBlock = BlockType.AETHER_GRASS;
+                  else if (y === topY - 1) skyBlock = BlockType.AETHER_DIRT;
+                  else if (iDist < 3 && y === topY - thickness) skyBlock = BlockType.AETHER_CRYSTAL_ORE;
+                  blocks[getIndex(lx, y, lz)] = skyBlock;
+                }
+              }
+              // Sky waterfall pouring from one edge of the floating island
+              if (Math.round(wx) === islandX + iRadius - 1 && Math.round(wz) === islandZ) {
+                for (let wy = Math.max(height + 1, p.seaLevel + 1); wy <= topY; wy++) {
+                  blocks[getIndex(lx, wy, lz)] = BlockType.WATER;
+                }
+              }
+            }
+          }
         }
 
         for (let y = height + 1; y <= p.seaLevel; y++) {
@@ -331,22 +497,40 @@ export class WorldGeneratorCore {
         if (insideStructure) continue;
 
         const topBlock = blocks[getIndex(lx, height, lz)];
+        const localHash = Math.abs(Math.imul(wx, 73856093) ^ Math.imul(wz, 19349663) ^ this.seed);
         
-        if (topBlock === 2) {
+        if (topBlock === 5 && height <= p.seaLevel + 5) {
+          // v7.5.0: Coastal Palm Groves on tropical sandy beaches & Raja Ampat islets
+          const palmVal = this.detailNoise.noise2D(wx * 0.28 + 333, wz * 0.28 - 111);
+          if (palmVal > 0.72 && localHash % 7 === 0) {
+            const palmBlocks = StructureGenerator.generatePalmTree(localHash);
+            this.applyStructureToChunkLocal(palmBlocks, lx, height + 1, lz, blocks, getIndex);
+          }
+        } else if (topBlock === 2) {
           const treeVal = this.detailNoise.noise2D(wx * 0.35 + 100, wz * 0.35 + 100);
-          const treeChance = dominantRegion.vegetationProfile.treeChance * 10;
-          if (treeVal > (1.0 - Math.min(0.25, treeChance))) {
-            const primaryTrees = dominantRegion.vegetationProfile.primaryTrees;
-            const treeKind = primaryTrees[(wx + wz) % primaryTrees.length];
-            const treeBlocks = (treeKind === 'pine') 
-              ? StructureGenerator.generatePineTree(wx + wz)
-              : StructureGenerator.generateOakTree(wx + wz);
+          const treeChance = Math.max(0.14, dominantRegion.vegetationProfile.treeChance * 14);
+          if (treeVal > (1.0 - Math.min(0.38, treeChance))) {
+            const regionId = dominantRegion.id;
+            let treeBlocks;
+            if ((regionId === 'jawa' || regionId === 'bali' || regionId === 'minang') && localHash % 4 === 0) {
+              treeBlocks = StructureGenerator.generateBambooGrove(localHash);
+            } else if ((regionId === 'borneo' || regionId === 'papua' || regionId === 'minang') && localHash % 5 === 1 && lx >= 4 && lx <= 11 && lz >= 4 && lz <= 11) {
+              treeBlocks = StructureGenerator.generateGiantRainforestTree(localHash);
+            } else if (localHash % 29 === 0 && lx >= 4 && lx <= 11 && lz >= 4 && lz <= 11) {
+              treeBlocks = StructureGenerator.generateWaystoneShrine(localHash);
+            } else {
+              const primaryTrees = dominantRegion.vegetationProfile.primaryTrees;
+              const treeKind = primaryTrees[localHash % primaryTrees.length];
+              treeBlocks = (treeKind === 'pine' || height > 64)
+                ? StructureGenerator.generatePineTree(localHash)
+                : StructureGenerator.generateOakTree(localHash);
+            }
             this.applyStructureToChunkLocal(treeBlocks, lx, height + 1, lz, blocks, getIndex);
           }
         } else if (topBlock === 38) {
           const treeVal = this.detailNoise.noise2D(wx * 0.3 + 200, wz * 0.3 + 200);
-          if (treeVal > 0.83) {
-            const treeBlocks = StructureGenerator.generatePineTree(wx + wz);
+          if (treeVal > 0.80) {
+            const treeBlocks = StructureGenerator.generatePineTree(localHash);
             this.applyStructureToChunkLocal(treeBlocks, lx, height + 1, lz, blocks, getIndex);
           }
         }

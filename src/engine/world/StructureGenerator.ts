@@ -124,6 +124,112 @@ export class StructureGenerator {
     return blocks;
   }
 
+  // v7.5.0: Coastal Nusantara Coconut / Palm Tree (curved trunk + drooping fronds)
+  public static generatePalmTree(seed: number): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const height = 6 + (Math.abs(seed) % 3);
+    const leanDirX = (Math.abs(seed) % 3) - 1; // -1, 0, or 1
+    const leanDirZ = ((Math.abs(seed >> 2)) % 3) - 1;
+
+    let topX = 0;
+    let topZ = 0;
+    for (let y = 0; y < height; y++) {
+      if (y === 2 || y === 4) {
+        topX += leanDirX;
+        topZ += leanDirZ;
+      }
+      blocks.push({ dx: topX, dy: y, dz: topZ, block: BlockType.TEAK_WOOD_LOG });
+    }
+
+    // Crown center + 4 drooping tropical palm fronds
+    blocks.push({ dx: topX, dy: height, dz: topZ, block: BlockType.OAK_LEAVES });
+    const dirs: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dz] of dirs) {
+      blocks.push({ dx: topX + dx, dy: height, dz: topZ + dz, block: BlockType.OAK_LEAVES });
+      blocks.push({ dx: topX + dx * 2, dy: height, dz: topZ + dz * 2, block: BlockType.OAK_LEAVES });
+      blocks.push({ dx: topX + dx * 3, dy: height - 1, dz: topZ + dz * 3, block: BlockType.OAK_LEAVES });
+    }
+    // Diagonal leaf tips
+    for (const [dx, dz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      blocks.push({ dx: topX + dx, dy: height, dz: topZ + dz, block: BlockType.OAK_LEAVES });
+      blocks.push({ dx: topX + dx * 2, dy: height - 1, dz: topZ + dz * 2, block: BlockType.OAK_LEAVES });
+    }
+    return blocks;
+  }
+
+  // v7.5.0: Nusantara Bamboo Grove Cluster (3-4 tall stalks with leafy tops)
+  public static generateBambooGrove(seed: number): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const offsets: [number, number][] = [
+      [0, 0],
+      [2, 0],
+      [0, 2],
+      [-1, 1],
+    ];
+    const count = 3 + (Math.abs(seed) % 2);
+    for (let i = 0; i < count; i++) {
+      const [ox, oz] = offsets[i];
+      const h = 6 + ((Math.abs(seed + i * 17)) % 5);
+      for (let y = 0; y < h; y++) {
+        blocks.push({ dx: ox, dy: y, dz: oz, block: BlockType.BAMBOO_STALK_BLOCK });
+      }
+      blocks.push({ dx: ox, dy: h, dz: oz, block: BlockType.OAK_LEAVES });
+      if (i % 2 === 0) {
+        blocks.push({ dx: ox + 1, dy: h - 1, dz: oz, block: BlockType.OAK_LEAVES });
+      }
+    }
+    return blocks;
+  }
+
+  // v7.5.0: Giant Tropical Rainforest / Ulin Ironwood Tree (2x2 trunk + buttress roots + wide canopy)
+  public static generateGiantRainforestTree(seed: number): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const height = 11 + (Math.abs(seed) % 5);
+    const logBlock = (Math.abs(seed) % 2 === 0) ? BlockType.ULIN_IRONWOOD_LOG : BlockType.TEAK_WOOD_LOG;
+
+    // 2x2 towering trunk
+    for (let y = 0; y < height; y++) {
+      blocks.push({ dx: 0, dy: y, dz: 0, block: logBlock });
+      blocks.push({ dx: 1, dy: y, dz: 0, block: logBlock });
+      blocks.push({ dx: 0, dy: y, dz: 1, block: logBlock });
+      blocks.push({ dx: 1, dy: y, dz: 1, block: logBlock });
+    }
+    // Buttress roots at base
+    blocks.push({ dx: -1, dy: 0, dz: 0, block: logBlock });
+    blocks.push({ dx: 2, dy: 0, dz: 1, block: logBlock });
+    blocks.push({ dx: 0, dy: 0, dz: -1, block: logBlock });
+    blocks.push({ dx: 1, dy: 0, dz: 2, block: logBlock });
+
+    // Multi-tier tropical umbrella canopy
+    for (let y = height - 2; y <= height + 1; y++) {
+      const r = y === height + 1 ? 2 : 3;
+      for (let x = -r; x <= r + 1; x++) {
+        for (let z = -r; z <= r + 1; z++) {
+          const dist = Math.hypot(x - 0.5, z - 0.5);
+          if (dist <= r + 0.55) {
+            blocks.push({ dx: x, dy: y, dz: z, block: BlockType.OAK_LEAVES });
+          }
+        }
+      }
+    }
+    return blocks;
+  }
+
+  // v7.5.0: Roadside Ancient Waystone Shrine / Petilasan Batu with glowing lantern
+  public static generateWaystoneShrine(seed: number): VoxelBlockPlacement[] {
+    const blocks: VoxelBlockPlacement[] = [];
+    const lantern = (Math.abs(seed) % 3 === 0) ? BlockType.AETHER_LANTERN : BlockType.LANTERN;
+    for (let x = -1; x <= 1; x++) {
+      for (let z = -1; z <= 1; z++) {
+        blocks.push({ dx: x, dy: 0, dz: z, block: (x === 0 && z === 0) ? BlockType.CARVED_ANDESITE_STONE : BlockType.MOSS_STONE });
+      }
+    }
+    blocks.push({ dx: 0, dy: 1, dz: 0, block: BlockType.CARVED_ANDESITE_STONE });
+    blocks.push({ dx: 0, dy: 2, dz: 0, block: BlockType.CARVED_ANDESITE_STONE });
+    blocks.push({ dx: 0, dy: 3, dz: 0, block: lantern });
+    return blocks;
+  }
+
   public static generateJungleTree(seed: number): VoxelBlockPlacement[] {
     const blocks: VoxelBlockPlacement[] = [];
     const height = 10 + (Math.abs(seed) % 5);
@@ -194,28 +300,6 @@ export class StructureGenerator {
           }
         }
       }
-    }
-    return blocks;
-  }
-
-  public static generatePalmTree(seed: number): VoxelBlockPlacement[] {
-    const blocks: VoxelBlockPlacement[] = [];
-    const height = 5 + (Math.abs(seed) % 2);
-
-    // Slanted Trunk
-    for (let y = 0; y < height; y++) {
-      const offsetX = Math.floor(y / 3);
-      blocks.push({ dx: offsetX, dy: y, dz: 0, block: BlockType.OAK_LOG });
-    }
-
-    const topX = Math.floor(height / 3);
-    // Fronds
-    const fronds = [
-      [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1],
-      [2, -1, 0], [-2, -1, 0], [0, -1, 2], [0, -1, -2]
-    ];
-    for (const [fx, fy, fz] of fronds) {
-      blocks.push({ dx: topX + fx, dy: height + fy, dz: fz, block: BlockType.OAK_LEAVES });
     }
     return blocks;
   }

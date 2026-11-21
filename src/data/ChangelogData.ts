@@ -11,6 +11,33 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '7.5.0',
+    date: '2026-11-21',
+    title: 'World Diversity & Landform Overhaul: Gunung Berapi & Kaldera Lava, Gugusan Pulau Karst Raja Ampat, Pulau Melayang Aether, 3 Bioma Gua Bawah Tanah, Hutan Bambu/Kelapa/Rimba Raksasa & Perbaikan Populasi Desa/Candi',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Perbaikan Populasi Desa, Candi & Landmark Nusantara (StructureManager.ts)',
+        items: [
+          'Memperbaiki bug kritis filter ketinggian (originY < 60 vs SEA_LEVEL = 28) yang sebelumnya menolak ~95% daratan normal, serta meningkatkan kepadatan penemuan desa & landmark (1 dari 3 sel 80m).'
+        ]
+      },
+      {
+        category: '2. Macro-Landform Ikonik & Bioma Gua Bawah Tanah (WorldGeneratorCore.ts)',
+        items: [
+          'Menambahkan Gunung Berapi Stratovolcano dengan kawah lava menyala (terlihat jauh melalui Distant Horizons LOD), gugusan pulau karst Raja Ampat di laut pesisir, dataran tinggi Mesa, dan Pulau Melayang Aether langka dengan air terjun langit.',
+          'Memperkaya gua bawah tanah menjadi 3 bioma (Gua Jamur Bioluminescent, Geode Kristal Aether, dan Ruang Magma Dalam) lengkap dengan stalaktit alami.'
+        ]
+      },
+      {
+        category: '3. Vegetasi Bioma Beragam (StructureGenerator.ts & WorldGeneratorCore.ts)',
+        items: [
+          'Menambahkan Pohon Kelapa pantai, Rumpun Bambu Nusantara, Pohon Rimba Raksasa 2×2 (Ulin/Jati) dengan akar banir, serta Petilasan Batu (Waystone Shrine) berlentera.'
+        ]
+      }
+    ]
+  },
+  {
     version: '7.4.0',
     date: '2026-11-21',
     title: 'Visual Polish & Rendering Overhaul: Unclipped 600m+ Distant Horizons, Zero Chunk-Border Light Seams, Smooth 5-Tap RGB Lighting, Analytic LOD Normals, Tangent PBR Micro-Normals & Crisp God Rays',
