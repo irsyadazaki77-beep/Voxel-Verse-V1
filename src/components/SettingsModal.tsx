@@ -336,6 +336,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                           <option value="smaa">SMAA (Ultra Crisp Edge AA)</option>
                         </select>
                       </div>
+
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <label className="block font-bold text-white text-sm">Shader Realism (v6.2+)</label>
+                        <select
+                          value={settings.graphics.shaderRealism || 'realistic'}
+                          onChange={(e) => updateGraphics({ shaderRealism: e.target.value as any, preset: 'custom' })}
+                          className="w-full bg-black/40 border border-[var(--vv-border)] rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:border-[var(--vv-primary)]"
+                        >
+                          <option value="stylized">Stylized (Fastest FPS)</option>
+                          <option value="realistic">Realistic (PBR Micro-Normals + God Rays)</option>
+                          <option value="ultra">Ultra Photoreal (Full Vignette & Sun Shafts)</option>
+                        </select>
+                      </div>
                     </div>
 
                     <div className="grid sm:grid-cols-2 gap-4">
@@ -365,6 +378,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                           <option value="1024">1024 (Medium)</option>
                           <option value="2048">2048 (High HD)</option>
                           <option value="4096">4096 (Ultra 4K Crisp)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2 bg-[var(--vv-surface)] p-4 rounded-xl border border-[var(--vv-border-subtle)]">
+                        <label className="block font-bold text-white text-sm">Shader Realism (v6.2+)</label>
+                        <select
+                          value={settings.graphics.shaderRealism || 'realistic'}
+                          onChange={(e) => updateGraphics({ shaderRealism: e.target.value as any, preset: 'custom' })}
+                          className="w-full bg-black/40 border border-[var(--vv-border)] rounded-lg p-2 text-sm text-white font-mono focus:outline-none focus:border-[var(--vv-primary)]"
+                        >
+                          <option value="stylized">Stylized (Fastest FPS)</option>
+                          <option value="realistic">Realistic (PBR Micro-Normals + God Rays)</option>
+                          <option value="ultra">Ultra Photoreal (Full Vignette & Sun Shafts)</option>
                         </select>
                       </div>
                     </div>

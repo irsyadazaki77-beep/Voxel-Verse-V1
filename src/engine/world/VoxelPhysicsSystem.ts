@@ -1,12 +1,14 @@
-// VoxelVerse v6.0.0: Fisika Reruntuhan Blok Halus (Gravity Blocks) & Partikel Serpihan Tambang 3D (Mining Debris)
+// VoxelVerse v6.3.0: Zero-GC InstancedMesh Mining Debris & Gravity Falling Blocks
 import * as THREE from 'three';
 import { BlockType } from '../../types';
 import { VoxelWorld } from './VoxelWorld';
 
-interface DebrisCube {
-  mesh: THREE.Mesh;
+interface DebrisInstance {
+  position: THREE.Vector3;
   velocity: THREE.Vector3;
+  rotation: THREE.Euler;
   rotSpeed: THREE.Vector3;
+  color: THREE.Color;
   life: number;
   maxLife: number;
 }
@@ -16,27 +18,46 @@ const GRAVITY_BLOCK_TYPES = new Set<BlockType>([
   BlockType.GRAVEL,
 ]);
 
+const MAX_DEBRIS_INSTANCES = 64;
+
 export class VoxelPhysicsSystem {
   private static rootGroup: THREE.Group = new THREE.Group();
   private static isAttached = false;
-  private static debrisPool: DebrisCube[] = [];
-  private static sharedCubeGeo: THREE.BoxGeometry | null = null;
+  private static debrisList: DebrisInstance[] = [];
+  private static instancedMesh: THREE.InstancedMesh | null = null;
+  private static dummy = new THREE.Object3D();
   private static pendingGravityCoords: Array<[number, number, number]> = [];
   private static gravityTickAccum = 0;
+
+  private static ensureInstancedMesh(): void {
+    if (this.instancedMesh) return;
+    const geo = new THREE.BoxGeometry(0.14, 0.14, 0.14);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.78,
+      metalness: 0.1,
+    });
+    this.instancedMesh = new THREE.InstancedMesh(geo, mat, MAX_DEBRIS_INSTANCES);
+    this.instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.instancedMesh.count = 0;
+    this.instancedMesh.frustumCulled = false;
+    this.rootGroup.add(this.instancedMesh);
+  }
 
   public static attachToScene(scene: THREE.Scene): void {
     if (this.isAttached) return;
     this.rootGroup.name = 'VoxelPhysicsDebrisRootV6';
+    this.ensureInstancedMesh();
     scene.add(this.rootGroup);
     this.isAttached = true;
   }
 
   public static reset(): void {
-    for (const d of this.debrisPool) {
-      this.rootGroup.remove(d.mesh);
-    }
-    this.debrisPool = [];
+    this.debrisList = [];
     this.pendingGravityCoords = [];
+    if (this.instancedMesh) {
+      this.instancedMesh.count = 0;
+    }
   }
 
   public static isGravityBlock(type: BlockType): boolean {
@@ -74,7 +95,7 @@ export class VoxelPhysicsSystem {
         world.setBlock(bx, by - 1, bz, blockType);
         by--;
         fellDistance++;
-        if (fellDistance >= 16) break; // Bound per tick
+        if (fellDistance >= 16) break;
       } else {
         break;
       }
@@ -83,46 +104,37 @@ export class VoxelPhysicsSystem {
   }
 
   /**
-   * Spawn 3D tumbling voxel mini-cubes when mining a block
+   * Spawn 3D tumbling voxel mini-cubes using a single Zero-GC InstancedMesh (1 draw call)
    */
   public static spawnMiningDebris(
     worldPos: THREE.Vector3,
     colorHex = '#a8a29e',
     count = 6
   ): void {
-    if (!this.isAttached) return;
-    if (!this.sharedCubeGeo) {
-      this.sharedCubeGeo = new THREE.BoxGeometry(0.14, 0.14, 0.14);
-    }
+    this.ensureInstancedMesh();
+    const color = new THREE.Color(colorHex);
+    const available = Math.max(0, MAX_DEBRIS_INSTANCES - this.debrisList.length);
+    const spawnCount = Math.min(count, available);
 
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(colorHex),
-      roughness: 0.8,
-      metalness: 0.1,
-    });
-
-    const spawnCount = Math.min(count, Math.max(0, 48 - this.debrisPool.length));
     for (let i = 0; i < spawnCount; i++) {
-      const mesh = new THREE.Mesh(this.sharedCubeGeo, mat);
-      mesh.position.set(
-        worldPos.x + (Math.random() - 0.5) * 0.6,
-        worldPos.y + (Math.random() - 0.5) * 0.6,
-        worldPos.z + (Math.random() - 0.5) * 0.6
-      );
-      this.rootGroup.add(mesh);
-
-      this.debrisPool.push({
-        mesh,
+      this.debrisList.push({
+        position: new THREE.Vector3(
+          worldPos.x + (Math.random() - 0.5) * 0.6,
+          worldPos.y + (Math.random() - 0.5) * 0.6,
+          worldPos.z + (Math.random() - 0.5) * 0.6
+        ),
         velocity: new THREE.Vector3(
           (Math.random() - 0.5) * 3.8,
           2.2 + Math.random() * 2.8,
           (Math.random() - 0.5) * 3.8
         ),
+        rotation: new THREE.Euler(Math.random() * 3, Math.random() * 3, Math.random() * 3),
         rotSpeed: new THREE.Vector3(
           (Math.random() - 0.5) * 10,
           (Math.random() - 0.5) * 10,
           (Math.random() - 0.5) * 10
         ),
+        color,
         life: 0,
         maxLife: 0.65 + Math.random() * 0.45,
       });
@@ -144,27 +156,42 @@ export class VoxelPhysicsSystem {
       }
     }
 
-    // Animate tumbling 3D mining debris cubes
-    for (let i = this.debrisPool.length - 1; i >= 0; i--) {
-      const d = this.debrisPool[i];
+    // Update InstancedMesh tumbling debris
+    if (!this.instancedMesh) return;
+
+    for (let i = this.debrisList.length - 1; i >= 0; i--) {
+      const d = this.debrisList[i];
       d.life += clampedDt;
       if (d.life >= d.maxLife) {
-        this.rootGroup.remove(d.mesh);
-        this.debrisPool.splice(i, 1);
+        this.debrisList.splice(i, 1);
         continue;
       }
       d.velocity.y -= 14.5 * clampedDt;
-      d.mesh.position.addScaledVector(d.velocity, clampedDt);
-      d.mesh.rotation.x += d.rotSpeed.x * clampedDt;
-      d.mesh.rotation.y += d.rotSpeed.y * clampedDt;
-      d.mesh.rotation.z += d.rotSpeed.z * clampedDt;
+      d.position.addScaledVector(d.velocity, clampedDt);
+      d.rotation.x += d.rotSpeed.x * clampedDt;
+      d.rotation.y += d.rotSpeed.y * clampedDt;
+      d.rotation.z += d.rotSpeed.z * clampedDt;
+    }
 
+    const activeCount = Math.min(this.debrisList.length, MAX_DEBRIS_INSTANCES);
+    this.instancedMesh.count = activeCount;
+    for (let i = 0; i < activeCount; i++) {
+      const d = this.debrisList[i];
       const scale = Math.max(0.05, 1.0 - d.life / d.maxLife);
-      d.mesh.scale.setScalar(scale);
+      this.dummy.position.copy(d.position);
+      this.dummy.rotation.copy(d.rotation);
+      this.dummy.scale.setScalar(scale);
+      this.dummy.updateMatrix();
+      this.instancedMesh.setMatrixAt(i, this.dummy.matrix);
+      this.instancedMesh.setColorAt(i, d.color);
+    }
+    this.instancedMesh.instanceMatrix.needsUpdate = true;
+    if (this.instancedMesh.instanceColor) {
+      this.instancedMesh.instanceColor.needsUpdate = true;
     }
   }
 
   public static getActiveDebrisCount(): number {
-    return this.debrisPool.length;
+    return this.debrisList.length;
   }
 }

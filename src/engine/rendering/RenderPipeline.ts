@@ -217,8 +217,10 @@ export class RenderPipeline {
       this.renderPass = new RenderPass(this.scene, this.camera);
       this.composer.addPass(this.renderPass);
 
-      // SSAO Pass
-      this.ssaoPass = new SSAOPass(this.scene, this.camera, this.currentWidth, this.currentHeight);
+      // Half-resolution SSAO Pass (saves ~70% GPU fillrate at 1440p/4K)
+      const ssaoW = Math.max(256, Math.round(this.currentWidth * 0.5));
+      const ssaoH = Math.max(144, Math.round(this.currentHeight * 0.5));
+      this.ssaoPass = new SSAOPass(this.scene, this.camera, ssaoW, ssaoH);
       this.ssaoPass.kernelRadius = 1.2;
       this.ssaoPass.minDistance = 0.005;
       this.ssaoPass.maxDistance = 0.15;
@@ -363,6 +365,14 @@ export class RenderPipeline {
     }
   }
 
+  public setDynamicShaderScale(factor: number): void {
+    const clamped = Math.max(0.0, Math.min(1.0, factor));
+    if (this.postPass) {
+      this.postPass.uniforms.uGodRayIntensity.value = 0.26 * clamped;
+      this.postPass.uniforms.uVignetteStrength.value = 0.14 * clamped;
+    }
+  }
+
   public getGpuTimeMs(): number {
     return this.lastGpuTimeMs;
   }
@@ -441,7 +451,9 @@ export class RenderPipeline {
       }
 
       if (this.ssaoPass) {
-        this.ssaoPass.setSize(width, height);
+        const ssaoW = Math.max(256, Math.round(width * 0.5));
+        const ssaoH = Math.max(144, Math.round(height * 0.5));
+        this.ssaoPass.setSize(ssaoW, ssaoH);
       }
 
       if (this.postPass) {

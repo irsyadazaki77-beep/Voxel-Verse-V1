@@ -327,6 +327,7 @@ export class RenderQualityManager {
       }
       this.lastScaleChangeTime = now;
       this.updateQualitySettings(settings);
+      this.runtime.renderPipeline?.setDynamicShaderScale(Math.max(0.35, 1.0 - this.qualityStage * 0.2));
     } else if (this.consecutiveHeadroomCycles >= this.requiredHeadroomCycles) {
       this.consecutiveHeadroomCycles = 0;
 
@@ -345,6 +346,7 @@ export class RenderQualityManager {
         this.qualityStage === 0 ? baseCadence : Math.min(6, baseCadence + this.qualityStage);
       this.lastScaleChangeTime = now;
       this.updateQualitySettings(settings);
+      this.runtime.renderPipeline?.setDynamicShaderScale(Math.max(0.35, 1.0 - this.qualityStage * 0.2));
     }
   }
 

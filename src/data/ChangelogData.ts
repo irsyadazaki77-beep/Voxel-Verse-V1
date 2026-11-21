@@ -11,6 +11,28 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '6.3.0',
+    date: '2026-11-21',
+    title: 'Visual & Performance Refinement: Zero-GC InstancedMesh Debris, Half-Resolution SSAO, Dynamic Shader Governor, Shader Realism UI & Vite Bundle Splitting',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Optimasi GPU Fillrate & Zero-GC Draw Calls',
+        items: [
+          'Mengubah serpihan tambang 3D (VoxelPhysicsSystem) menjadi satu THREE.InstancedMesh berkapasitas 64 kubus (1 draw call total, nol alokasi material baru).',
+          'Menjalankan SSAOPass pada setengah resolusi (0.5x) untuk menghemat beban GPU fillrate hingga ~70% di resolusi tinggi serta menghubungkan RenderQualityManager ke setDynamicShaderScale().'
+        ]
+      },
+      {
+        category: '2. Kontrol UI Shader Realism & Pemecahan Bundle Vite',
+        items: [
+          'Menambahkan pemilih Shader Realism (Stylized, Realistic, Ultra) langsung di Settings → Graphics.',
+          'Memecah bundle produksi Vite menjadi manual chunks (engine-world & ui-modals) untuk mempercepat waktu muat awal.'
+        ]
+      }
+    ]
+  },
+  {
     version: '6.2.0',
     date: '2026-11-21',
     title: 'Photorealistic World Shader Overhaul: Procedural PBR Micro-Normals, Rain Puddles, Foliage Subsurface Scattering, Mie/Rayleigh Sky & Cirrus Wisps, dan Sun-Tracked God Rays',
