@@ -17,10 +17,15 @@ import { MiningEngine } from './src/engine/world/MiningEngine';
 import { WORLD_MIN_Y, WORLD_MAX_Y, MAX_INTERACTION_REACH, WorldPreset } from './src/engine/world/WorldConfig';
 import { WorldGeneratorCore } from './src/engine/world/WorldGeneratorCore';
 import { BlockType } from './src/types';
+import { RealmSQLiteStore } from './src/engine/network/RealmSQLiteStore';
+import { LandClaimManager } from './src/engine/network/LandClaimManager';
 
 const PORT = 3000;
 const PROTOCOL_VERSION = '1.0.0-phase9';
 const DB_FILE = './server-realms-db.json';
+const SQLITE_DB_FILE = './server-realms.sqlite';
+export const sqliteStore = new RealmSQLiteStore(SQLITE_DB_FILE);
+export const landClaimManager = new LandClaimManager();
 
 // Persistent Storage Types
 export interface Realm {
@@ -168,16 +173,25 @@ export async function executeAtomicSave(): Promise<void> {
   isSaving = true;
   db.clearDirty();
   try {
-    const tempFile = `${DB_FILE}.tmp`;
-    const backupFile = `${DB_FILE}.bak`;
-    const jsonStr = JSON.stringify(db.getData(), null, 2);
-    await fs.promises.writeFile(tempFile, jsonStr, 'utf8');
-    if (fs.existsSync(DB_FILE)) {
-      try {
-        await fs.promises.copyFile(DB_FILE, backupFile);
-      } catch {}
+    if (sqliteStore.isAvailable()) {
+      const snapshot = db.getData();
+      sqliteStore.saveSnapshot({
+        realms: snapshot.realms as any,
+        players: snapshot.players,
+        claims: landClaimManager.getAllClaims(),
+      });
+    } else {
+      const tempFile = `${DB_FILE}.tmp`;
+      const backupFile = `${DB_FILE}.bak`;
+      const jsonStr = JSON.stringify(db.getData(), null, 2);
+      await fs.promises.writeFile(tempFile, jsonStr, 'utf8');
+      if (fs.existsSync(DB_FILE)) {
+        try {
+          await fs.promises.copyFile(DB_FILE, backupFile);
+        } catch {}
+      }
+      await fs.promises.rename(tempFile, DB_FILE);
     }
-    await fs.promises.rename(tempFile, DB_FILE);
   } catch (e) {
     console.error('[DB] Atomic realm save failed:', e);
     db.markDirty();
@@ -225,6 +239,18 @@ export class JsonDatabase {
   }
 
   public load(): void {
+    // v7.1.0: Prefer SQLite binary chunk storage if available and populated
+    if (sqliteStore.isAvailable() && sqliteStore.hasAnyData()) {
+      const loaded = sqliteStore.loadAll();
+      this.data = {
+        realms: loaded.realms as any,
+        players: loaded.players,
+      };
+      landClaimManager.hydrate(loaded.claims);
+      console.log(`[DB] Loaded ${Object.keys(this.data.realms).length} realms & ${loaded.claims.length} land claims from SQLite (${SQLITE_DB_FILE})`);
+      return;
+    }
+
     const tryParseFile = (filePath: string): DBStructure | null => {
       try {
         if (fs.existsSync(filePath)) {
@@ -246,6 +272,11 @@ export class JsonDatabase {
     const primary = tryParseFile(DB_FILE);
     if (primary) {
       this.data = primary;
+      if (sqliteStore.isAvailable()) {
+        console.log('[DB] Auto-migrating legacy server-realms-db.json into SQLite binary chunk store...');
+        this.markDirty();
+        this.flushSync();
+      }
       return;
     }
 
@@ -272,20 +303,28 @@ export class JsonDatabase {
   }
 
   public flushSync(): void {
-    if (!this.isDirty && !isSaving && !pendingSave && fs.existsSync(DB_FILE)) return;
+    if (!this.isDirty && !isSaving && !pendingSave && (sqliteStore.isAvailable() ? sqliteStore.hasAnyData() : fs.existsSync(DB_FILE))) return;
     this.isDirty = false;
     pendingSave = false;
     try {
-      const tempFile = `${DB_FILE}.sync.tmp`;
-      const backupFile = `${DB_FILE}.bak`;
-      const jsonStr = JSON.stringify(this.data, null, 2);
-      fs.writeFileSync(tempFile, jsonStr, 'utf8');
-      if (fs.existsSync(DB_FILE)) {
-        try {
-          fs.copyFileSync(DB_FILE, backupFile);
-        } catch {}
+      if (sqliteStore.isAvailable()) {
+        sqliteStore.saveSnapshot({
+          realms: this.data.realms as any,
+          players: this.data.players,
+          claims: landClaimManager.getAllClaims(),
+        });
+      } else {
+        const tempFile = `${DB_FILE}.sync.tmp`;
+        const backupFile = `${DB_FILE}.bak`;
+        const jsonStr = JSON.stringify(this.data, null, 2);
+        fs.writeFileSync(tempFile, jsonStr, 'utf8');
+        if (fs.existsSync(DB_FILE)) {
+          try {
+            fs.copyFileSync(DB_FILE, backupFile);
+          } catch {}
+        }
+        fs.renameSync(tempFile, DB_FILE);
       }
-      fs.renameSync(tempFile, DB_FILE);
     } catch (e) {
       this.isDirty = true;
       console.error('[DB] Synchronous persistence flush failed:', e);
@@ -472,6 +511,21 @@ async function startServer() {
   // REST API Endpoints for realms management
   app.get('/api/realms', (req, res) => {
     res.json(db.getRealmsList());
+  });
+
+  // v7.1.0: Land Claims & SQLite Storage Diagnostics Endpoints
+  app.get('/api/realms/:realmId/claims', (req, res) => {
+    res.json({
+      realmId: req.params.realmId,
+      claims: landClaimManager.getClaimsForRealm(req.params.realmId),
+    });
+  });
+
+  app.get('/api/server/storage-stats', (_req, res) => {
+    res.json({
+      storage: sqliteStore.getStats(),
+      totalClaims: landClaimManager.getAllClaims().length,
+    });
   });
 
   // Authenticated Realm Creation
@@ -1298,6 +1352,18 @@ Kembalikan JSON murni tanpa markdown: {"title":"judul kidung","pupuhStyle":"Temb
             valRes.reason = 'CANNOT_MINE_AIR';
           }
 
+          // v7.1.0: Wilayah Kerajaan / Land Claim Territory Protection Check
+          if (valRes.valid) {
+            const isOwnerOrMod =
+              realm.ownerPlayerId === player.playerId ||
+              (Array.isArray(realm.moderators) && realm.moderators.includes(player.playerId));
+            const claimPerm = landClaimManager.canModifyBlock(session.realmId, bx, bz, player.playerId, isOwnerOrMod);
+            if (!claimPerm.allowed) {
+              valRes.valid = false;
+              valRes.reason = claimPerm.reason || 'TERRITORY_PROTECTED';
+            }
+          }
+
           if (!valRes.valid) {
             console.warn(`[Server Security] Block action rejected for ${player.playerName}: ${valRes.reason}`);
             // Rollback client to authoritative server state
@@ -1556,21 +1622,110 @@ Kembalikan JSON murni tanpa markdown: {"title":"judul kidung","pupuhStyle":"Temb
             }
           }
 
-          // Propagate validated block change to everyone in the realm with revision tag and state
-          broadcastToRealm(session.realmId, {
-            type: 'BLOCK_CHANGE',
-            x: bx,
-            y: by,
-            z: bz,
-            oldBlockType: msg.oldBlockType,
-            newBlockType: msg.newBlockType,
-            state: msg.state,
-            playerSessionId: activeSessionId,
-            revision: nextRev,
-            transactionId: txId,
+          // v7.1.0: Spatial Interest Filtering — propagate block changes only to players within 192 blocks (12 chunks)
+          broadcastBlockChangeWithInterest(
+            session.realmId,
+            activeSessionId,
+            [bx, by, bz],
+            {
+              type: 'BLOCK_CHANGE',
+              x: bx,
+              y: by,
+              z: bz,
+              oldBlockType: msg.oldBlockType,
+              newBlockType: msg.newBlockType,
+              state: msg.state,
+              playerSessionId: activeSessionId,
+              revision: nextRev,
+              transactionId: txId,
+              timestamp: Date.now(),
+              protocolVersion: PROTOCOL_VERSION,
+            },
+            192
+          );
+          break;
+        }
+
+        case 'CLAIM_CHUNK': {
+          const player = players.get(activeSessionId);
+          if (!player) return;
+          const cx = Number.isFinite(Number(msg.cx)) ? Math.floor(Number(msg.cx)) : Math.floor(player.position[0] / 16);
+          const cz = Number.isFinite(Number(msg.cz)) ? Math.floor(Number(msg.cz)) : Math.floor(player.position[2] / 16);
+          const kingdomName = typeof msg.kingdomName === 'string' ? msg.kingdomName : `Kerajaan ${player.playerName}`;
+          const res = landClaimManager.claimChunk(session.realmId, cx, cz, player.playerId, player.playerName, kingdomName);
+          if (res.ok) {
+            db.markDirty();
+            scheduleRealmSave();
+            broadcastToRealm(session.realmId, {
+              type: 'LAND_CLAIM_UPDATED',
+              action: 'claimed',
+              claim: res.claim,
+              timestamp: Date.now(),
+              protocolVersion: PROTOCOL_VERSION,
+            });
+          } else {
+            ws.send(JSON.stringify({
+              type: 'LAND_CLAIM_RESULT',
+              ok: false,
+              reason: res.reason,
+              claim: res.claim,
+              timestamp: Date.now(),
+              protocolVersion: PROTOCOL_VERSION,
+            }));
+          }
+          break;
+        }
+
+        case 'UNCLAIM_CHUNK': {
+          const player = players.get(activeSessionId);
+          if (!player) return;
+          const cx = Number.isFinite(Number(msg.cx)) ? Math.floor(Number(msg.cx)) : Math.floor(player.position[0] / 16);
+          const cz = Number.isFinite(Number(msg.cz)) ? Math.floor(Number(msg.cz)) : Math.floor(player.position[2] / 16);
+          const isMod = realm.ownerPlayerId === player.playerId || (realm.moderators || []).includes(player.playerId);
+          const res = landClaimManager.unclaimChunk(session.realmId, cx, cz, player.playerId, isMod);
+          if (res.ok) {
+            db.markDirty();
+            scheduleRealmSave();
+            broadcastToRealm(session.realmId, {
+              type: 'LAND_CLAIM_UPDATED',
+              action: 'unclaimed',
+              claim: res.claim,
+              timestamp: Date.now(),
+              protocolVersion: PROTOCOL_VERSION,
+            });
+          } else {
+            ws.send(JSON.stringify({
+              type: 'LAND_CLAIM_RESULT',
+              ok: false,
+              reason: res.reason,
+              timestamp: Date.now(),
+              protocolVersion: PROTOCOL_VERSION,
+            }));
+          }
+          break;
+        }
+
+        case 'TRUST_CLAIM_PLAYER': {
+          const player = players.get(activeSessionId);
+          if (!player) return;
+          const cx = Number.isFinite(Number(msg.cx)) ? Math.floor(Number(msg.cx)) : Math.floor(player.position[0] / 16);
+          const cz = Number.isFinite(Number(msg.cz)) ? Math.floor(Number(msg.cz)) : Math.floor(player.position[2] / 16);
+          const targetId = String(msg.targetPlayerId || '');
+          const res = msg.revoke
+            ? landClaimManager.untrustPlayer(session.realmId, cx, cz, player.playerId, targetId)
+            : landClaimManager.trustPlayer(session.realmId, cx, cz, player.playerId, targetId);
+          if (res.ok) {
+            db.markDirty();
+            scheduleRealmSave();
+          }
+          ws.send(JSON.stringify({
+            type: 'LAND_CLAIM_RESULT',
+            ok: res.ok,
+            reason: res.reason,
+            claim: res.claim,
             timestamp: Date.now(),
             protocolVersion: PROTOCOL_VERSION,
-          });
+          }));
           break;
         }
 
@@ -2065,6 +2220,32 @@ Kembalikan JSON murni tanpa markdown: {"title":"judul kidung","pupuhStyle":"Temb
         const dz = p.position[2] - originPos[2];
         const distSq = dx * dx + dy * dy + dz * dz;
         if (distSq <= maxDistSq) {
+          p.ws.send(serialized);
+        }
+      }
+    });
+  }
+
+  function broadcastBlockChangeWithInterest(
+    realmId: string,
+    actorSessionId: string,
+    blockPos: [number, number, number],
+    payload: unknown,
+    maxDistance = 192
+  ) {
+    const serialized = JSON.stringify(payload);
+    const maxDistSq = maxDistance * maxDistance;
+    players.forEach((p) => {
+      const pSession = sessions.get(p.token);
+      if (pSession && pSession.realmId === realmId && p.ws && p.ws.readyState === WebSocket.OPEN) {
+        if (p.sessionId === actorSessionId) {
+          p.ws.send(serialized);
+          return;
+        }
+        const dx = p.position[0] - blockPos[0];
+        const dz = p.position[2] - blockPos[2];
+        const horizDistSq = dx * dx + dz * dz;
+        if (horizDistSq <= maxDistSq) {
           p.ws.send(serialized);
         }
       }

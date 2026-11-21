@@ -9,5 +9,7 @@ coverage/
 server-realms-db.json
 *.db
 *.sqlite
+*.sqlite-wal
+*.sqlite-shm
 .temp/
 *.tmp

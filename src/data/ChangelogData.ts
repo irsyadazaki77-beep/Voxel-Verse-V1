@@ -11,6 +11,32 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '7.1.0',
+    date: '2026-11-21',
+    title: 'Multiplayer Backend Overhaul: SQLite Binary Chunk Storage (Zlib), Spatial Interest Filtering untuk Block Sync, dan Sistem Land Claim (Wilayah Kerajaan)',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Migrasi Penyimpanan ke SQLite + Binary Chunk Blobs (RealmSQLiteStore.ts)',
+        items: [
+          'Mengganti penyimpanan JSON datar (server-realms-db.json) dengan SQLite WAL mode (node:sqlite) dan kompresi Zlib binary chunk delta (9 byte/blok) dengan auto-migrasi dari database lama.'
+        ]
+      },
+      {
+        category: '2. Wilayah Kerajaan / Land Claim Territory Protection (LandClaimManager.ts)',
+        items: [
+          'Menambahkan sistem klaim chunk per pemain (maks 16 chunk/realm) lengkap dengan daftar pemain terpercaya (trust/untrust), proteksi anti-grief di handler BLOCK_CHANGE, serta event WebSocket CLAIM_CHUNK / UNCLAIM_CHUNK / TRUST_CLAIM_PLAYER dan REST API /api/realms/:realmId/claims.'
+        ]
+      },
+      {
+        category: '3. Spatial Interest Filtering untuk Real-Time Block Sync (server.ts)',
+        items: [
+          'Mengoptimalkan broadcast BLOCK_CHANGE agar hanya dikirim ke pemain dalam radius 192 blok (12 chunk) dari lokasi perubahan, mengurangi bandwidth server secara signifikan di realm ramai.'
+        ]
+      }
+    ]
+  },
+  {
     version: '7.0.0',
     date: '2026-11-21',
     title: 'Distant Horizons & Sensory Overhaul: Hierarchical Chunk LOD (600m+ Vista), True 3D RGB Colored Voxel Lighting, dan 3D Spatial Audio & Dynamic Cavern Acoustics',
