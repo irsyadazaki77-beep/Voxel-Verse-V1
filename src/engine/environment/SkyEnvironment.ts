@@ -167,7 +167,8 @@ export class SkyEnvironment {
         nightFactor: { value: 0.0 },
         sunsetFactor: { value: 0.0 },
         offset: { value: 33 },
-        exponent: { value: 0.6 }
+        exponent: { value: 0.6 },
+        uTime: { value: 0.0 }
       },
       vertexShader: `
         varying vec3 vWorldPosition;
@@ -188,7 +189,23 @@ export class SkyEnvironment {
         uniform float sunsetFactor;
         uniform float offset;
         uniform float exponent;
+        uniform float uTime;
         varying vec3 vWorldPosition;
+
+        float skyHash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        }
+
+        float skyNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = skyHash(i);
+          float b = skyHash(i + vec2(1.0, 0.0));
+          float c = skyHash(i + vec2(0.0, 1.0));
+          float d = skyHash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
 
         void main() {
           vec3 normPos = normalize(vWorldPosition);
@@ -197,18 +214,27 @@ export class SkyEnvironment {
 
           vec3 daySky = mix(bottomColor, topColor, t);
 
-          // Rich sunset atmospheric gradient band near horizon
+          // Rayleigh & Mie Atmospheric Scattering Approximation near horizon & sun
           if (sunsetFactor > 0.01) {
             float sunsetBand = exp(-pow(max(h, 0.0) * 3.5, 2.0)) * sunsetFactor;
             vec3 fieryGlow = vec3(0.98, 0.45, 0.22);
-            daySky = mix(daySky, fieryGlow, sunsetBand * 0.65);
+            daySky = mix(daySky, fieryGlow, sunsetBand * 0.68);
           }
 
-          // Aerial Perspective: Sun halo scattering in sky dome
+          // Aerial Perspective: Mie Forward Solar Scattering Halo
           float sunDot = max(0.0, dot(normPos, normalize(sunDirection)));
-          float sunHalo = (pow(sunDot, 16.0) * 0.35 + pow(sunDot, 48.0) * 0.50) * (1.0 - nightFactor);
-          vec3 haloTint = mix(sunColor, vec3(1.0, 0.60, 0.30), sunsetFactor);
-          daySky += haloTint * sunHalo;
+          float mieScatter = (pow(sunDot, 10.0) * 0.24 + pow(sunDot, 36.0) * 0.45 + pow(sunDot, 120.0) * 0.55) * (1.0 - nightFactor);
+          vec3 haloTint = mix(sunColor, vec3(1.0, 0.58, 0.26), sunsetFactor);
+          daySky += haloTint * mieScatter;
+
+          // High-altitude procedural Cirrus Wisps (zero extra geometry cost)
+          if (normPos.y > 0.04) {
+            vec2 cloudUv = normPos.xz / (normPos.y + 0.16) * 1.45 + vec2(uTime * 0.012, uTime * 0.005);
+            float cirrus = skyNoise(cloudUv * 2.2) * 0.6 + skyNoise(cloudUv * 4.8) * 0.4;
+            float cirrusMask = smoothstep(0.56, 0.86, cirrus) * smoothstep(0.04, 0.28, normPos.y) * (1.0 - nightFactor * 0.72);
+            vec3 cirrusCol = mix(vec3(0.96, 0.98, 1.0), vec3(1.0, 0.72, 0.52), sunsetFactor);
+            daySky = mix(daySky, cirrusCol, cirrusMask * 0.34);
+          }
 
           // Night atmosphere: Zenith (topColor), Mid-Sky, and slightly brighter luminous Horizon Band
           float horizonBand = exp(-pow(max(h, 0.0) * 4.2, 2.0));
@@ -583,6 +609,9 @@ export class SkyEnvironment {
       skyMat.uniforms.sunColor.value.copy(this.currentSunColor);
       skyMat.uniforms.moonDirection.value.copy(this.currentMoonDirection);
       skyMat.uniforms.sunsetFactor.value = sunsetFactor;
+      if (skyMat.uniforms.uTime) {
+        skyMat.uniforms.uTime.value += deltaTime;
+      }
 
       const nightFactor = this.isNight ? 1.0 : (this.timeOfDay > 17.0 && this.timeOfDay <= 18.8 ? (this.timeOfDay - 17.0) / 1.8 : (this.timeOfDay >= 4.5 && this.timeOfDay < 6.0 ? (6.0 - this.timeOfDay) / 1.5 : 0.0));
       skyMat.uniforms.nightFactor.value = THREE.MathUtils.clamp(nightFactor, 0.0, 1.0);

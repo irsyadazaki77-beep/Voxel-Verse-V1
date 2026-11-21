@@ -96,6 +96,9 @@ export class VoxelWorld {
       shader.uniforms.uWetness = { value: 0 };
       shader.uniforms.uSnowAccumulation = { value: 0 };
       shader.uniforms.uSeaLevel = { value: SEA_LEVEL };
+      shader.uniforms.uShaderRealism = { value: 1.0 };
+      shader.uniforms.uSunDirection = { value: new THREE.Vector3(0.4, 0.8, 0.3) };
+      shader.uniforms.uSunColor = { value: new THREE.Color(1.0, 0.95, 0.85) };
       this.solidMaterial.userData.shader = shader;
       shader.vertexShader = `
         attribute vec2 localUv;
@@ -131,15 +134,55 @@ export class VoxelWorld {
         uniform float uWetness;
         uniform float uSnowAccumulation;
         uniform float uSeaLevel;
+        uniform float uShaderRealism;
+        uniform vec3 uSunDirection;
+        uniform vec3 uSunColor;
         
         float hash(vec3 p) {
           p = fract(p * 0.3183099 + .1);
           p *= 17.0;
           return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
         }
+
+        float puddleNoise2D(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = fract(sin(dot(i, vec2(127.1, 311.7))) * 43758.5453);
+          float b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(127.1, 311.7))) * 43758.5453);
+          float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+          float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
         
         ${shader.fragmentShader}
       `.replace(
+        '#include <normal_fragment_begin>',
+        `
+        #include <normal_fragment_begin>
+        if (uShaderRealism > 0.3) {
+          int nClass = int(vMaterialClass + 0.5);
+          vec2 bUv = fract(vLocalUv);
+          vec3 worldBump = vec3(0.0);
+          if (nClass == 2) { // STONE micro-relief & mortar
+            float n1 = sin(bUv.x * 25.13 + vWorldPos.z * 3.0) * cos(bUv.y * 25.13 + vWorldPos.x * 3.0);
+            worldBump = vec3(n1 * 0.06, 0.0, cos(bUv.y * 31.4) * 0.06);
+          } else if (nClass == 3) { // WOOD grain & plank grooves
+            float grain = sin(bUv.y * 37.7 + sin(bUv.x * 6.28) * 1.4) * 0.055;
+            worldBump = vec3(0.0, grain * 0.5, grain);
+          } else if (nClass == 0 || nClass == 1) { // SOIL / GRASS micro-grit
+            float grit = sin(vWorldPos.x * 16.0 + vWorldPos.z * 14.0) * cos(vWorldPos.z * 18.0);
+            worldBump = vec3(grit * 0.045, 0.0, grit * 0.045);
+          } else if (nClass == 4) { // METAL brushed sheen
+            float brush = sin(bUv.x * 50.0) * 0.03;
+            worldBump = vec3(brush, 0.0, brush * 0.5);
+          }
+          if (length(worldBump) > 0.001) {
+            normal = normalize(normal + (viewMatrix * vec4(worldBump * uShaderRealism, 0.0)).xyz);
+          }
+        }
+        `
+      ).replace(
         '#include <map_fragment>',
         `
         #ifdef USE_MAP
@@ -212,6 +255,22 @@ export class VoxelWorld {
           metalnessVal = 0.0;
         }
 
+        // Rain Puddles on upward-facing surfaces (vWorldNormal.y > 0.85)
+        if (uWetness > 0.04 && vWorldNormal.y > 0.85 && uShaderRealism > 0.3) {
+          float pNoise = puddleNoise2D(vWorldPos.xz * 0.28) * 0.65 + puddleNoise2D(vWorldPos.xz * 0.72) * 0.35;
+          float puddleMask = smoothstep(0.62 - uWetness * 0.25, 0.82 - uWetness * 0.15, pNoise) * uWetness;
+          roughnessVal = mix(roughnessVal, 0.06, puddleMask);
+          metalnessVal = mix(metalnessVal, 0.12, puddleMask);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.68 + vec3(0.05, 0.09, 0.14), puddleMask * 0.75);
+        }
+
+        // Subtle Backlit Subsurface Scattering on Grass & Foliage
+        if ((mClass == 1 || mClass == 10) && uShaderRealism > 0.3 && uSunDirection.y > -0.05) {
+          vec3 vDir = normalize(cameraPosition - vWorldPos);
+          float sss = pow(max(0.0, dot(vDir, -normalize(uSunDirection))), 3.0);
+          diffuseColor.rgb += uSunColor * vec3(0.24, 0.42, 0.12) * sss * 0.35 * uShaderRealism;
+        }
+
         // Snow accumulation response on top surfaces (vWorldNormal.y > 0.7)
         if (vWorldNormal.y > 0.70 && uSnowAccumulation > 0.01) {
           float snowAmount = smoothstep(0.1, 0.9, uSnowAccumulation * (0.6 + 0.4 * sin(vWorldPos.x * 0.5 + vWorldPos.z * 0.5)));
@@ -270,6 +329,9 @@ export class VoxelWorld {
       shader.uniforms.uTime = { value: 0 };
       shader.uniforms.uWetness = { value: 0 };
       shader.uniforms.uSnowAccumulation = { value: 0 };
+      shader.uniforms.uShaderRealism = { value: 1.0 };
+      shader.uniforms.uSunDirection = { value: new THREE.Vector3(0.4, 0.8, 0.3) };
+      shader.uniforms.uSunColor = { value: new THREE.Color(1.0, 0.95, 0.85) };
       this.transMaterial.userData.shader = shader;
       shader.vertexShader = `
         attribute vec2 localUv;
@@ -311,11 +373,25 @@ export class VoxelWorld {
         uniform float uTime;
         uniform float uWetness;
         uniform float uSnowAccumulation;
+        uniform float uShaderRealism;
+        uniform vec3 uSunDirection;
+        uniform vec3 uSunColor;
         
         float hash(vec3 p) {
           p = fract(p * 0.3183099 + .1);
           p *= 17.0;
           return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+
+        float puddleNoise2D(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = fract(sin(dot(i, vec2(127.1, 311.7))) * 43758.5453);
+          float b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(127.1, 311.7))) * 43758.5453);
+          float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+          float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
         }
         
         ${shader.fragmentShader}
@@ -363,6 +439,22 @@ export class VoxelWorld {
         } else if (mClass == 10) { // FOLIAGE
           roughnessVal = 0.95;
           metalnessVal = 0.0;
+        }
+
+        // Rain Puddles on upward-facing surfaces (vWorldNormal.y > 0.85)
+        if (uWetness > 0.04 && vWorldNormal.y > 0.85 && uShaderRealism > 0.3) {
+          float pNoise = puddleNoise2D(vWorldPos.xz * 0.28) * 0.65 + puddleNoise2D(vWorldPos.xz * 0.72) * 0.35;
+          float puddleMask = smoothstep(0.62 - uWetness * 0.25, 0.82 - uWetness * 0.15, pNoise) * uWetness;
+          roughnessVal = mix(roughnessVal, 0.06, puddleMask);
+          metalnessVal = mix(metalnessVal, 0.12, puddleMask);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.68 + vec3(0.05, 0.09, 0.14), puddleMask * 0.75);
+        }
+
+        // Subtle Backlit Subsurface Scattering on Grass & Foliage
+        if ((mClass == 1 || mClass == 10) && uShaderRealism > 0.3 && uSunDirection.y > -0.05) {
+          vec3 vDir = normalize(cameraPosition - vWorldPos);
+          float sss = pow(max(0.0, dot(vDir, -normalize(uSunDirection))), 3.0);
+          diffuseColor.rgb += uSunColor * vec3(0.24, 0.42, 0.12) * sss * 0.35 * uShaderRealism;
         }
 
         // Snow accumulation response on top surfaces (vWorldNormal.y > 0.7)
@@ -506,6 +598,8 @@ export class VoxelWorld {
           float r1z = sin(rCoord.y * 1.2 - rCoord.x * 0.8 + ripTime * 1.3) * 0.055;
           float r2x = sin(rCoord.x * 2.8 - ripTime * 2.0) * 0.030;
           float r2z = cos(rCoord.y * 2.6 + ripTime * 1.8) * 0.030;
+          float r3x = sin((rCoord.x + rCoord.y) * 4.5 + ripTime * 2.6) * 0.018;
+          float r3z = cos((rCoord.x - rCoord.y) * 4.2 - ripTime * 2.4) * 0.018;
           
           // Rain-on-water concentric ripples
           float rainRipplesX = 0.0;
@@ -518,7 +612,7 @@ export class VoxelWorld {
             rainRipplesZ = splashWave * 0.07 * uRainIntensity;
           }
           
-          vec3 worldPerturb = vec3(r1x + r2x + rainRipplesX, 0.0, r1z + r2z + rainRipplesZ);
+          vec3 worldPerturb = vec3(r1x + r2x + r3x + rainRipplesX, 0.0, r1z + r2z + r3z + rainRipplesZ);
           vec3 viewPerturb = (viewMatrix * vec4(worldPerturb, 0.0)).xyz;
           normal = normalize(normal + viewPerturb);
         }
@@ -1184,8 +1278,14 @@ export class VoxelWorld {
       sShader.uniforms.uTime.value = this.waterTime;
       sShader.uniforms.uWetness.value = wetness;
       sShader.uniforms.uSnowAccumulation.value = snowAccum;
-      if (envData && envData.cloudDrift !== undefined) {
+      if (envData?.cloudDrift !== undefined) {
         sShader.uniforms.uCloudShadowDrift.value = envData.cloudDrift;
+      }
+      if (envData?.sunDirection) {
+        sShader.uniforms.uSunDirection.value.copy(envData.sunDirection);
+      }
+      if (envData?.sunColor) {
+        sShader.uniforms.uSunColor.value.copy(envData.sunColor);
       }
     }
     const tShader = this.transMaterial.userData.shader;
@@ -1193,6 +1293,12 @@ export class VoxelWorld {
       tShader.uniforms.uTime.value = this.waterTime;
       tShader.uniforms.uWetness.value = wetness;
       tShader.uniforms.uSnowAccumulation.value = snowAccum;
+      if (envData?.sunDirection) {
+        tShader.uniforms.uSunDirection.value.copy(envData.sunDirection);
+      }
+      if (envData?.sunColor) {
+        tShader.uniforms.uSunColor.value.copy(envData.sunColor);
+      }
     }
     if (camera) {
       this.scheduler.updateFrustumCulling(camera);

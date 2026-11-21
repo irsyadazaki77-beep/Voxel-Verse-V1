@@ -11,6 +11,28 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '6.2.0',
+    date: '2026-11-21',
+    title: 'Photorealistic World Shader Overhaul: Procedural PBR Micro-Normals, Rain Puddles, Foliage Subsurface Scattering, Mie/Rayleigh Sky & Cirrus Wisps, dan Sun-Tracked God Rays',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Terrain & Foliage Realism (VoxelWorld.ts)',
+        items: [
+          'Menambahkan Procedural Micro-Normal Perturbation untuk material batu, kayu, tanah/rumput, dan logam sehingga menangkap kilau cahaya matahari secara realistis tanpa tekstur tambahan.',
+          'Menambahkan simulasi genangan air hujan reflektif (Rain Puddles) pada permukaan datar saat cuaca hujan serta Backlit Subsurface Scattering (SSS) pada daun dan rumput.'
+        ]
+      },
+      {
+        category: '2. Air Tropis, Langit Rayleigh/Mie & God Rays Dinamis',
+        items: [
+          'Memperkaya riak air laut dengan gelombang multi-oktaf serta menambahkan Rayleigh/Mie Solar Scattering + awan Cirrus prosedural pada kubah langit (SkyEnvironment.ts).',
+          'Menghubungkan proyeksi layar matahari secara real-time dari RenderSystem ke CinematicPostShader agar God Rays mengikuti posisi matahari dan menambahkan Filmic Vignette.'
+        ]
+      }
+    ]
+  },
+  {
     version: '6.1.0',
     date: '2026-11-21',
     title: 'Bedrock & Java Parity Engine: Simulasi Fluida Air/Lava + Obsidian, Sistem Enchantment & Status Effect, Konsol Perintah Slash (/), dan Behavior Pack Modding API',

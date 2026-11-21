@@ -41,6 +41,7 @@ export interface GraphicsSettings {
   cameraMode: 'first_person' | 'third_person_back' | 'third_person_front';
   nightBrightness: number; // 0.8 .. 1.2, default 1.0
   turboFpsMode?: boolean;
+  shaderRealism?: 'stylized' | 'realistic' | 'ultra';
 }
 
 export type KeyBindingAction =
@@ -210,6 +211,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
     cameraMode: 'first_person',
     nightBrightness: 1.0,
     turboFpsMode: false,
+    shaderRealism: 'realistic',
   },
   controls: {
     keyBindings: {

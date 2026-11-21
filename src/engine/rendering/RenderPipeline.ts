@@ -21,8 +21,10 @@ const CinematicPostShader = {
     uWarmth: { value: 0.0 },
     uSharpenStrength: { value: 0.36 },
     uUnderwater: { value: 0.0 },
-    uGodRayIntensity: { value: 0.22 },
+    uGodRayIntensity: { value: 0.26 },
     uSunScreenPos: { value: new THREE.Vector2(0.72, 0.78) },
+    uSunVisibility: { value: 1.0 },
+    uVignetteStrength: { value: 0.16 },
     uColorGradingMode: { value: 1 }, // 0: None, 1: Cinematic, 2: Vibrant, 3: Warm Golden, 4: Cool Twilight
     uTexelSize: { value: new THREE.Vector2(1.0 / 1920.0, 1.0 / 1080.0) },
   },
@@ -44,6 +46,8 @@ const CinematicPostShader = {
     uniform float uUnderwater;
     uniform float uGodRayIntensity;
     uniform vec2 uSunScreenPos;
+    uniform float uSunVisibility;
+    uniform float uVignetteStrength;
     uniform int uColorGradingMode;
     uniform vec2 uTexelSize;
     varying vec2 vUv;
@@ -91,15 +95,15 @@ const CinematicPostShader = {
         vec3 aquaTint = vec3(0.15, 0.72, 0.88);
         c = mix(c, c * aquaTint * 1.48, uUnderwater * 0.45);
         c += vec3(0.10, 0.32, 0.38) * causticMask * uUnderwater * 0.24;
-      } else if (uGodRayIntensity > 0.01) {
-        // Lightweight Volumetric Tropical Sun Rays (God Rays) radial shaft approximation
+      } else if (uGodRayIntensity > 0.01 && uSunVisibility > 0.01) {
+        // Lightweight Volumetric Tropical Sun Rays (God Rays) dynamically tracking sun screen projection
         vec2 toSun = vUv - uSunScreenPos;
         float distSun = length(toSun);
-        float radialGlow = exp(-distSun * 3.4);
+        float radialGlow = exp(-distSun * 3.2);
         float angle = atan(toSun.y, toSun.x);
         float rays = 0.55 + 0.45 * sin(angle * 12.0 + uTime * 0.35) * cos(angle * 7.0 - uTime * 0.22);
         float skyBright = smoothstep(0.42, 0.92, getLuma(c));
-        vec3 goldenShaft = vec3(1.0, 0.86, 0.58) * radialGlow * rays * skyBright * uGodRayIntensity * 0.28;
+        vec3 goldenShaft = vec3(1.0, 0.86, 0.58) * radialGlow * rays * skyBright * uGodRayIntensity * uSunVisibility * 0.32;
         c += goldenShaft;
       }
 
@@ -136,6 +140,13 @@ const CinematicPostShader = {
         c.b -= uWarmth * 0.05;
       }
 
+      // Subtle Filmic Vignette for lens depth
+      if (uVignetteStrength > 0.005) {
+        float vDist = distance(vUv, vec2(0.5, 0.5));
+        float vig = smoothstep(0.42, 0.95, vDist);
+        c *= (1.0 - vig * uVignetteStrength);
+      }
+
       // Preserve linear/graded signal for OutputPass to perform unified ACESFilmicToneMapping
       c = max(c, vec3(0.0));
 
@@ -164,6 +175,8 @@ export class RenderPipeline {
   // Optimized Bloom Resolution Capping (Preserves 60 FPS on 1080p, 1440p, and 4K)
   private static readonly MAX_BLOOM_WIDTH = 960;
   private static readonly MAX_BLOOM_HEIGHT = 540;
+  private static readonly _sunProjVec = new THREE.Vector3();
+  private static readonly _camDirVec = new THREE.Vector3();
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.renderer = renderer;
@@ -316,6 +329,12 @@ export class RenderPipeline {
       const sharpenStr = Math.max(0.34, (settings as any).sharpenStrength ?? 0.36);
       this.postPass.uniforms.uSharpenStrength.value = sharpen ? sharpenStr : 0.0;
       this.postPass.uniforms.uTexelSize.value.set(1.0 / Math.max(1, width), 1.0 / Math.max(1, height));
+
+      const realism = settings.shaderRealism || 'realistic';
+      this.postPass.uniforms.uGodRayIntensity.value =
+        realism === 'ultra' ? 0.34 : realism === 'realistic' ? 0.24 : 0.0;
+      this.postPass.uniforms.uVignetteStrength.value =
+        realism === 'ultra' ? 0.20 : realism === 'realistic' ? 0.12 : 0.0;
     }
 
     // Anti-Aliasing Pass
@@ -348,7 +367,13 @@ export class RenderPipeline {
     return this.lastGpuTimeMs;
   }
 
-  public render(deltaTime: number, isEyesInWater: boolean = false, exposure: number = 1.0): void {
+  public render(
+    deltaTime: number,
+    isEyesInWater: boolean = false,
+    exposure: number = 1.0,
+    sunDirection?: THREE.Vector3,
+    isNight: boolean = false
+  ): void {
     const gl = this.renderer.getContext() as any;
     let queryBegan = false;
 
@@ -374,6 +399,23 @@ export class RenderPipeline {
         this.postPass.uniforms.uTime.value += deltaTime;
         this.postPass.uniforms.uExposure.value = exposure;
         this.postPass.uniforms.uUnderwater.value = isEyesInWater ? 1.0 : 0.0;
+
+        if (sunDirection && !isNight && sunDirection.y > -0.1) {
+          RenderPipeline._sunProjVec.copy(this.camera.position).addScaledVector(sunDirection, 200);
+          RenderPipeline._sunProjVec.project(this.camera);
+          this.camera.getWorldDirection(RenderPipeline._camDirVec);
+          const facingSun = RenderPipeline._camDirVec.dot(sunDirection);
+          if (facingSun > 0.05) {
+            const sx = RenderPipeline._sunProjVec.x * 0.5 + 0.5;
+            const sy = RenderPipeline._sunProjVec.y * 0.5 + 0.5;
+            this.postPass.uniforms.uSunScreenPos.value.set(sx, sy);
+            this.postPass.uniforms.uSunVisibility.value = Math.min(1.0, facingSun * 1.4) * Math.min(1.0, (sunDirection.y + 0.1) * 3.0);
+          } else {
+            this.postPass.uniforms.uSunVisibility.value = 0.0;
+          }
+        } else {
+          this.postPass.uniforms.uSunVisibility.value = 0.0;
+        }
       }
       this.composer.render(deltaTime);
     } else {

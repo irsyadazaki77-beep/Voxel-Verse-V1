@@ -91,7 +91,13 @@ export class RenderSystem implements GameSystem {
     const exposure = renderer.toneMappingExposure || 1.0;
 
     if (this.runtime.renderPipeline) {
-      this.runtime.renderPipeline.render(deltaTime, isEyesInWater, exposure);
+      this.runtime.renderPipeline.render(
+        deltaTime,
+        isEyesInWater,
+        exposure,
+        this.runtime.sky?.currentSunDirection,
+        this.runtime.sky?.isNight || false
+      );
     } else {
       renderer.render(scene, camera);
     }
