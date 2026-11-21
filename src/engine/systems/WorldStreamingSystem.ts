@@ -64,6 +64,7 @@ export class WorldStreamingSystem implements GameSystem {
 
     if (shouldUpdate) {
       const budget = this.getAdaptiveFrameBudget();
+      world.setDistantLODEnabled(settings.graphics.distantLOD !== false && !settings.graphics.turboFpsMode);
       world.updateChunks(
         player.position,
         player.getForwardVector(),

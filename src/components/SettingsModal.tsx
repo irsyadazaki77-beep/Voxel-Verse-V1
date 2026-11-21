@@ -348,6 +348,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                           <option value="realistic">Realistic (PBR Micro-Normals + God Rays)</option>
                           <option value="ultra">Ultra Photoreal (Full Vignette & Sun Shafts)</option>
                         </select>
+                        <label className="flex items-center justify-between pt-2 text-xs text-slate-300 cursor-pointer">
+                          <span>Distant Horizons LOD (600m+ Vista)</span>
+                          <input
+                            type="checkbox"
+                            checked={settings.graphics.distantLOD !== false}
+                            onChange={(e) => updateGraphics({ distantLOD: e.target.checked, preset: 'custom' })}
+                            className="accent-emerald-400 w-4 h-4"
+                          />
+                        </label>
                       </div>
                     </div>
 
@@ -392,6 +401,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                           <option value="realistic">Realistic (PBR Micro-Normals + God Rays)</option>
                           <option value="ultra">Ultra Photoreal (Full Vignette & Sun Shafts)</option>
                         </select>
+                        <label className="flex items-center justify-between pt-2 text-xs text-slate-300 cursor-pointer">
+                          <span>Distant Horizons LOD (600m+ Vista)</span>
+                          <input
+                            type="checkbox"
+                            checked={settings.graphics.distantLOD !== false}
+                            onChange={(e) => updateGraphics({ distantLOD: e.target.checked, preset: 'custom' })}
+                            className="accent-emerald-400 w-4 h-4"
+                          />
+                        </label>
                       </div>
                     </div>
 

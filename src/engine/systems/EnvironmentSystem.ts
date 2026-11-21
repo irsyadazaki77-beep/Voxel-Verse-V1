@@ -12,6 +12,8 @@ export class EnvironmentSystem implements GameSystem {
   private eyeAdaptation: number = 0;
   private ambientMoteTimer: number = 0;
   private static readonly _tmpAtmosVec = new THREE.Vector3();
+  private static readonly _tmpAudioForward = new THREE.Vector3();
+  private static readonly _tmpAudioUp = new THREE.Vector3();
 
   constructor(runtime: GameRuntime) {
     this.runtime = runtime;
@@ -184,8 +186,35 @@ export class EnvironmentSystem implements GameSystem {
       particles.update(deltaTime, player.position);
     }
 
-    // Adaptive Gamelan Nusantara Music Director
+    // Adaptive Gamelan Nusantara Music Director + v7.0.0 3D Spatial Audio & Dynamic Acoustics
     if (this.runtime.audio) {
+      if (camera) {
+        EnvironmentSystem._tmpAudioForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+        EnvironmentSystem._tmpAudioUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+        this.runtime.audio.updateListener(
+          camera.position,
+          EnvironmentSystem._tmpAudioForward,
+          EnvironmentSystem._tmpAudioUp
+        );
+      }
+
+      // Estimate cave/underground enclosure using O(1) surface heightmap lookup
+      const px = Math.floor(player.position.x);
+      const pz = Math.floor(player.position.z);
+      const surfaceY = world.getLoadedSurfaceHeight(px, pz) ?? world.getProceduralTerrainHeight(px, pz);
+      const depthBelowSurface = surfaceY - (player.position.y + 1.6);
+      const caveEnclosure = depthBelowSurface >= 3 ? Math.min(1.0, (depthBelowSurface - 2) / 8.0) : 0;
+      const isOpenOcean = !!MaritimeVesselSystem.activeVesselId || (biome?.id || '').toLowerCase().includes('ocean');
+
+      this.runtime.audio.updateAcousticEnvironment(
+        {
+          isUnderwater: player.isEyesInWater,
+          caveEnclosure,
+          isOpenOcean,
+        },
+        deltaTime
+      );
+
       this.runtime.audio.updateAmbientGamelan(deltaTime, {
         biomeName: biome?.name || 'Emerald Highlands',
         timeOfDay: sky.timeOfDay,

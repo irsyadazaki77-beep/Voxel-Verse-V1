@@ -42,6 +42,7 @@ export interface GraphicsSettings {
   nightBrightness: number; // 0.8 .. 1.2, default 1.0
   turboFpsMode?: boolean;
   shaderRealism?: 'stylized' | 'realistic' | 'ultra';
+  distantLOD?: boolean;
 }
 
 export type KeyBindingAction =
@@ -212,6 +213,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
     nightBrightness: 1.0,
     turboFpsMode: false,
     shaderRealism: 'realistic',
+    distantLOD: true,
   },
   controls: {
     keyBindings: {

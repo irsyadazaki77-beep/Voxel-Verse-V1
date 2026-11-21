@@ -7,6 +7,7 @@ import { Chunk, CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z } from './Chunk';
 import { StructureGenerator } from './StructureGenerator';
 import { TextureAtlas } from './TextureAtlas';
 import { ChunkScheduler } from './ChunkScheduler';
+import { DistantLODSystem } from './DistantLODSystem';
 import { WorldGeneratorCore } from './WorldGeneratorCore';
 import { SEA_LEVEL, WORLD_PRESETS, WorldPreset, makeDimensionChunkKey } from './WorldConfig';
 import { MiningVisualEngine } from './MiningVisualEngine';
@@ -69,6 +70,7 @@ export class VoxelWorld {
   public highlightMesh: THREE.LineSegments;
   public previewMesh: THREE.Mesh;
   public scheduler: ChunkScheduler;
+  public distantLOD: DistantLODSystem;
 
   constructor(seed: number = 42819, preset: WorldPreset = 'standard', dimensionId: string = 'overworld') {
     this.seed = seed;
@@ -79,6 +81,8 @@ export class VoxelWorld {
     this.regionManager = new CulturalRegionManager(seed);
     this.generatorCore = new WorldGeneratorCore(seed, preset, { dimensionId: this.dimensionId });
     this.scheduler = new ChunkScheduler(this);
+    this.distantLOD = new DistantLODSystem(this.generatorCore, this.dimensionId);
+    this.worldGroup.add(this.distantLOD.group);
 
     // Load procedural 16x16 pixel texture atlas
     const atlasTex = TextureAtlas.getAtlasTexture();
@@ -1125,7 +1129,7 @@ export class VoxelWorld {
     return SafeSpawnResolver.resolve(seed, this.preset, this.dimensionId);
   }
 
-  // Update streamed chunks around player position using ChunkScheduler
+  // Update streamed chunks around player position using ChunkScheduler + Distant Horizons LOD
   public updateChunks(
     playerPos: THREE.Vector3,
     cameraDir: THREE.Vector3,
@@ -1133,6 +1137,15 @@ export class VoxelWorld {
     frameBudgetMs: number = 3.0
   ): void {
     this.scheduler.update(playerPos, cameraDir, renderDistance, frameBudgetMs);
+    if (this.distantLOD && this.distantLOD.isEnabled()) {
+      this.distantLOD.update(playerPos, renderDistance, Math.min(1.6, frameBudgetMs * 0.45));
+    }
+  }
+
+  public setDistantLODEnabled(enabled: boolean): void {
+    if (this.distantLOD) {
+      this.distantLOD.setEnabled(enabled);
+    }
   }
 
   // Accurate Voxel DDA (Digital Differential Analyzer) Raycaster
@@ -1347,6 +1360,10 @@ export class VoxelWorld {
 
   public dispose(): void {
     this.scheduler.dispose();
+    if (this.distantLOD) {
+      this.worldGroup.remove(this.distantLOD.group);
+      this.distantLOD.dispose();
+    }
     for (const chunk of this.chunks.values()) {
       chunk.dispose();
     }

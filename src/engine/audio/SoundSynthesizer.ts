@@ -3,6 +3,26 @@ import { BlockType } from '../../types';
 
 export type FootstepSurfaceType = 'grass' | 'stone' | 'wood' | 'sand' | 'water' | 'snow' | 'metal';
 
+export type AcousticZone = 'open_air' | 'karst_cave' | 'underwater' | 'open_ocean';
+
+export type SpatialSoundKind =
+  | 'block_break'
+  | 'block_place'
+  | 'water_splash'
+  | 'lava_crackle'
+  | 'aether_hum'
+  | 'cave_drip'
+  | 'combat_hit';
+
+export interface AcousticEnvironmentTelemetry {
+  zone: AcousticZone;
+  caveEnclosure: number;
+  reverbWet: number;
+  lowpassHz: number;
+  spatialSoundsPlayed: number;
+  listenerPos: [number, number, number];
+}
+
 export class SoundSynthesizer {
   private ctx: AudioContext | null = null;
   private cachedNoiseBuffer: AudioBuffer | null = null;
@@ -10,6 +30,20 @@ export class SoundSynthesizer {
   public sfxVolume: number = 0.8;
   public musicVolume: number = 0.5;
   private isMuted: boolean = false;
+
+  // 3D Spatial Audio & Dynamic Acoustics Graph (v7.0.0)
+  private acousticBus: GainNode | null = null;
+  private envFilterNode: BiquadFilterNode | null = null;
+  private dryGainNode: GainNode | null = null;
+  private reverbSendGain: GainNode | null = null;
+  private convolverNode: ConvolverNode | null = null;
+  private currentAcousticZone: AcousticZone = 'open_air';
+  private currentCaveEnclosure: number = 0;
+  private currentReverbWet: number = 0.04;
+  private currentLowpassHz: number = 20000;
+  private spatialSoundsPlayed: number = 0;
+  private listenerPosition: [number, number, number] = [0, 0, 0];
+  private caveDripTimer: number = 3.5;
 
   // Adaptive Gamelan Ambient Director State
   private ambientTimer: number = 6.0; // Start first gentle phrase after 6s
@@ -22,8 +56,10 @@ export class SoundSynthesizer {
   }
 
   private initCtx(): void {
+    if (typeof window === 'undefined') return;
     if (!this.ctx) {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
       this.ctx = new AudioContextClass();
     }
     if (this.ctx.state === 'suspended') {
@@ -37,6 +73,58 @@ export class SoundSynthesizer {
         data[i] = Math.random() * 2 - 1;
       }
     }
+    if (this.ctx && !this.acousticBus) {
+      this.initAcousticGraph();
+    }
+  }
+
+  /**
+   * Builds the v7.0.0 Dynamic Acoustic Bus:
+   * acousticBus -> envFilterNode (underwater low-pass) -> dryGain + (reverbSendGain -> convolverNode) -> destination
+   */
+  private initAcousticGraph(): void {
+    if (!this.ctx) return;
+    this.acousticBus = this.ctx.createGain();
+    this.acousticBus.gain.value = 1.0;
+
+    this.envFilterNode = this.ctx.createBiquadFilter();
+    this.envFilterNode.type = 'lowpass';
+    this.envFilterNode.frequency.value = this.currentLowpassHz;
+    this.envFilterNode.Q.value = 0.7;
+
+    this.dryGainNode = this.ctx.createGain();
+    this.dryGainNode.gain.value = 1.0;
+
+    this.reverbSendGain = this.ctx.createGain();
+    this.reverbSendGain.gain.value = this.currentReverbWet;
+
+    this.convolverNode = this.ctx.createConvolver();
+    this.convolverNode.buffer = this.createCavernImpulseResponse(1.65, 2.8);
+
+    this.acousticBus.connect(this.envFilterNode);
+    this.envFilterNode.connect(this.dryGainNode);
+    this.dryGainNode.connect(this.ctx.destination);
+
+    this.envFilterNode.connect(this.reverbSendGain);
+    this.reverbSendGain.connect(this.convolverNode);
+    this.convolverNode.connect(this.ctx.destination);
+  }
+
+  private createCavernImpulseResponse(durationSec: number, decay: number): AudioBuffer {
+    const ctx = this.ctx!;
+    const sampleRate = ctx.sampleRate;
+    const length = Math.floor(sampleRate * durationSec);
+    const impulse = ctx.createBuffer(2, length, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const channelData = impulse.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        const env = Math.pow(1 - i / length, decay);
+        // Subtle early reflections + diffuse limestone cavern tail
+        const earlyBoost = i < sampleRate * 0.045 && i % 430 < 6 ? 1.35 : 1.0;
+        channelData[i] = (Math.random() * 2 - 1) * env * earlyBoost * 0.55;
+      }
+    }
+    return impulse;
   }
 
   // O(1) BlockType to Acoustic Footstep Surface Resolver
@@ -1296,10 +1384,197 @@ export class SoundSynthesizer {
     }
   }
 
+  // 26. 3D Spatial Audio Listener Sync (v7.0.0)
+  public updateListener(
+    pos: { x: number; y: number; z: number },
+    forward: { x: number; y: number; z: number },
+    up: { x: number; y: number; z: number } = { x: 0, y: 1, z: 0 }
+  ): void {
+    this.listenerPosition[0] = pos.x;
+    this.listenerPosition[1] = pos.y;
+    this.listenerPosition[2] = pos.z;
+
+    if (!this.ctx || !this.ctx.listener) return;
+    const listener = this.ctx.listener;
+    const t = this.ctx.currentTime;
+
+    if (typeof listener.positionX !== 'undefined') {
+      listener.positionX.setValueAtTime(pos.x, t);
+      listener.positionY.setValueAtTime(pos.y, t);
+      listener.positionZ.setValueAtTime(pos.z, t);
+      listener.forwardX.setValueAtTime(forward.x, t);
+      listener.forwardY.setValueAtTime(forward.y, t);
+      listener.forwardZ.setValueAtTime(forward.z, t);
+      listener.upX.setValueAtTime(up.x, t);
+      listener.upY.setValueAtTime(up.y, t);
+      listener.upZ.setValueAtTime(up.z, t);
+    } else if (typeof (listener as any).setPosition === 'function') {
+      (listener as any).setPosition(pos.x, pos.y, pos.z);
+      (listener as any).setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+    }
+  }
+
+  // 27. Dynamic Environmental Acoustics Controller (Karst Cave Reverb, Underwater Low-Pass, Ocean Ambience)
+  public updateAcousticEnvironment(
+    env: {
+      isUnderwater: boolean;
+      caveEnclosure: number; // 0 (open sky) .. 1 (deep enclosed cave)
+      isOpenOcean?: boolean;
+    },
+    deltaTime: number = 0.016
+  ): void {
+    const enclosure = Math.min(1, Math.max(0, env.caveEnclosure));
+    this.currentCaveEnclosure = enclosure;
+
+    let targetZone: AcousticZone = 'open_air';
+    let targetLowpass = 20000;
+    let targetReverb = 0.04;
+
+    if (env.isUnderwater) {
+      targetZone = 'underwater';
+      targetLowpass = 440;
+      targetReverb = 0.24;
+    } else if (enclosure >= 0.45) {
+      targetZone = 'karst_cave';
+      targetLowpass = 14500 - enclosure * 2500;
+      targetReverb = 0.16 + enclosure * 0.40; // Up to 0.56 wet cavern echo
+    } else if (env.isOpenOcean) {
+      targetZone = 'open_ocean';
+      targetLowpass = 18500;
+      targetReverb = 0.09;
+    }
+
+    this.currentAcousticZone = targetZone;
+    const smooth = Math.min(1, Math.max(0.05, deltaTime * 5.0));
+    this.currentLowpassHz += (targetLowpass - this.currentLowpassHz) * smooth;
+    this.currentReverbWet += (targetReverb - this.currentReverbWet) * smooth;
+
+    if (this.ctx && this.envFilterNode && this.reverbSendGain) {
+      const t = this.ctx.currentTime;
+      this.envFilterNode.frequency.setTargetAtTime(this.currentLowpassHz, t, 0.08);
+      this.reverbSendGain.gain.setTargetAtTime(this.currentReverbWet, t, 0.12);
+    }
+
+    // Subtle spatial cavern water-drip ambience when inside Karst caves
+    if (targetZone === 'karst_cave' && !this.isMuted) {
+      this.caveDripTimer -= deltaTime;
+      if (this.caveDripTimer <= 0) {
+        this.caveDripTimer = 4.2 + Math.random() * 5.5;
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 4 + Math.random() * 10;
+        this.playSpatialSound(
+          'cave_drip',
+          {
+            x: this.listenerPosition[0] + Math.cos(angle) * dist,
+            y: this.listenerPosition[1] + 2.5,
+            z: this.listenerPosition[2] + Math.sin(angle) * dist,
+          },
+          { volume: 0.22 }
+        );
+      }
+    }
+  }
+
+  // 28. True 3D HRTF Positional Sound Emitter (routed into Dynamic Acoustic Bus)
+  public playSpatialSound(
+    kind: SpatialSoundKind,
+    worldPos: { x: number; y: number; z: number },
+    options?: { volume?: number; pitch?: number }
+  ): void {
+    this.spatialSoundsPlayed++;
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx || !this.acousticBus) return;
+
+    const vol = this.masterVolume * this.sfxVolume * (options?.volume ?? 0.5);
+    if (vol <= 0.005) return;
+
+    const t = this.ctx.currentTime;
+    const panner = this.ctx.createPanner();
+    panner.panningModel = 'HRTF';
+    panner.distanceModel = 'inverse';
+    panner.refDistance = 3.0;
+    panner.maxDistance = 48.0;
+    panner.rolloffFactor = 1.25;
+
+    if (typeof panner.positionX !== 'undefined') {
+      panner.positionX.setValueAtTime(worldPos.x, t);
+      panner.positionY.setValueAtTime(worldPos.y, t);
+      panner.positionZ.setValueAtTime(worldPos.z, t);
+    } else if (typeof (panner as any).setPosition === 'function') {
+      (panner as any).setPosition(worldPos.x, worldPos.y, worldPos.z);
+    }
+
+    const gain = this.ctx.createGain();
+    const osc = this.ctx.createOscillator();
+    const pitch = options?.pitch ?? (0.94 + Math.random() * 0.12);
+
+    let dur = 0.14;
+    if (kind === 'cave_drip') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1180 * pitch, t);
+      osc.frequency.exponentialRampToValueAtTime(1780 * pitch, t + 0.075);
+      dur = 0.12;
+    } else if (kind === 'aether_hum') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(293.66 * pitch, t);
+      osc.frequency.exponentialRampToValueAtTime(440.0 * pitch, t + 0.35);
+      dur = 0.38;
+    } else if (kind === 'lava_crackle') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(125 * pitch, t);
+      osc.frequency.exponentialRampToValueAtTime(52 * pitch, t + 0.16);
+      dur = 0.18;
+    } else if (kind === 'water_splash') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(420 * pitch, t);
+      osc.frequency.exponentialRampToValueAtTime(140 * pitch, t + 0.18);
+      dur = 0.2;
+    } else if (kind === 'combat_hit') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220 * pitch, t);
+      osc.frequency.exponentialRampToValueAtTime(65 * pitch, t + 0.12);
+      dur = 0.13;
+    } else {
+      // block_break / block_place
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime((kind === 'block_place' ? 310 : 210) * pitch, t);
+      osc.frequency.exponentialRampToValueAtTime(85 * pitch, t + 0.11);
+      dur = 0.12;
+    }
+
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+
+    osc.connect(gain);
+    gain.connect(panner);
+    panner.connect(this.acousticBus);
+
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+
+  public getAcousticTelemetry(): AcousticEnvironmentTelemetry {
+    return {
+      zone: this.currentAcousticZone,
+      caveEnclosure: this.currentCaveEnclosure,
+      reverbWet: this.currentReverbWet,
+      lowpassHz: this.currentLowpassHz,
+      spatialSoundsPlayed: this.spatialSoundsPlayed,
+      listenerPos: [this.listenerPosition[0], this.listenerPosition[1], this.listenerPosition[2]],
+    };
+  }
+
   public dispose(): void {
     if (this.ctx && this.ctx.state !== 'closed') {
       this.ctx.close().catch(() => {});
       this.ctx = null;
+      this.acousticBus = null;
+      this.envFilterNode = null;
+      this.dryGainNode = null;
+      this.reverbSendGain = null;
+      this.convolverNode = null;
     }
   }
 }

@@ -11,6 +11,34 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '7.0.0',
+    date: '2026-11-21',
+    title: 'Distant Horizons & Sensory Overhaul: Hierarchical Chunk LOD (600m+ Vista), True 3D RGB Colored Voxel Lighting, dan 3D Spatial Audio & Dynamic Cavern Acoustics',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Distant Horizons Hierarchical Chunk LOD (DistantLODSystem.ts)',
+        items: [
+          'Menambahkan sistem LOD 2-cincin (64m & 128m macro-tiles) di luar render distance aktif yang merender siluet pegunungan vulkanik, tebing karst, sawah terasering, dan laut Nusantara hingga jarak pandang ~600m+ dengan alokasi budget CPU time-sliced.',
+          'Menambahkan toggle Distant Horizons LOD (600m+ Vista) langsung di Settings → Graphics.'
+        ]
+      },
+      {
+        category: '2. True 3D RGB Colored Voxel Lighting (LightingEngine.ts & VoxelMesher.ts)',
+        items: [
+          'Meng-upgrade LightingEngine ke propagasi cahaya BFS 3-kanal RGB (16-bit packed per voxel) untuk cahaya obor/api hangat, lava vulkanik merah-oranye, kristal Aether biru-cyan, dan jamur bioluminescent hijau zamrud di gua.',
+          'Mengintegrasikan pewarnaan cahaya RGB langsung ke vertex color buffer greedy mesher di VoxelMesher (berjalan otomatis di Web Worker tanpa buffer GPU tambahan).'
+        ]
+      },
+      {
+        category: '3. 3D Spatial Audio (HRTF) & Dynamic Environmental Acoustics (SoundSynthesizer.ts)',
+        items: [
+          'Menambahkan bus akustik Web Audio dengan ConvolverNode cavern reverb prosedural, BiquadFilterNode low-pass bawah air, sinkronisasi AudioListener 3D kamera, serta emitter playSpatialSound() berbasis PannerNode HRTF.'
+        ]
+      }
+    ]
+  },
+  {
     version: '6.4.0',
     date: '2026-11-21',
     title: 'Deep Performance Upgrade: On-Demand Lazy Modals, GPU Shader ALU Bypass Sync, dan Entity Distance AI & Visibility Culling',

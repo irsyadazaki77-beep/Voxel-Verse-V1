@@ -1,9 +1,10 @@
-// High Performance Zero-Allocation Greedy Voxel Mesher with Face Culling, AO, Texture Atlas UVs & Specialized Meshers
+// High Performance Zero-Allocation Greedy Voxel Mesher with Face Culling, AO, 3D RGB Colored Lighting, Texture Atlas UVs & Specialized Meshers
 import { BlockShape, BlockType } from '../../types';
 import { BLOCK_DEFS } from './BlockRegistry';
 import { TextureAtlas } from './TextureAtlas';
 import { BlockShapeResolver } from './BlockShapeResolver';
 import { BlockState, BlockStateUtils, Direction6 } from './BlockState';
+import { LightingEngine } from './LightingEngine';
 
 export interface TransferableMeshData {
   solidPositions: Float32Array;
@@ -117,7 +118,10 @@ class DynamicMeshBuffer {
     u2: number, v2: number,
     u3: number, v3: number,
     tuMin: number, tvMin: number, tuMax: number, tvMax: number,
-    matClass: number
+    matClass: number,
+    rMult: number = 1.0,
+    gMult: number = 1.0,
+    bMult: number = 1.0
   ): void {
     this.ensureVertexCapacity(4);
     this.ensureIndexCapacity(6);
@@ -139,11 +143,11 @@ class DynamicMeshBuffer {
     this.normals[pOffset + 6] = nx; this.normals[pOffset + 7] = ny; this.normals[pOffset + 8] = nz;
     this.normals[pOffset + 9] = nx; this.normals[pOffset + 10] = ny; this.normals[pOffset + 11] = nz;
 
-    // Colors
-    this.colors[pOffset] = c0;     this.colors[pOffset + 1] = c0; this.colors[pOffset + 2] = c0;
-    this.colors[pOffset + 3] = c1; this.colors[pOffset + 4] = c1; this.colors[pOffset + 5] = c1;
-    this.colors[pOffset + 6] = c2; this.colors[pOffset + 7] = c2; this.colors[pOffset + 8] = c2;
-    this.colors[pOffset + 9] = c3; this.colors[pOffset + 10] = c3; this.colors[pOffset + 11] = c3;
+    // Colors (AO * Directional Shade * 3D RGB Voxel Light)
+    this.colors[pOffset] = c0 * rMult;     this.colors[pOffset + 1] = c0 * gMult; this.colors[pOffset + 2] = c0 * bMult;
+    this.colors[pOffset + 3] = c1 * rMult; this.colors[pOffset + 4] = c1 * gMult; this.colors[pOffset + 5] = c1 * bMult;
+    this.colors[pOffset + 6] = c2 * rMult; this.colors[pOffset + 7] = c2 * gMult; this.colors[pOffset + 8] = c2 * bMult;
+    this.colors[pOffset + 9] = c3 * rMult; this.colors[pOffset + 10] = c3 * gMult; this.colors[pOffset + 11] = c3 * bMult;
 
     // UVs
     this.uvs[uvOffset] = u0;     this.uvs[uvOffset + 1] = v0;
@@ -290,6 +294,9 @@ const solidBuffer = new DynamicMeshBuffer(24576, 36864);
 const transBuffer = new DynamicMeshBuffer(4096, 6144);
 const waterBuffer = new DynamicMeshBuffer(4096, 6144);
 const reusableMask = new Int32Array(2048);
+const reusableLightMask = new Int32Array(2048);
+let reusableLightingEngine: LightingEngine | null = null;
+let reusableLightDims = '';
 
 export class VoxelMesher {
   public static getBlockMaterialClass(block: number): number {
@@ -463,6 +470,17 @@ export class VoxelMesher {
       return VoxelMesher.isSolidOpaque(info.type);
     };
 
+    // v7.0.0: True 3D RGB Colored Voxel Light Propagation (reusable zero-alloc engine)
+    const dimsKey = `${chunkWidth}x${chunkHeight}x${chunkDepth}`;
+    const getBlockTypeOnly = (x: number, y: number, z: number): BlockType => getBlockRaw(x, y, z).type;
+    if (!reusableLightingEngine || reusableLightDims !== dimsKey) {
+      reusableLightingEngine = new LightingEngine(chunkWidth, chunkHeight, chunkDepth, getBlockTypeOnly);
+      reusableLightDims = dimsKey;
+    } else {
+      reusableLightingEngine.rebind(getBlockTypeOnly);
+    }
+    reusableLightingEngine.computeFullChunkLighting();
+
     // 1. HIGH SPEED ZERO-ALLOCATION GREEDY MESHING FOR FULL-CUBE BLOCKS
     for (let faceDir = 0; faceDir < 6; faceDir++) {
       const isTop = faceDir === 0;
@@ -485,6 +503,7 @@ export class VoxelMesher {
 
       for (let d = 0; d < dMax; d++) {
         reusableMask.fill(0, 0, sliceSize);
+        reusableLightMask.fill(0, 0, sliceSize);
 
         for (let v = 0; v < vMax; v++) {
           for (let u = 0; u < uMax; u++) {
@@ -564,18 +583,21 @@ export class VoxelMesher {
             const isTrans = def.transparent ? 1 : 0;
             const packedKey = (block & 0xFFFF) | ((ao0 & 3) << 16) | ((ao1 & 3) << 18) | ((ao2 & 3) << 20) | ((ao3 & 3) << 22) | (isTrans << 24) | (1 << 25);
             reusableMask[u + v * uMax] = packedKey;
+            reusableLightMask[u + v * uMax] = reusableLightingEngine.getQuantizedLightKey(x + nx, y + ny, z + nz);
           }
         }
 
-        // Fast Greedy Quad Merging using packed 32-bit integer equality
+        // Fast Greedy Quad Merging using packed 32-bit integer equality + quantized RGB light equality
         for (let v = 0; v < vMax; v++) {
           for (let u = 0; u < uMax; u++) {
             const cell = reusableMask[u + v * uMax];
             if (cell === 0) continue;
+            const lightCell = reusableLightMask[u + v * uMax];
 
             let w = 1;
             while (u + w < uMax) {
-              if (reusableMask[(u + w) + v * uMax] === cell) w++;
+              const idx = (u + w) + v * uMax;
+              if (reusableMask[idx] === cell && reusableLightMask[idx] === lightCell) w++;
               else break;
             }
 
@@ -583,7 +605,8 @@ export class VoxelMesher {
             let canExtendH = true;
             while (v + h < vMax && canExtendH) {
               for (let k = 0; k < w; k++) {
-                if (reusableMask[(u + k) + (v + h) * uMax] !== cell) {
+                const idx = (u + k) + (v + h) * uMax;
+                if (reusableMask[idx] !== cell || reusableLightMask[idx] !== lightCell) {
                   canExtendH = false;
                   break;
                 }
@@ -665,6 +688,29 @@ export class VoxelMesher {
             const f3 = VoxelMesher.aoToFactor(ao3) * dirShade;
             const matClass = VoxelMesher.getBlockMaterialClass(block);
 
+            // Sample RGB colored light at the adjacent face voxel (or self-illumination if emissive)
+            const defBlock = BLOCK_DEFS[block];
+            let rLight = 1.0, gLight = 1.0, bLight = 1.0;
+            if (defBlock && defBlock.lightEmission && defBlock.lightEmission > 0) {
+              const [er, eg, eb] = LightingEngine.getBlockEmissionRGB(block);
+              rLight = 0.85 + (er / 15.0) * 0.35;
+              gLight = 0.85 + (eg / 15.0) * 0.35;
+              bLight = 0.85 + (eb / 15.0) * 0.35;
+            } else {
+              let sx = 0, sy = 0, sz = 0;
+              if (isTop || isBottom) {
+                sx = u; sy = d + ny; sz = v;
+              } else if (isFront || isBack) {
+                sx = u; sy = v; sz = d + nz;
+              } else {
+                sx = d + nx; sy = v; sz = u;
+              }
+              const rgb = reusableLightingEngine.getRGBLightFactor(sx, sy, sz, 1.0);
+              rLight = rgb.r;
+              gLight = rgb.g;
+              bLight = rgb.b;
+            }
+
             buffer.addQuad(
               x0, y0, z0,
               x1, y1, z1,
@@ -677,7 +723,8 @@ export class VoxelMesher {
               lu2x, lu2y,
               lu3x, lu3y,
               tuMin, tvMin, tuMax, tvMax,
-              matClass
+              matClass,
+              rLight, gLight, bLight
             );
           }
         }
