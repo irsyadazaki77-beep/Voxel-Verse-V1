@@ -11,6 +11,35 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '7.4.0',
+    date: '2026-11-21',
+    title: 'Visual Polish & Rendering Overhaul: Unclipped 600m+ Distant Horizons, Zero Chunk-Border Light Seams, Smooth 5-Tap RGB Lighting, Analytic LOD Normals, Tangent PBR Micro-Normals & Crisp God Rays',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Horizon Visibility, SkyDome Occlusion & Shadow Frustum (GameRuntime.ts & SkyEnvironment.ts)',
+        items: [
+          'Menaikkan camera.far ke 1200m dan radius SkyDome ke 950m (depthWrite: false, renderOrder: -1000) agar Distant Horizons LOD hingga 600m+ tidak lagi terpotong atau tertutup langit.',
+          'Memperluas shadow frustum matahari (hingga ±80m di Ultra) dan menyeimbangkan aerial perspective FogExp2.'
+        ]
+      },
+      {
+        category: '2. Chunk-Border Seam Fix & Smooth 5-Tap RGB Lighting (VoxelMesher.ts & DistantLODSystem.ts)',
+        items: [
+          'Memperbaiki garis gelap vertikal di perbatasan antar-chunk serta menambahkan 5-tap smooth neighbor RGB light blending untuk gradien cahaya obor, lava, dan kristal Aether yang halus.',
+          'Meng-upgrade DistantLODSystem ke MeshStandardMaterial dengan analytic heightfield normals di seluruh tepi tile sehingga sambungan antar-tile 64m/128m bebas garis gelap.'
+        ]
+      },
+      {
+        category: '3. Tangent-Projected PBR Micro-Normals, Anti-Moiré & God Rays Guard (VoxelWorld.ts & RenderPipeline.ts)',
+        items: [
+          'Memproyeksikan PBR micro-normal secara tangensial terhadap vWorldNormal dan menambahkan distance fade (detailFade & borderFade) untuk menghilangkan moiré shimmering di kejauhan.',
+          'Menambahkan skyElevationWeight pada God Rays di CinematicPostShader agar pasir pantai dan salju terang tidak ikut berkabut kuning.'
+        ]
+      }
+    ]
+  },
+  {
     version: '7.3.0',
     date: '2026-11-21',
     title: 'Ekosistem Modding & Desktop Native: Pusat Karya Nusantara (Workshop UGC 1-Klik) dan Tauri Native Filesystem Save Bridge',

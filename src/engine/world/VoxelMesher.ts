@@ -583,7 +583,13 @@ export class VoxelMesher {
             const isTrans = def.transparent ? 1 : 0;
             const packedKey = (block & 0xFFFF) | ((ao0 & 3) << 16) | ((ao1 & 3) << 18) | ((ao2 & 3) << 20) | ((ao3 & 3) << 22) | (isTrans << 24) | (1 << 25);
             reusableMask[u + v * uMax] = packedKey;
-            reusableLightMask[u + v * uMax] = reusableLightingEngine.getQuantizedLightKey(x + nx, y + ny, z + nz);
+            const lxN = x + nx;
+            const lyN = y + ny;
+            const lzN = z + nz;
+            const isOutOfBounds = lxN < 0 || lxN >= chunkWidth || lyN < 0 || lyN >= chunkHeight || lzN < 0 || lzN >= chunkDepth;
+            reusableLightMask[u + v * uMax] = isOutOfBounds
+              ? 0x0FFF // Border-safe full skylight bucket prevents dark vertical seams along chunk edges
+              : reusableLightingEngine.getQuantizedLightKey(lxN, lyN, lzN);
           }
         }
 
@@ -705,10 +711,75 @@ export class VoxelMesher {
               } else {
                 sx = d + nx; sy = v; sz = u;
               }
-              const rgb = reusableLightingEngine.getRGBLightFactor(sx, sy, sz, 1.0);
-              rLight = rgb.r;
-              gLight = rgb.g;
-              bLight = rgb.b;
+              const sampleOutOfBounds =
+                sx < 0 || sx >= chunkWidth || sy < 0 || sy >= chunkHeight || sz < 0 || sz >= chunkDepth;
+              if (sampleOutOfBounds) {
+                // v7.4.0 Chunk-Border Seam Fix: if the cross-chunk neighbor is open air/transparent,
+                // avoid clamping into the solid border block (which caused dark vertical chunk stripes).
+                const nType = getBlockRaw(sx, sy, sz).type;
+                const nDef = BLOCK_DEFS[nType];
+                const isOpen = nType === BlockType.AIR || (nDef && nDef.transparent);
+                if (isOpen) {
+                  // Check if any solid roof sits above the neighbor voxel within 12 blocks (cave vs sky)
+                  let skyBlocked = false;
+                  const maxCheckY = Math.min(chunkHeight - 1, sy + 12);
+                  for (let cy = sy + 1; cy <= maxCheckY; cy++) {
+                    if (isSolidBlock(sx, cy, sz)) {
+                      skyBlocked = true;
+                      break;
+                    }
+                  }
+                  if (skyBlocked) {
+                    const rgb = reusableLightingEngine.getRGBLightFactor(
+                      Math.max(0, Math.min(chunkWidth - 1, sx)),
+                      Math.max(0, Math.min(chunkHeight - 1, sy)),
+                      Math.max(0, Math.min(chunkDepth - 1, sz)),
+                      1.0
+                    );
+                    rLight = Math.max(0.32, rgb.r);
+                    gLight = Math.max(0.32, rgb.g);
+                    bLight = Math.max(0.32, rgb.b);
+                  } else {
+                    rLight = 1.0;
+                    gLight = 1.0;
+                    bLight = 1.0;
+                  }
+                } else {
+                  const rgb = reusableLightingEngine.getRGBLightFactor(sx, sy, sz, 1.0);
+                  rLight = rgb.r;
+                  gLight = rgb.g;
+                  bLight = rgb.b;
+                }
+              } else {
+                // Smooth 5-tap neighbor light average in the face plane for buttery RGB torch/Aether gradients
+                const cRgb = reusableLightingEngine.getRGBLightFactor(sx, sy, sz, 1.0);
+                let accR = cRgb.r * 2.0;
+                let accG = cRgb.g * 2.0;
+                let accB = cRgb.b * 2.0;
+                let weight = 2.0;
+                const offsets: [number, number, number][] = isTop || isBottom
+                  ? [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]
+                  : isFront || isBack
+                  ? [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]]
+                  : [[0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0]];
+                for (let oi = 0; oi < 4; oi++) {
+                  const ox = sx + offsets[oi][0];
+                  const oy = sy + offsets[oi][1];
+                  const oz = sz + offsets[oi][2];
+                  if (ox >= 0 && ox < chunkWidth && oy >= 0 && oy < chunkHeight && oz >= 0 && oz < chunkDepth) {
+                    if (!isSolidBlock(ox, oy, oz)) {
+                      const nRgb = reusableLightingEngine.getRGBLightFactor(ox, oy, oz, 1.0);
+                      accR += nRgb.r;
+                      accG += nRgb.g;
+                      accB += nRgb.b;
+                      weight += 1.0;
+                    }
+                  }
+                }
+                rLight = accR / weight;
+                gLight = accG / weight;
+                bLight = accB / weight;
+              }
             }
 
             buffer.addQuad(

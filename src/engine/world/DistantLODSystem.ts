@@ -33,7 +33,7 @@ export class DistantLODSystem {
   private enabled: boolean = true;
 
   private tiles: Map<string, LODTileEntry> = new Map();
-  private material: THREE.MeshLambertMaterial;
+  private material: THREE.MeshStandardMaterial;
 
   // Ring configuration
   // Ring 1: 64m macro-tiles (4m sample step = 16x16 grid)
@@ -55,8 +55,10 @@ export class DistantLODSystem {
     this.group = new THREE.Group();
     this.group.name = 'DistantHorizonsLODGroup';
 
-    this.material = new THREE.MeshLambertMaterial({
+    this.material = new THREE.MeshStandardMaterial({
       vertexColors: true,
+      roughness: 0.92,
+      metalness: 0.02,
       flatShading: false,
       fog: true,
       side: THREE.FrontSide,
@@ -139,6 +141,7 @@ export class DistantLODSystem {
     const vertCount = vertsPerSide * vertsPerSide;
 
     const positions = new Float32Array(vertCount * 3);
+    const normals = new Float32Array(vertCount * 3);
     const colors = new Float32Array(vertCount * 3);
     const indices = new Uint16Array(cells * cells * 6);
 
@@ -157,10 +160,24 @@ export class DistantLODSystem {
         const surfaceY = Math.max(rawH, seaLevel) + seamYOffset;
         const [r, g, b] = this.sampleSurfaceColor(wx, wz, rawH, seaLevel);
 
+        // v7.4.0 Analytic heightfield normal across tile boundaries -> zero dark normal seams between adjacent LOD tiles!
+        const hL = Math.max(this.generator.getTerrainHeight(wx - step, wz), seaLevel);
+        const hR = Math.max(this.generator.getTerrainHeight(wx + step, wz), seaLevel);
+        const hD = Math.max(this.generator.getTerrainHeight(wx, wz - step), seaLevel);
+        const hU = Math.max(this.generator.getTerrainHeight(wx, wz + step), seaLevel);
+        const nx = hL - hR;
+        const ny = 2.0 * step;
+        const nz = hD - hU;
+        const invLen = 1.0 / Math.hypot(nx, ny, nz);
+
         const pOff = vIdx * 3;
         positions[pOff] = gx * step;
         positions[pOff + 1] = surfaceY;
         positions[pOff + 2] = gz * step;
+
+        normals[pOff] = nx * invLen;
+        normals[pOff + 1] = ny * invLen;
+        normals[pOff + 2] = nz * invLen;
 
         colors[pOff] = r;
         colors[pOff + 1] = g;
@@ -189,9 +206,9 @@ export class DistantLODSystem {
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-    geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
 
     const mesh = new THREE.Mesh(geometry, this.material);

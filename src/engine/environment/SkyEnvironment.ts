@@ -86,14 +86,14 @@ export class SkyEnvironment {
     this.sunLight.shadow.mapSize.width = 1024;
     this.sunLight.shadow.mapSize.height = 1024;
     this.sunLight.shadow.camera.near = 1.0;
-    this.sunLight.shadow.camera.far = 160;
-    const d = 35;
+    this.sunLight.shadow.camera.far = 220;
+    const d = 48;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
-    this.sunLight.shadow.bias = -0.0003;
-    this.sunLight.shadow.normalBias = 0.02;
+    this.sunLight.shadow.bias = -0.00035;
+    this.sunLight.shadow.normalBias = 0.025;
     this.scene.add(this.sunLight);
 
     // 2. Ambient & Hemisphere Light Fill
@@ -124,38 +124,41 @@ export class SkyEnvironment {
       const v = Math.random();
       const theta = u * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * v - 1.0);
-      const r = 260;
+      const r = 880;
       starPositions[i] = r * Math.sin(phi) * Math.cos(theta);
       starPositions[i + 1] = Math.abs(r * Math.cos(phi));
       starPositions[i + 2] = r * Math.sin(phi) * Math.sin(theta);
     }
     const starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, transparent: true, opacity: 0 });
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 4.5, transparent: true, opacity: 0, depthWrite: false });
     this.starsParticles = new THREE.Points(starGeo, starMat);
+    this.starsParticles.renderOrder = -990;
     this.scene.add(this.starsParticles);
 
     // 6. Aurora Borealis Particles (Cold region night feature)
     const auroraCount = 240;
     const auroraPositions = new Float32Array(auroraCount * 3);
     for (let i = 0; i < auroraCount * 3; i += 3) {
-      auroraPositions[i] = (Math.random() - 0.5) * 320;
-      auroraPositions[i + 1] = 160 + Math.random() * 45;
-      auroraPositions[i + 2] = (Math.random() - 0.5) * 320;
+      auroraPositions[i] = (Math.random() - 0.5) * 780;
+      auroraPositions[i + 1] = 240 + Math.random() * 80;
+      auroraPositions[i + 2] = (Math.random() - 0.5) * 780;
     }
     const auroraGeo = new THREE.BufferGeometry();
     auroraGeo.setAttribute('position', new THREE.BufferAttribute(auroraPositions, 3));
     const auroraMat = new THREE.PointsMaterial({
       color: 0x38bdf8,
-      size: 16.0,
+      size: 26.0,
       transparent: true,
       opacity: 0,
+      depthWrite: false,
     });
     this.auroraParticles = new THREE.Points(auroraGeo, auroraMat);
+    this.auroraParticles.renderOrder = -985;
     this.scene.add(this.auroraParticles);
 
-    // 7. Sky Dome Mesh for gradient background
-    const skyGeo = new THREE.SphereGeometry(320, 32, 16); // slightly higher res for smooth gradient
+    // 7. Sky Dome Mesh for gradient background (950m radius + depthWrite:false so Distant Horizons LOD up to 600m+ is never occluded)
+    const skyGeo = new THREE.SphereGeometry(950, 32, 16);
     const skyShader = {
       uniforms: {
         topColor: { value: new THREE.Color(0x66aaff) },
@@ -256,9 +259,11 @@ export class SkyEnvironment {
       vertexShader: skyShader.vertexShader,
       fragmentShader: skyShader.fragmentShader,
       side: THREE.BackSide,
-      fog: false
+      fog: false,
+      depthWrite: false,
     });
     this.skyDomeMesh = new THREE.Mesh(skyGeo, skyMat);
+    this.skyDomeMesh.renderOrder = -1000;
     this.scene.add(this.skyDomeMesh);
   }
 
@@ -273,20 +278,20 @@ export class SkyEnvironment {
 
     this.sunLight.castShadow = true;
     let mapSize = 1024;
-    let bounds = 32;
+    let bounds = 48;
 
     if (quality === 'low') {
       mapSize = 512;
-      bounds = 20;
+      bounds = 32;
     } else if (quality === 'medium') {
       mapSize = 1024;
-      bounds = 30;
+      bounds = 48;
     } else if (quality === 'high') {
       mapSize = 2048;
-      bounds = 35;
+      bounds = 64;
     } else if (quality === 'ultra') {
       mapSize = 2048;
-      bounds = 42;
+      bounds = 80;
     }
 
     this.sunLight.shadow.mapSize.width = mapSize;
@@ -639,9 +644,9 @@ export class SkyEnvironment {
         } else {
           const baseDensity = profile.fogDensity || 0.0035;
           const caveMultiplier = playerPos.y < 32 ? (1.0 + (32 - playerPos.y) * 0.06) : 1.0;
-          // Crisp aerial perspective: clear near/mid-ground with gentle horizon blend
+          // Crisp aerial perspective: clear near/mid-ground with smooth Distant Horizons LOD mountain visibility
           const heightNorm = THREE.MathUtils.clamp((playerPos.y - 48.0) / 52.0, 0.0, 1.0);
-          const heightMultiplier = THREE.MathUtils.lerp(0.85, 0.48, heightNorm);
+          const heightMultiplier = THREE.MathUtils.lerp(0.68, 0.36, heightNorm);
           const targetFogDensity = baseDensity * caveMultiplier * heightMultiplier;
           this.smoothedFogDensity = THREE.MathUtils.lerp(this.smoothedFogDensity, targetFogDensity, smoothLerp);
           this.scene.fog.density = this.smoothedFogDensity;

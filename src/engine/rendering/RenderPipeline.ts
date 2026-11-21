@@ -102,8 +102,10 @@ const CinematicPostShader = {
         float radialGlow = exp(-distSun * 3.2);
         float angle = atan(toSun.y, toSun.x);
         float rays = 0.55 + 0.45 * sin(angle * 12.0 + uTime * 0.35) * cos(angle * 7.0 - uTime * 0.22);
-        float skyBright = smoothstep(0.42, 0.92, getLuma(c));
-        vec3 goldenShaft = vec3(1.0, 0.86, 0.58) * radialGlow * rays * skyBright * uGodRayIntensity * uSunVisibility * 0.32;
+        float skyBright = smoothstep(0.46, 0.94, getLuma(c));
+        // Vertical elevation guard prevents bright foreground sand/snow from catching golden sky-ray haze
+        float skyElevationWeight = smoothstep(0.15, 0.65, vUv.y);
+        vec3 goldenShaft = vec3(1.0, 0.86, 0.58) * radialGlow * rays * skyBright * skyElevationWeight * uGodRayIntensity * uSunVisibility * 0.30;
         c += goldenShaft;
       }
 

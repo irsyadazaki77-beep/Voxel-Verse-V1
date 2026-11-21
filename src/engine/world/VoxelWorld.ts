@@ -165,25 +165,29 @@ export class VoxelWorld {
         '#include <normal_fragment_begin>',
         `
         #include <normal_fragment_begin>
-        if (uShaderRealism > 0.3) {
+        float camDistForDetail = length(cameraPosition - vWorldPos);
+        float detailFade = 1.0 - smoothstep(22.0, 68.0, camDistForDetail);
+        if (uShaderRealism > 0.3 && detailFade > 0.01) {
           int nClass = int(vMaterialClass + 0.5);
           vec2 bUv = fract(vLocalUv);
           vec3 worldBump = vec3(0.0);
           if (nClass == 2) { // STONE micro-relief & mortar
             float n1 = sin(bUv.x * 25.13 + vWorldPos.z * 3.0) * cos(bUv.y * 25.13 + vWorldPos.x * 3.0);
-            worldBump = vec3(n1 * 0.06, 0.0, cos(bUv.y * 31.4) * 0.06);
+            worldBump = vec3(n1 * 0.055, sin(bUv.y * 25.13) * 0.04, cos(bUv.y * 31.4) * 0.055);
           } else if (nClass == 3) { // WOOD grain & plank grooves
-            float grain = sin(bUv.y * 37.7 + sin(bUv.x * 6.28) * 1.4) * 0.055;
-            worldBump = vec3(0.0, grain * 0.5, grain);
+            float grain = sin(bUv.y * 37.7 + sin(bUv.x * 6.28) * 1.4) * 0.05;
+            worldBump = vec3(grain * 0.5, grain * 0.5, grain);
           } else if (nClass == 0 || nClass == 1) { // SOIL / GRASS micro-grit
             float grit = sin(vWorldPos.x * 16.0 + vWorldPos.z * 14.0) * cos(vWorldPos.z * 18.0);
-            worldBump = vec3(grit * 0.045, 0.0, grit * 0.045);
+            worldBump = vec3(grit * 0.04, grit * 0.025, grit * 0.04);
           } else if (nClass == 4) { // METAL brushed sheen
             float brush = sin(bUv.x * 50.0) * 0.03;
-            worldBump = vec3(brush, 0.0, brush * 0.5);
+            worldBump = vec3(brush, brush * 0.35, brush * 0.5);
           }
-          if (length(worldBump) > 0.001) {
-            normal = normalize(normal + (viewMatrix * vec4(worldBump * uShaderRealism, 0.0)).xyz);
+          // Project bump tangentially to vWorldNormal so vertical walls & ceilings never distort along their normal
+          vec3 tangentBump = worldBump - vWorldNormal * dot(worldBump, vWorldNormal);
+          if (length(tangentBump) > 0.001) {
+            normal = normalize(normal + (viewMatrix * vec4(tangentBump * uShaderRealism * detailFade, 0.0)).xyz);
           }
         }
         `
@@ -208,11 +212,12 @@ export class VoxelWorld {
         float variation = (h - 0.5) * 0.04;
         diffuseColor.rgb *= (1.0 + variation);
 
-        // Subtle crisp voxel block edge definition for visual clarity
+        // Subtle crisp voxel block edge definition (distance-faded to prevent distant moiré shimmering)
+        float borderFade = 1.0 - smoothstep(18.0, 56.0, length(cameraPosition - vWorldPos));
         vec2 cellUv = fract(vLocalUv);
         vec2 edgeDist = min(cellUv, 1.0 - cellUv);
         float borderLine = 1.0 - smoothstep(0.0, 0.035, min(edgeDist.x, edgeDist.y));
-        diffuseColor.rgb *= (1.0 - borderLine * 0.055);
+        diffuseColor.rgb *= (1.0 - borderLine * 0.055 * borderFade);
 
         // MaterialClass Properties Resolver
         float roughnessVal = 0.82;

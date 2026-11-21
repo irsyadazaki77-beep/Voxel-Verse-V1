@@ -223,7 +223,7 @@ export class GameRuntime {
     const width = typeof window !== 'undefined' ? window.innerWidth : (container?.clientWidth || 1280);
     const height = typeof window !== 'undefined' ? window.innerHeight : (container?.clientHeight || 720);
 
-    this.camera = new THREE.PerspectiveCamera(settings.graphics.fov, width / Math.max(1, height), 0.1, 400);
+    this.camera = new THREE.PerspectiveCamera(settings.graphics.fov, width / Math.max(1, height), 0.15, 1200);
 
     try {
       this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
