@@ -11,6 +11,26 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '7.3.0',
+    date: '2026-11-21',
+    title: 'Ekosistem Modding & Desktop Native: Pusat Karya Nusantara (Workshop UGC 1-Klik) dan Tauri Native Filesystem Save Bridge',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Pusat Karya Nusantara — Community UGC Workshop (WorkshopUGCManager.ts)',
+        items: [
+          'Menghadirkan katalog & installer 1-klik untuk Behavior Pack JSON, Blueprint Candi/Rumah Adat, dan Pola Batik 16×16 lengkap dengan fitur publish, export/import JSON, serta endpoint server /api/workshop/catalog dan /api/workshop/publish.'
+        ]
+      },
+      {
+        category: '2. Tauri Native Desktop Save Bridge (TauriNativeBridge.ts & src-tauri/src/main.rs)',
+        items: [
+          'Menambahkan bridge TypeScript ↔ Rust Tauri (save_world_native, load_world_native, list_native_worlds, delete_world_native) dengan sanitasi path & atomic temp-rename agar save dunia desktop tersimpan langsung ke filesystem lokal tanpa batas kuota IndexedDB.'
+        ]
+      }
+    ]
+  },
+  {
     version: '7.2.0',
     date: '2026-11-21',
     title: 'Kerajaan Hidup (Living Nusantara World): Ekspansi Desa Otonom, Karavan Dagang & Phinisi, Multi-Phase Destructive World Bosses, serta Memori Episodik NPC & Quest AI Dinamis',

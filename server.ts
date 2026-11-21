@@ -19,6 +19,7 @@ import { WorldGeneratorCore } from './src/engine/world/WorldGeneratorCore';
 import { BlockType } from './src/types';
 import { RealmSQLiteStore } from './src/engine/network/RealmSQLiteStore';
 import { LandClaimManager } from './src/engine/network/LandClaimManager';
+import { WorkshopUGCManager } from './src/engine/modding/WorkshopUGCManager';
 
 const PORT = 3000;
 const PROTOCOL_VERSION = '1.0.0-phase9';
@@ -26,6 +27,7 @@ const DB_FILE = './server-realms-db.json';
 const SQLITE_DB_FILE = './server-realms.sqlite';
 export const sqliteStore = new RealmSQLiteStore(SQLITE_DB_FILE);
 export const landClaimManager = new LandClaimManager();
+export const workshopUGCManager = new WorkshopUGCManager();
 
 // Persistent Storage Types
 export interface Realm {
@@ -526,6 +528,24 @@ async function startServer() {
       storage: sqliteStore.getStats(),
       totalClaims: landClaimManager.getAllClaims().length,
     });
+  });
+
+  // v7.3.0: Pusat Karya Nusantara Community Workshop UGC API
+  app.get('/api/workshop/catalog', (req, res) => {
+    const category = typeof req.query.category === 'string' ? (req.query.category as any) : undefined;
+    const query = typeof req.query.q === 'string' ? req.query.q : undefined;
+    res.json({
+      items: workshopUGCManager.listCatalog({ category, query }),
+    });
+  });
+
+  app.post('/api/workshop/publish', restRateLimiter(10, 10000), (req, res) => {
+    const result = workshopUGCManager.publishItem(req.body);
+    if (!result.ok) {
+      res.status(400).json({ ok: false, error: result.error });
+      return;
+    }
+    res.status(201).json({ ok: true, item: result.item });
   });
 
   // Authenticated Realm Creation
