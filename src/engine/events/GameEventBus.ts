@@ -51,7 +51,16 @@ export type GameEventType =
   | 'INVENTORY_OPENED'
   | 'MAP_OPENED'
   | 'NOTIFICATION_SHOW'
-  | 'AUTOSAVE_STATUS';
+  | 'AUTOSAVE_STATUS'
+  | 'CARAVAN_DISPATCHED'
+  | 'CARAVAN_ARRIVED'
+  | 'CARAVAN_RAIDED'
+  | 'SETTLEMENT_AUTONOMOUS_EXPANSION'
+  | 'WORLD_BOSS_SPAWNED'
+  | 'WORLD_BOSS_PHASE_CHANGE'
+  | 'WORLD_BOSS_DEFEATED'
+  | 'WORLD_BOSS_TELEGRAPH'
+  | 'WORLD_BOSS_VOXEL_BLAST';
 
 export interface GameEventPayloads {
   BLOCK_MINED: { blockType: number; pos: [number, number, number]; toolUsed?: string };
@@ -106,6 +115,15 @@ export interface GameEventPayloads {
   MAP_OPENED: Record<string, unknown>;
   NOTIFICATION_SHOW: { title: string; message: string; type?: 'info' | 'warning' | 'danger' | 'success'; durationMs?: number };
   AUTOSAVE_STATUS: { saving?: boolean; saved?: boolean; status?: 'saving' | 'saved' | 'error'; text?: string; timestamp?: number };
+  CARAVAN_DISPATCHED: { caravan: any };
+  CARAVAN_ARRIVED: { caravanId: string; originSettlementId: string; destinationSettlementId: string; escortedByPlayerId: string | null; profit: number };
+  CARAVAN_RAIDED: { caravanId: string; raiderPlayerId: string; commodityId: string; lootValue: number };
+  SETTLEMENT_AUTONOMOUS_EXPANSION: { settlementId: string; tierLevel: number; plot: any };
+  WORLD_BOSS_SPAWNED: { boss: any };
+  WORLD_BOSS_PHASE_CHANGE: { bossId: string; phase: 1 | 2 | 3; displayName: string };
+  WORLD_BOSS_DEFEATED: { bossId: string; archetype: string; contributors: Record<string, number>; rewards: string[] };
+  WORLD_BOSS_TELEGRAPH: { bossId: string; attack: any; targetPos: [number, number, number] };
+  WORLD_BOSS_VOXEL_BLAST: { center: [number, number, number]; radius: number; shatteredCount: number };
 }
 
 type EventCallback<T extends GameEventType> = (payload: GameEventPayloads[T]) => void;

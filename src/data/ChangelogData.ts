@@ -11,6 +11,33 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '7.2.0',
+    date: '2026-11-21',
+    title: 'Kerajaan Hidup (Living Nusantara World): Ekspansi Desa Otonom, Karavan Dagang & Phinisi, Multi-Phase Destructive World Bosses, serta Memori Episodik NPC & Quest AI Dinamis',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Simulasi Kerajaan Hidup & Karavan Dagang (LivingKingdomManager.ts)',
+        items: [
+          'Menambahkan sistem pengiriman Karavan Rempah & Kapal Phinisi antar-pemukiman Nusantara lengkap dengan interaksi pengawalan (escort) & perampokan (raid).',
+          'Pemukiman yang makmur dari arus dagang kini berkembang secara otonom membangun Lumbung Padi, Pasar Rempah, Dermaga Phinisi, Menara Pengawas, hingga Pendopo Agung.'
+        ]
+      },
+      {
+        category: '2. Multi-Phase Mythic World Bosses dengan Arena Destruktif (WorldBossRaidManager.ts)',
+        items: [
+          'Menghadirkan 3 World Boss mitologi Nusantara (Garuda Sura, Naga Besukih, Raksasa Karst Maros) dengan transisi 3 fase, telegraph serangan, ledakan kawah voxel destruktif yang menghormati Bedrock/Obsidian, dan distribusi loot raid.'
+        ]
+      },
+      {
+        category: '3. Memori Episodik NPC & Generator Quest Kontekstual AI (NPCMemoryAndQuestEngine.ts)',
+        items: [
+          'Menambahkan sistem memori episodik NPC yang terhubung otomatis ke NusantaraAIService (Gemini AI + fallback offline) serta generator misi dinamis berdasarkan ancaman bos, karavan aktif, dan pertumbuhan desa sekitar.'
+        ]
+      }
+    ]
+  },
+  {
     version: '7.1.0',
     date: '2026-11-21',
     title: 'Multiplayer Backend Overhaul: SQLite Binary Chunk Storage (Zlib), Spatial Interest Filtering untuk Block Sync, dan Sistem Land Claim (Wilayah Kerajaan)',

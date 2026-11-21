@@ -1,12 +1,17 @@
-// VoxelVerse v6.0.0: Suara Sang Pujangga — Server-Side Gemini API Client & Offline Nusantara Folklore Fallback
+// VoxelVerse v6.0.0–v7.2.0: Suara Sang Pujangga — Server-Side Gemini API Client, NPC Episodic Memory & Offline Nusantara Folklore Fallback
+import { NPCMemoryAndQuestEngine } from './NPCMemoryAndQuestEngine';
+
 export interface AIDialogueRequest {
+  npcId?: string;
   npcName: string;
   npcRole: string;
+  settlementId?: string;
   settlementName?: string;
   reputation?: number;
   weather?: string;
   timeOfDay?: number;
   playerMessage: string;
+  memoryContext?: string;
   history?: Array<{ role: 'player' | 'npc'; text: string }>;
 }
 
@@ -39,6 +44,7 @@ const KIDUNG_STORAGE_KEY = 'voxelverse_kidung_chronicles_v6';
 
 export class NusantaraAIService {
   public static savedKidungList: KidungVerseResult[] = NusantaraAIService.loadSavedKidung();
+  public static readonly memoryEngine: NPCMemoryAndQuestEngine = new NPCMemoryAndQuestEngine();
 
   private static loadSavedKidung(): KidungVerseResult[] {
     if (typeof window === 'undefined' || !window.localStorage) return [];
@@ -65,12 +71,17 @@ export class NusantaraAIService {
   }
 
   public static async askNPCDialogue(req: AIDialogueRequest): Promise<AIDialogueResponse> {
+    const autoMemory =
+      req.memoryContext ||
+      (req.npcId ? this.memoryEngine.buildDialogueMemoryPrompt(req.npcId, req.settlementId) : '');
+    const enrichedReq: AIDialogueRequest = autoMemory ? { ...req, memoryContext: autoMemory } : req;
+
     try {
       if (typeof fetch !== 'undefined') {
         const res = await fetch('/api/ai/npc-dialogue', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(req),
+          body: JSON.stringify(enrichedReq),
         });
         if (res.ok) {
           const data = await res.json();
@@ -87,7 +98,7 @@ export class NusantaraAIService {
       // Fallback to local Nusantara folklore engine
     }
 
-    return this.buildOfflineDialogueFallback(req);
+    return this.buildOfflineDialogueFallback(enrichedReq);
   }
 
   public static async decipherPrasasti(params: {
@@ -235,8 +246,9 @@ export class NusantaraAIService {
     const timeGreeting = isNight
       ? 'Malam ini kunang-kunang menari tenang di atas pendopo.'
       : 'Sinar surya menerangi ladang dan menara kayu kita.';
+    const memoryClause = req.memoryContext ? ` (${req.memoryContext})` : '';
     return {
-      reply: `${req.npcName} (${req.npcRole}): "Rahayu, pengembara. ${timeGreeting} Di ${loc}, reputasimu (${req.reputation ?? 0}) dikenang warga. Tanyakan padaku tentang silat, irigasi Subak, batik tulis, atau rahasia prasasti kuno."`,
+      reply: `${req.npcName} (${req.npcRole}): "Rahayu, pengembara. ${timeGreeting} Di ${loc}, reputasimu (${req.reputation ?? 0}) dikenang warga.${memoryClause} Tanyakan padaku tentang silat, irigasi Subak, batik tulis, atau rahasia prasasti kuno."`,
       source: 'fallback',
       suggestedTopic: 'Tanya soal Jurus Silat & Keris',
     };
