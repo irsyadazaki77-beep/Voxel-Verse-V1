@@ -60,6 +60,15 @@ export class EntityManager {
   private static groundItemGeometry: THREE.BufferGeometry | null = null;
   private projectilePool: THREE.Mesh[] = [];
 
+  public static shouldTickEntityAtDistance(distSq: number, frameCount: number): boolean {
+    if (distSq <= 2304) return true; // <= 48m: full tick
+    return (frameCount & 3) === 0; // > 48m: 1/4 frequency
+  }
+
+  public static shouldRenderEntityAtDistance(distSq: number): boolean {
+    return distSq <= 11025; // <= 105m visibility culling
+  }
+
   // Reusable Temporary Vectors to eliminate hot-loop GC churn
   private static readonly _tempVecA = new THREE.Vector3();
   private static readonly _tempVecB = new THREE.Vector3();
@@ -862,7 +871,12 @@ export class EntityManager {
 
       const distToPlayer = Math.sqrt(distToPlayerSq2D);
 
-      // Distance-based update throttling (staggered AI updates)
+      // Distance-based update throttling (staggered AI updates) & >105m mesh visibility culling
+      mesh.visible = EntityManager.shouldRenderEntityAtDistance(distToPlayerSq2D);
+      if (!EntityManager.shouldTickEntityAtDistance(distToPlayerSq2D, this.frameCount)) {
+        continue;
+      }
+
       // Close (<16m): 100ms, Mid (16-36m): 400ms, Far (36-64m): 1400ms
       const updateInterval = distToPlayerSq2D < 256 ? 100 : (distToPlayerSq2D < 1296 ? 400 : 1400);
       const lastUpdate = state.pathUpdateCooldown || 0;

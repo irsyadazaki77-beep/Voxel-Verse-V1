@@ -189,6 +189,7 @@ export class GameRuntime {
         if (this.renderPipeline) {
           this.renderPipeline.updateSettings(newSettings.graphics, window.innerWidth, window.innerHeight);
         }
+        this.world?.setShaderRealism(newSettings.graphics.shaderRealism || 'realistic');
       }
       if (this.sky) {
         let shadowDist = 35;
@@ -368,6 +369,7 @@ export class GameRuntime {
     }
 
     this.world = prewarmedWorld || new VoxelWorld(seed, preset);
+    this.world.setShaderRealism(settings.graphics.shaderRealism || 'realistic');
     this.scene.add(this.world.worldGroup);
 
     this.entities = new EntityManager();

@@ -63,6 +63,7 @@ export class VoxelWorld {
   public solidMaterial: THREE.MeshStandardMaterial;
   public transMaterial: THREE.MeshStandardMaterial;
   public waterMaterial: THREE.MeshStandardMaterial;
+  public shaderRealismLevel: number = 1.0;
 
   // Target Highlight Wireframe Box
   public highlightMesh: THREE.LineSegments;
@@ -1302,6 +1303,18 @@ export class VoxelWorld {
     }
     if (camera) {
       this.scheduler.updateFrustumCulling(camera);
+    }
+  }
+
+  public setShaderRealism(mode: 'stylized' | 'realistic' | 'ultra'): void {
+    this.shaderRealismLevel = mode === 'ultra' ? 1.25 : mode === 'realistic' ? 1.0 : 0.0;
+    const sShader = this.solidMaterial.userData.shader;
+    if (sShader?.uniforms?.uShaderRealism) {
+      sShader.uniforms.uShaderRealism.value = this.shaderRealismLevel;
+    }
+    const tShader = this.transMaterial.userData.shader;
+    if (tShader?.uniforms?.uShaderRealism) {
+      tShader.uniforms.uShaderRealism.value = this.shaderRealismLevel;
     }
   }
 

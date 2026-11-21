@@ -11,6 +11,27 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '6.4.0',
+    date: '2026-11-21',
+    title: 'Deep Performance Upgrade: On-Demand Lazy Modals, GPU Shader ALU Bypass Sync, dan Entity Distance AI & Visibility Culling',
+    type: 'major',
+    changes: [
+      {
+        category: '1. On-Demand React.lazy Modal Code-Splitting',
+        items: [
+          'Mengubah 13 modal utama di GameCanvas.tsx menjadi React.lazy() on-demand chunks sehingga bundle startup awal tidak mem-parse ratusan KB kode UI sebelum modal dibuka.'
+        ]
+      },
+      {
+        category: '2. GPU Shader ALU Bypass & Entity Distance Culling',
+        items: [
+          'Menghubungkan Settings.graphics.shaderRealism secara langsung ke uniform uShaderRealism pada VoxelWorld (mode Stylized kini melewati kalkulasi micro-normal, rain puddle, dan SSS di GPU).',
+          'Menambahkan EntityManager distance throttling (>48m tick 1/4 frekuensi) dan mesh visibility culling (>105m) untuk menghemat CPU & draw calls di area padat.'
+        ]
+      }
+    ]
+  },
+  {
     version: '6.3.0',
     date: '2026-11-21',
     title: 'Visual & Performance Refinement: Zero-GC InstancedMesh Debris, Half-Resolution SSAO, Dynamic Shader Governor, Shader Realism UI & Vite Bundle Splitting',

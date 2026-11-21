@@ -51,9 +51,6 @@ export default defineConfig(() => {
             if (id.includes('/src/engine/world/') || id.includes('/src/engine/environment/')) {
               return 'engine-world';
             }
-            if (id.includes('/src/components/')) {
-              return 'ui-modals';
-            }
           },
         },
       },
