@@ -11,6 +11,33 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '6.1.0',
+    date: '2026-11-21',
+    title: 'Bedrock & Java Parity Engine: Simulasi Fluida Air/Lava + Obsidian, Sistem Enchantment & Status Effect, Konsol Perintah Slash (/), dan Behavior Pack Modding API',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Simulasi Fluida Cellular Automata (Air, Lava & Reaksi Obsidian/Cobblestone)',
+        items: [
+          'Menambahkan FluidSimulationSystem dengan prioritas aliran gravitasi, penyebaran bertingkat (Air 7 blok, Lava 3 blok), dan reaksi otomatis Air + Lava menjadi Obsidian/Cobblestone.'
+        ]
+      },
+      {
+        category: '2. Sistem Enchantment & Status Effects (Jamu/Potion)',
+        items: [
+          'Menambahkan 8 Enchantment (Sharpness, Efficiency, Unbreaking, Fortune, Fire Aspect, Silk Touch, Protection, Feather Falling) serta 7 Status Effect aktif (Speed, Strength, Regeneration, Night Vision, Fire Resistance, Water Breathing, Haste).'
+        ]
+      },
+      {
+        category: '3. Konsol Perintah Slash (/) & Behavior Pack Modding JSON',
+        items: [
+          'Menghadirkan CommandConsoleSystem & CommandConsoleOverlay (tekan / di game) untuk /tp, /time set, /weather, /gamemode, /give, /effect, /fill, /seed, dan /locate.',
+          'Menambahkan BehaviorPackManager agar komunitas dapat memuat pack JSON kustom untuk resep crafting, loot multiplier, dan gamerule (keepInventory, mobGriefing, daylightCycle).'
+        ]
+      }
+    ]
+  },
+  {
     version: '6.0.0',
     date: '2026-11-21',
     title: 'Era Keemasan Nusantara: Suara Sang Pujangga (Gemini AI), Subak 2.0 & Studio Batik 16×16, Gua Karst Maros, Multi-Crew Phinisi & Gelanggang Duel, Caustics/God Rays, Gamepad Rumble & Blueprint UGC',

@@ -16,6 +16,8 @@ import { MahakaryaNusantaraSystem } from './MahakaryaNusantaraSystem';
 import { SubakAndBatikSystem } from './SubakAndBatikSystem';
 import { MultiplayerArenaSystem } from './MultiplayerArenaSystem';
 import { VoxelPhysicsSystem } from '../world/VoxelPhysicsSystem';
+import { FluidSimulationSystem } from '../world/FluidSimulationSystem';
+import { EnchantmentAndStatusSystem } from '../progression/EnchantmentAndStatusSystem';
 import { ITEM_DEFS } from '../items/ItemRegistry';
 import { NotificationManager } from '../ui/NotificationManager';
 import { SoundSynthesizer } from '../audio/SoundSynthesizer';
@@ -343,6 +345,8 @@ export class SimulationSystem implements GameSystem {
       player.position.y < 48
     );
     VoxelPhysicsSystem.update(effectiveDt, world);
+    FluidSimulationSystem.update(effectiveDt, world);
+    EnchantmentAndStatusSystem.update(effectiveDt, stats);
 
     // 8. Update Aether Engineering Network
     AetherNetworkManager.getInstance().update(dt);
@@ -359,6 +363,8 @@ export class SimulationSystem implements GameSystem {
     SubakAndBatikSystem.reset();
     MultiplayerArenaSystem.reset();
     VoxelPhysicsSystem.reset();
+    FluidSimulationSystem.reset();
+    EnchantmentAndStatusSystem.reset();
   }
 }
 

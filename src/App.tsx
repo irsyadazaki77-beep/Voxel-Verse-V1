@@ -8,6 +8,7 @@ import { GameMode } from './types';
 import { MainMenu } from './components/MainMenu';
 import { WorldPreset } from './engine/world/WorldConfig';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { CommandConsoleOverlay } from './components/CommandConsoleOverlay';
 import { GameCanvas } from './components/GameCanvas';
 import { NusantaraHeritageViewer } from './components/NusantaraHeritageViewer';
 
@@ -98,6 +99,7 @@ export default function App() {
               playerName={activeWorld.playerName}
               onExitToMenu={handleExitToMenu}
             />
+            <CommandConsoleOverlay />
           </Suspense>
         )}
       </main>
