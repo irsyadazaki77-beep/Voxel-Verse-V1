@@ -23,6 +23,7 @@ import { GameEventBus } from '../engine/events/GameEventBus';
 import { ServerAuthority } from '../engine/network/ServerAuthority';
 import { CREATURE_REGISTRY } from '../engine/entities/CreatureRegistry';
 import { EntityModelBuilder } from '../engine/entities/EntityModelBuilder';
+import { runEraKeemasanV6Tests } from './eraKeemasanV6Tests';
 import { DungeonGenerator } from '../engine/dungeon/DungeonGenerator';
 import { WeatherSystem } from '../engine/environment/WeatherSystem';
 import { ITEM_DEFS } from '../engine/items/ItemRegistry';
@@ -964,6 +965,8 @@ async function runTestSuite() {
     const birdMesh = EntityModelBuilder.buildByModelType('cenderawasih_emas', 0);
     assert(!!birdMesh && birdMesh.userData.rig?.modelType === 'cenderawasih_emas', 'EntityModelBuilder builds articulated Cenderawasih Emas 3D voxel rig');
   }
+
+  await runEraKeemasanV6Tests(assert);
 
   console.log('\n====================================================');
   console.log(` ALL TEST SUITES PASSED STRICTLY (${passedCount}/${testCount} assertions) `);

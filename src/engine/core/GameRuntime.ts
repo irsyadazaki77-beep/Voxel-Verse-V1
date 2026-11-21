@@ -65,6 +65,9 @@ import { CataclysmVisualEngine } from '../environment/CataclysmVisualEngine';
 import { AerialFlightAndSiegeSystem } from '../systems/AerialFlightAndSiegeSystem';
 import { NusantaraSanctumSilatSubakSystem } from '../systems/NusantaraSanctumSilatSubakSystem';
 import { MahakaryaNusantaraSystem } from '../systems/MahakaryaNusantaraSystem';
+import { SubakAndBatikSystem } from '../systems/SubakAndBatikSystem';
+import { MultiplayerArenaSystem } from '../systems/MultiplayerArenaSystem';
+import { VoxelPhysicsSystem } from '../world/VoxelPhysicsSystem';
 
 export interface GameRuntimeCallbacks {
   onBossUpdated?: (boss: BossCombatState | null) => void;
@@ -514,6 +517,9 @@ export class GameRuntime {
     MahakaryaNusantaraSystem.deserialize(worldData?.nusantaraState?.mahakarya, this.player);
     this.scene.add(NusantaraSanctumSilatSubakSystem.getOrCreateRootGroup());
     this.scene.add(MahakaryaNusantaraSystem.getOrCreateRootGroup());
+    SubakAndBatikSystem.attachToScene(this.scene);
+    MultiplayerArenaSystem.attachToScene(this.scene);
+    VoxelPhysicsSystem.attachToScene(this.scene);
 
     // 3. Instantiate Systems in strict ordering
     this.simulationSystem = new SimulationSystem(this);
@@ -835,6 +841,9 @@ export class GameRuntime {
     RewardService.dispose();
     AerialFlightAndSiegeSystem.reset();
     MahakaryaNusantaraSystem.reset();
+    SubakAndBatikSystem.reset();
+    MultiplayerArenaSystem.reset();
+    VoxelPhysicsSystem.reset();
 
     if (this.viewmodel) {
       this.viewmodel.dispose();

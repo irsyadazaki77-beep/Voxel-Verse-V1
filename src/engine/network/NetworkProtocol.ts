@@ -40,7 +40,10 @@ export type NetworkMessageType =
   | 'BLOCK_CHUNK_DELTA'
   | 'RECONNECT_REQUEST'
   | 'HEARTBEAT_PING'
-  | 'HEARTBEAT_PONG';
+  | 'HEARTBEAT_PONG'
+  | 'VEHICLE_CREW_ACTION'
+  | 'SILAT_DUEL_ACTION'
+  | 'VOICE_SIGNAL';
 
 export interface BaseNetworkMessage {
   protocolVersion: string;

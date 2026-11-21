@@ -11,6 +11,43 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '6.0.0',
+    date: '2026-11-21',
+    title: 'Era Keemasan Nusantara: Suara Sang Pujangga (Gemini AI), Subak 2.0 & Studio Batik 16×16, Gua Karst Maros, Multi-Crew Phinisi & Gelanggang Duel, Caustics/God Rays, Gamepad Rumble & Blueprint UGC',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Integrasi Penuh Google Gemini API (Suara Sang Pujangga)',
+        items: [
+          'Menambahkan endpoint server-side /api/ai/npc-dialogue, /api/ai/decipher-prasasti, dan /api/ai/compose-kidung menggunakan @google/genai (Gemini 2.5 Flash) lengkap dengan fallback Pustaka Adat offline.',
+          'Menghadirkan kolom tanya-jawab bebas langsung di DialogueModal NPC serta Dekripsi Prasasti Kuno & Gubahan Kidung Pujangga di Panel Era Keemasan.'
+        ]
+      },
+      {
+        category: '2. Ekologi & Rekayasa Tradisional Nusantara 2.0 (Subak, Batik & Gua Karst)',
+        items: [
+          'Menambahkan Talang Bambu, Pintu Air Kayu Jati, aliran air terasering automata terbatas, dan Lesung Penumbuk Padi Otomatis 3D beranimasi.',
+          'Menghadirkan Studio Batik Tulis & Canting 16×16 interaktif (Parang Rusak, Megamendung, Kawung, Truntum) dengan THREE.CanvasTexture live yang dapat dikibarkan sebagai Panji Batik 3D di dunia.',
+          'Menambahkan Ekspedisi Gua Karst Maros-Pangkep dengan stalaktit Tirta Marta dan lukisan cadas prasejarah bercahaya.'
+        ]
+      },
+      {
+        category: '3. Multiplayer Multi-Crew, Gelanggang Duel 1v1 & Voice Spasial 3D',
+        items: [
+          'Menambahkan protokol WebSocket & sistem Multi-Crew Phinisi/Nanggala (Nahkoda, Penembak Meriam Cetbang Majapahit, Operator Sonar) serta saluran signaling WebRTC untuk Proximity Spatial Voice Chat dengan filter gua & bawah air.',
+          'Menghadirkan Gelanggang Tanding Pendekar 1v1 (sistem 3 ronde, gong wasit, taruhan reputasi & slow-mo finishing).'
+        ]
+      },
+      {
+        category: '4. Grafis Caustics/God Rays, Fisika Blok Jatuh, Gamepad Rumble & Blueprint UGC',
+        items: [
+          'Meningkatkan CinematicPostShader dengan efek Underwater Caustics tropis dan Volumetric Sun Rays (God Rays) ringan serta menambahkan VoxelPhysicsSystem untuk gravitasi pasir/kerikil dan serpihan tambang 3D.',
+          'Menambahkan dukungan Gamepad Haptic Rumble di InputManager serta Ekspor/Impor Blueprint Arsitektur Komunitas (VVBP1:...) di VernacularHologramSystem.'
+        ]
+      }
+    ]
+  },
+  {
     version: '5.1.0',
     date: '2026-11-05',
     title: 'Penyempurnaan Stabilitas, Penyatuan Dock Taktis HUD, Fisika Kendaraan Presisi & Ketahanan Save/Load Nusantara',

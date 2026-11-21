@@ -1,8 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { GoogleGenAI } from '@google/genai';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { CRAFTING_RECIPES } from './src/engine/items/CraftingSystem';
@@ -658,7 +660,142 @@ async function startServer() {
   });
 
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', playersOnline: players.size, activeSessions: sessions.size });
+    res.json({
+      status: 'ok',
+      playersOnline: players.size,
+      activeSessions: sessions.size,
+      geminiEnabled: Boolean(process.env.GEMINI_API_KEY),
+    });
+  });
+
+  // ==================== v6.0.0: SERVER-SIDE GEMINI API (SUARA SANG PUJANGGA) ====================
+  const getGeminiClient = (): GoogleGenAI | null => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey.trim().length < 10) return null;
+    try {
+      return new GoogleGenAI({ apiKey });
+    } catch {
+      return null;
+    }
+  };
+
+  app.post('/api/ai/npc-dialogue', restRateLimiter(20, 15000), async (req, res) => {
+    const {
+      npcName = 'Tetua Desa',
+      npcRole = 'Sesepuh',
+      settlementName = 'Tanah Nusantara',
+      reputation = 0,
+      weather = 'cerah',
+      timeOfDay = 12,
+      playerMessage = '',
+    } = req.body || {};
+
+    const cleanMsg = String(playerMessage || '').trim().slice(0, 300);
+    if (!cleanMsg) {
+      return res.status(400).json({ error: 'Pesan pemain tidak boleh kosong.' });
+    }
+
+    const ai = getGeminiClient();
+    if (ai) {
+      try {
+        const prompt = `Kamu adalah NPC bernama ${npcName} (${npcRole}) di desa ${settlementName} dalam game sandbox 3D VoxelVerse Nusantara.
+Reputasi pemain: ${reputation}, Cuaca: ${weather}, Jam dunia: ${Math.round(Number(timeOfDay))}:00.
+Jawablah pertanyaan pemain berikut secara singkat (maksimal 2-3 kalimat), puitis, hangat dengan nuansa tutur Nusantara (Indonesia halus/klasik), dan relevan dengan dunia game (silat, subak, batik, candi, kapal phinisi, khodam):
+Pemain bertanya: "${cleanMsg}"`;
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+        });
+        const text = response.text?.trim();
+        if (text) {
+          return res.json({ reply: text, source: 'gemini' });
+        }
+      } catch (err) {
+        console.warn('[Gemini AI] NPC dialogue fallback triggered:', err);
+      }
+    }
+
+    return res.json({
+      reply: `${npcName}: "Rahayu, pengembara di ${settlementName}. Pertanyaanmu mengenai '${cleanMsg.slice(0, 48)}' menyentuh kebijaksanaan lama—jagalah keseimbangan Subak, asah Kuda-Kuda Silatmu, dan jelajahi rahasia Nusantara."`,
+      source: 'fallback',
+    });
+  });
+
+  app.post('/api/ai/decipher-prasasti', restRateLimiter(12, 20000), async (req, res) => {
+    const { biome = 'Nusantara', targetCoord = [120, 66, -80], playerLevel = 1 } = req.body || {};
+    const coord = Array.isArray(targetCoord) && targetCoord.length === 3 ? targetCoord : [120, 66, -80];
+
+    const ai = getGeminiClient();
+    if (ai) {
+      try {
+        const prompt = `Buatlah dekripsi prasasti kuno fiksi Nusantara dalam format JSON murni tanpa markdown block:
+{"title":"judul singkat","kawiScript":"kalimat singkat ala Jawa Kuno/Sanskerta","translation":"terjemahan puitis 2 kalimat","riddle":"teka-teki menuju koordinat [${coord[0]}, ${coord[2]}] di bioma ${biome} untuk pendekar level ${playerLevel}","rewardHint":"nama pusaka singkat"}`;
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+        });
+        const raw = (response.text || '').replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.translation) {
+          return res.json({ ...parsed, targetCoord: coord, source: 'gemini' });
+        }
+      } catch (err) {
+        console.warn('[Gemini AI] Prasasti decipher fallback triggered:', err);
+      }
+    }
+
+    return res.json({
+      title: `Prasasti Purba ${String(biome).toUpperCase()}`,
+      kawiScript: 'Swasti Śaka · Aether Bhumi Nusantara',
+      translation:
+        'Tersurat di atas batu andesit: barang siapa menapaki jejak leluhur di kala fajar akan menemukan cahaya pusaka yang terpendam.',
+      riddle: `Ikuti kompas menuju [${coord[0]}, Y:${coord[1]}, ${coord[2]}] di wilayah ${biome}.`,
+      targetCoord: coord,
+      rewardHint: 'Peti Pusaka & Serpihan Kristal Aether',
+      source: 'fallback',
+    });
+  });
+
+  app.post('/api/ai/compose-kidung', restRateLimiter(10, 20000), async (req, res) => {
+    const {
+      playerName = 'Satria Nusantara',
+      level = 1,
+      defeatedBosses = 0,
+      structuresBuilt = 0,
+      activeKhodam = null,
+    } = req.body || {};
+
+    const ai = getGeminiClient();
+    if (ai) {
+      try {
+        const prompt = `Buatlah 4 baris syair Kidung / Tembang Macapat puitis dalam Bahasa Indonesia indah untuk pemain game VoxelVerse bernama ${playerName} (Level ${level}, mengalahkan ${defeatedBosses} boss, membangun ${structuresBuilt} bangunan, Khodam: ${activeKhodam || 'belum aktif'}).
+Kembalikan JSON murni tanpa markdown: {"title":"judul kidung","pupuhStyle":"Tembang Macapat Sinom","stanzas":["baris 1","baris 2","baris 3","baris 4"]}`;
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+        });
+        const raw = (response.text || '').replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.stanzas) && parsed.stanzas.length > 0) {
+          return res.json({ ...parsed, source: 'gemini' });
+        }
+      } catch (err) {
+        console.warn('[Gemini AI] Kidung compose fallback triggered:', err);
+      }
+    }
+
+    return res.json({
+      title: `Kidung Kejayaan ${playerName}`,
+      pupuhStyle: 'Tembang Macapat Sinom',
+      stanzas: [
+        `Terdengar gema gamelan mengiringi langkah ${playerName} tingkat ${level},`,
+        `${structuresBuilt} mahakarya tegak berdiri di bawah langit zamrud khatulistiwa,`,
+        `${defeatedBosses} penguasa kelam telah tunduk oleh jurus silat kencana,`,
+        `Semoga harmoni Nusantara abadi sepanjang masa.`,
+      ],
+      source: 'fallback',
+    });
   });
 
   // Attach WebSocket server on /ws path
@@ -1744,6 +1881,62 @@ async function startServer() {
                 protocolVersion: PROTOCOL_VERSION,
               });
             }
+          }
+          break;
+        }
+
+        case 'VEHICLE_CREW_ACTION': {
+          const player = players.get(activeSessionId);
+          if (!player) return;
+          player.lastActive = Date.now();
+          broadcastToRealm(session.realmId, {
+            type: 'VEHICLE_CREW_ACTION',
+            senderId: player.playerId,
+            senderName: player.playerName,
+            seat: msg.seat || 'HELM',
+            action: msg.action || 'SEAT_CHANGE',
+            origin: msg.origin,
+            direction: msg.direction,
+            timestamp: Date.now(),
+            protocolVersion: PROTOCOL_VERSION,
+          });
+          break;
+        }
+
+        case 'SILAT_DUEL_ACTION': {
+          const player = players.get(activeSessionId);
+          if (!player) return;
+          player.lastActive = Date.now();
+          broadcastToRealm(session.realmId, {
+            type: 'SILAT_DUEL_ACTION',
+            senderId: player.playerId,
+            senderName: player.playerName,
+            action: msg.action || 'CHALLENGE',
+            targetId: msg.targetId,
+            damage: typeof msg.damage === 'number' ? Math.min(45, Math.max(0, msg.damage)) : 0,
+            wager: typeof msg.wager === 'number' ? Math.min(100, Math.max(0, msg.wager)) : 25,
+            timestamp: Date.now(),
+            protocolVersion: PROTOCOL_VERSION,
+          });
+          break;
+        }
+
+        case 'VOICE_SIGNAL': {
+          const player = players.get(activeSessionId);
+          if (!player || !msg.targetSessionId) return;
+          player.lastActive = Date.now();
+          const targetPlayer = players.get(String(msg.targetSessionId));
+          if (targetPlayer && targetPlayer.ws && targetPlayer.ws.readyState === WebSocket.OPEN) {
+            targetPlayer.ws.send(
+              JSON.stringify({
+                type: 'VOICE_SIGNAL',
+                fromSessionId: activeSessionId,
+                fromName: player.playerName,
+                signal: msg.signal,
+                timestamp: Date.now(),
+                protocolVersion: PROTOCOL_VERSION,
+              })
+            );
           }
           break;
         }

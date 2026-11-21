@@ -21,6 +21,8 @@ const CinematicPostShader = {
     uWarmth: { value: 0.0 },
     uSharpenStrength: { value: 0.36 },
     uUnderwater: { value: 0.0 },
+    uGodRayIntensity: { value: 0.22 },
+    uSunScreenPos: { value: new THREE.Vector2(0.72, 0.78) },
     uColorGradingMode: { value: 1 }, // 0: None, 1: Cinematic, 2: Vibrant, 3: Warm Golden, 4: Cool Twilight
     uTexelSize: { value: new THREE.Vector2(1.0 / 1920.0, 1.0 / 1080.0) },
   },
@@ -40,6 +42,8 @@ const CinematicPostShader = {
     uniform float uWarmth;
     uniform float uSharpenStrength;
     uniform float uUnderwater;
+    uniform float uGodRayIntensity;
+    uniform vec2 uSunScreenPos;
     uniform int uColorGradingMode;
     uniform vec2 uTexelSize;
     varying vec2 vUv;
@@ -76,12 +80,27 @@ const CinematicPostShader = {
         c = max(vec3(0.0), c + diff * (uSharpenStrength * 1.15 * casWeight));
       }
 
-      // Underwater distortion & aquatic tint override
+      // Underwater distortion, tropical seabed caustics & aquatic tint override
       if (uUnderwater > 0.01) {
-        vec2 distortedUv = vUv + vec2(sin(vUv.y * 20.0 + uTime * 3.0) * 0.002, cos(vUv.x * 20.0 + uTime * 2.5) * 0.002);
+        vec2 distortedUv = vUv + vec2(sin(vUv.y * 20.0 + uTime * 3.0) * 0.0025, cos(vUv.x * 20.0 + uTime * 2.5) * 0.0025);
         c = texture2D(tDiffuse, distortedUv).rgb;
-        vec3 aquaTint = vec3(0.15, 0.70, 0.85);
-        c = mix(c, c * aquaTint * 1.5, uUnderwater * 0.45);
+        // Procedural tropical underwater caustics shimmer
+        float caust1 = sin(vUv.x * 38.0 + uTime * 2.2) * cos(vUv.y * 34.0 - uTime * 1.9);
+        float caust2 = sin((vUv.x + vUv.y) * 26.0 - uTime * 2.8);
+        float causticMask = smoothstep(0.45, 0.98, (caust1 + caust2) * 0.5 + 0.5);
+        vec3 aquaTint = vec3(0.15, 0.72, 0.88);
+        c = mix(c, c * aquaTint * 1.48, uUnderwater * 0.45);
+        c += vec3(0.10, 0.32, 0.38) * causticMask * uUnderwater * 0.24;
+      } else if (uGodRayIntensity > 0.01) {
+        // Lightweight Volumetric Tropical Sun Rays (God Rays) radial shaft approximation
+        vec2 toSun = vUv - uSunScreenPos;
+        float distSun = length(toSun);
+        float radialGlow = exp(-distSun * 3.4);
+        float angle = atan(toSun.y, toSun.x);
+        float rays = 0.55 + 0.45 * sin(angle * 12.0 + uTime * 0.35) * cos(angle * 7.0 - uTime * 0.22);
+        float skyBright = smoothstep(0.42, 0.92, getLuma(c));
+        vec3 goldenShaft = vec3(1.0, 0.86, 0.58) * radialGlow * rays * skyBright * uGodRayIntensity * 0.28;
+        c += goldenShaft;
       }
 
       // Crisp S-curve Contrast (Toe-protected to preserve shadow visibility without milky lift)

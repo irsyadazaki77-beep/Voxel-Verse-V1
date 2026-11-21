@@ -373,4 +373,116 @@ export class VernacularHologramSystem {
 
     return true;
   }
+
+  // ==================== v6.0.0: BLUEPRINT EXPORTER / IMPORTER (UGC KOMUNITAS) ====================
+
+  public static captureAreaAsBlueprint(
+    world: VoxelWorld,
+    centerPos: [number, number, number],
+    radiusXZ = 3,
+    heightY = 6,
+    name = 'Mahakarya Kustom Nusantara',
+    region = 'Karya Pemain'
+  ): VernacularBlueprintTemplate {
+    const cx = Math.floor(centerPos[0]);
+    const cy = Math.floor(centerPos[1]);
+    const cz = Math.floor(centerPos[2]);
+    const blocks: Array<{ dx: number; dy: number; dz: number; type: BlockType }> = [];
+
+    for (let dx = -radiusXZ; dx <= radiusXZ; dx++) {
+      for (let dy = 0; dy <= heightY; dy++) {
+        for (let dz = -radiusXZ; dz <= radiusXZ; dz++) {
+          const b = world.getBlock(cx + dx, cy + dy, cz + dz);
+          if (b !== BlockType.AIR && b !== BlockType.WATER) {
+            blocks.push({ dx, dy, dz, type: b });
+          }
+        }
+      }
+    }
+
+    const template: VernacularBlueprintTemplate = {
+      id: `bp_ugc_${Date.now()}`,
+      name,
+      region,
+      description: `Blueprint komunitas (${blocks.length} blok) dipindai dari koordinat [${cx}, ${cy}, ${cz}].`,
+      dimensions: [radiusXZ * 2 + 1, heightY + 1, radiusXZ * 2 + 1],
+      blocks,
+    };
+
+    this.TEMPLATES.push(template);
+    this.activeTemplateIndex = this.TEMPLATES.length - 1;
+    this.lastRebuiltKey = '';
+    return template;
+  }
+
+  public static exportBlueprintCode(template: VernacularBlueprintTemplate): string {
+    const compactPayload = {
+      v: 1,
+      n: template.name,
+      r: template.region,
+      d: template.dimensions,
+      b: template.blocks.map((blk) => [blk.dx, blk.dy, blk.dz, blk.type]),
+    };
+    const json = JSON.stringify(compactPayload);
+    const encoded =
+      typeof btoa === 'function'
+        ? btoa(unescape(encodeURIComponent(json)))
+        : Buffer.from(json, 'utf8').toString('base64');
+    return `VVBP1:${encoded}`;
+  }
+
+  public static importBlueprintCode(code: string): VernacularBlueprintTemplate | null {
+    const trimmed = code.trim();
+    if (!trimmed.startsWith('VVBP1:')) return null;
+    try {
+      const b64 = trimmed.slice(6);
+      const json =
+        typeof atob === 'function'
+          ? decodeURIComponent(escape(atob(b64)))
+          : Buffer.from(b64, 'base64').toString('utf8');
+      const parsed = JSON.parse(json);
+      if (!parsed || parsed.v !== 1 || !Array.isArray(parsed.b)) return null;
+
+      const blocks: Array<{ dx: number; dy: number; dz: number; type: BlockType }> = [];
+      for (const tuple of parsed.b) {
+        if (Array.isArray(tuple) && tuple.length === 4) {
+          blocks.push({
+            dx: Number(tuple[0]) || 0,
+            dy: Number(tuple[1]) || 0,
+            dz: Number(tuple[2]) || 0,
+            type: Number(tuple[3]) as BlockType,
+          });
+        }
+      }
+      if (blocks.length === 0) return null;
+
+      const imported: VernacularBlueprintTemplate = {
+        id: `bp_import_${Date.now()}`,
+        name: String(parsed.n || 'Blueprint Impor Nusantara').slice(0, 64),
+        region: String(parsed.r || 'Komunitas').slice(0, 40),
+        description: `Blueprint impor komunitas berisi ${blocks.length} blok arsitektur.`,
+        dimensions:
+          Array.isArray(parsed.d) && parsed.d.length === 3
+            ? [Number(parsed.d[0]) || 7, Number(parsed.d[1]) || 7, Number(parsed.d[2]) || 7]
+            : [7, 7, 7],
+        blocks,
+      };
+
+      this.TEMPLATES.push(imported);
+      this.activeTemplateIndex = this.TEMPLATES.length - 1;
+      this.lastRebuiltKey = '';
+
+      NotificationManager.push({
+        title: `📐 Blueprint Diimpor: ${imported.name}`,
+        message: `${blocks.length} blok siap diproyeksikan via Lontar Arsitek Nusantara!`,
+        priority: 'HIGH',
+        colorTheme: 'cyan',
+        durationMs: 3400,
+      });
+
+      return imported;
+    } catch {
+      return null;
+    }
+  }
 }

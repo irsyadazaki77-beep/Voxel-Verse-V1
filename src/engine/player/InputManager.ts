@@ -519,6 +519,45 @@ export class InputManager {
     this.pollGamepad();
   }
 
+  // v6.0.0: Gamepad Haptic Rumble & Active Controller Status
+  public triggerGamepadRumble(strongMagnitude = 0.5, weakMagnitude = 0.3, durationMs = 120): boolean {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return false;
+    try {
+      const pads = navigator.getGamepads();
+      for (const pad of pads) {
+        if (pad && pad.connected && (pad as any).vibrationActuator?.playEffect) {
+          (pad as any).vibrationActuator.playEffect('dual-rumble', {
+            startDelay: 0,
+            duration: durationMs,
+            weakMagnitude: Math.min(1, Math.max(0, weakMagnitude)),
+            strongMagnitude: Math.min(1, Math.max(0, strongMagnitude)),
+          });
+          return true;
+        }
+      }
+    } catch {
+      // Unsupported browser or controller
+    }
+    return false;
+  }
+
+  public getConnectedGamepadInfo(): { connected: boolean; name: string } {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) {
+      return { connected: false, name: 'Tidak Terhubung' };
+    }
+    try {
+      const pads = navigator.getGamepads();
+      for (const pad of pads) {
+        if (pad && pad.connected) {
+          return { connected: true, name: pad.id || 'Gamepad Standar' };
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    return { connected: false, name: 'Tidak Terhubung' };
+  }
+
   // End of frame tick: clear single-frame deltas
   public postUpdate(): void {
     this.mouseDeltaX = 0;

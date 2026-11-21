@@ -13,6 +13,9 @@ import { CataclysmVisualEngine } from '../environment/CataclysmVisualEngine';
 import { AerialFlightAndSiegeSystem } from './AerialFlightAndSiegeSystem';
 import { NusantaraSanctumSilatSubakSystem } from './NusantaraSanctumSilatSubakSystem';
 import { MahakaryaNusantaraSystem } from './MahakaryaNusantaraSystem';
+import { SubakAndBatikSystem } from './SubakAndBatikSystem';
+import { MultiplayerArenaSystem } from './MultiplayerArenaSystem';
+import { VoxelPhysicsSystem } from '../world/VoxelPhysicsSystem';
 import { ITEM_DEFS } from '../items/ItemRegistry';
 import { NotificationManager } from '../ui/NotificationManager';
 import { SoundSynthesizer } from '../audio/SoundSynthesizer';
@@ -330,6 +333,17 @@ export class SimulationSystem implements GameSystem {
       (itemId, count) => this.runtime.addItemToInventory(itemId, count)
     );
 
+    // 7f. Update VoxelVerse v6.0.0: Subak 2.0 & Batik, Multi-Crew & Arena Duel, Voxel Physics & Spatial Voice
+    const effectiveDt = dt * MultiplayerArenaSystem.getTimeScale();
+    SubakAndBatikSystem.update(effectiveDt, world, audio);
+    MultiplayerArenaSystem.update(effectiveDt, this.runtime.particles);
+    MultiplayerArenaSystem.updateSpatialVoiceEnvironment(
+      player.position,
+      Boolean((player as any).isInWater || (player as any).inWater || player.position.y < 58),
+      player.position.y < 48
+    );
+    VoxelPhysicsSystem.update(effectiveDt, world);
+
     // 8. Update Aether Engineering Network
     AetherNetworkManager.getInstance().update(dt);
   }
@@ -342,6 +356,9 @@ export class SimulationSystem implements GameSystem {
     AerialFlightAndSiegeSystem.reset();
     NusantaraSanctumSilatSubakSystem.reset();
     MahakaryaNusantaraSystem.reset();
+    SubakAndBatikSystem.reset();
+    MultiplayerArenaSystem.reset();
+    VoxelPhysicsSystem.reset();
   }
 }
 

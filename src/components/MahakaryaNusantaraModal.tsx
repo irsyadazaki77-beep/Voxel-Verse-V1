@@ -10,10 +10,11 @@ import {
   MahakaryaTelemetryState,
 } from '../engine/systems/MahakaryaNusantaraSystem';
 import { TelemetryStore } from '../engine/ui/TelemetryStore';
+import { EraKeemasanPanel } from './EraKeemasanPanel';
 
 interface MahakaryaNusantaraModalProps {
   isOpen: boolean;
-  initialTab?: 'SAMUDRA_KERETA' | 'GAMELAN_STUDIO' | 'KHODAM_ARENA' | 'BUSANA_FOTO';
+  initialTab?: 'SAMUDRA_KERETA' | 'GAMELAN_STUDIO' | 'KHODAM_ARENA' | 'BUSANA_FOTO' | 'ERA_KEEMASAN';
   onClose: () => void;
 }
 
@@ -32,7 +33,7 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
   initialTab = 'SAMUDRA_KERETA',
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<'SAMUDRA_KERETA' | 'GAMELAN_STUDIO' | 'KHODAM_ARENA' | 'BUSANA_FOTO'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'SAMUDRA_KERETA' | 'GAMELAN_STUDIO' | 'KHODAM_ARENA' | 'BUSANA_FOTO' | 'ERA_KEEMASAN'>(initialTab);
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [instrument, setInstrument] = useState<'SARON' | 'BONANG' | 'ANGKLUNG' | 'GONG'>('SARON');
   const [state, setState] = useState<MahakaryaTelemetryState>(() =>
@@ -211,6 +212,16 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
                     }`}
                   >
                     04. Busana Batik & Mode Foto 3D
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('ERA_KEEMASAN')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      activeTab === 'ERA_KEEMASAN'
+                        ? 'bg-emerald-400 text-slate-950'
+                        : 'text-emerald-300 hover:text-white'
+                    }`}
+                  >
+                    05. Era Keemasan v6.0
                   </button>
                 </div>
 
@@ -716,6 +727,8 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
                   </div>
                 </div>
               )}
+
+              {activeTab === 'ERA_KEEMASAN' && <EraKeemasanPanel />}
             </div>
           )}
         </div>

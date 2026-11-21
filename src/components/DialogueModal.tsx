@@ -7,6 +7,7 @@ import { ITEM_DEFS } from '../engine/items/ItemRegistry';
 import { SettlementManager } from '../engine/settlement/SettlementManager';
 import { NPCScheduleManager, NPCRoleType } from '../engine/settlement/NPCScheduleManager';
 import { NotificationManager } from '../engine/ui/NotificationManager';
+import { NusantaraAIService } from '../engine/ai/NusantaraAIService';
 
 interface DialogueModalProps {
   entity: EntityState;
@@ -81,6 +82,30 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
 
   const [isRecruited, setIsRecruited] = useState<boolean>(!!(entity as any).isRecruitedGuard);
   const [companionCmd, setCompanionCmd] = useState<'FOLLOW' | 'STAY'>((entity.command as any) === 'STAY' ? 'STAY' : 'FOLLOW');
+
+  // v6.0.0: Suara Sang Pujangga (Gemini AI Free-Text Dialogue)
+  const [aiQuestion, setAiQuestion] = useState('');
+  const [aiReply, setAiReply] = useState<string | null>(null);
+  const [aiSource, setAiSource] = useState<'gemini' | 'fallback' | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const handleAskAI = async () => {
+    const q = aiQuestion.trim();
+    if (!q || aiLoading) return;
+    setAiLoading(true);
+    const res = await NusantaraAIService.askNPCDialogue({
+      npcName,
+      npcRole: roleTitle,
+      settlementName: settlement?.name || 'Tanah Nusantara',
+      reputation: settlement ? SettlementManager.getSettlementState(settlement.id).reputation : 0,
+      timeOfDay,
+      playerMessage: q,
+    });
+    setAiReply(res.reply);
+    setAiSource(res.source);
+    setAiQuestion('');
+    setAiLoading(false);
+  };
 
   const handleRecruitToggle = (cmd: 'FOLLOW' | 'STAY') => {
     const rt = (window as any).__voxelRuntime;
@@ -336,6 +361,44 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
               }`}
             >
               📍 Jaga Area Ini
+            </button>
+          </div>
+        </div>
+
+        {/* v6.0.0: Suara Sang Pujangga (Dialog Bebas Berbasis Gemini AI) */}
+        <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/25 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-cyan-300">
+              ✨ Tanya {npcName} Bebas (Suara Sang Pujangga AI)
+            </span>
+            {aiSource && (
+              <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-200 border border-cyan-500/30">
+                {aiSource === 'gemini' ? 'Gemini Live' : 'Pustaka Adat'}
+              </span>
+            )}
+          </div>
+          {aiReply && (
+            <div className="text-xs text-cyan-100/95 bg-black/40 border border-cyan-500/20 rounded-lg p-2.5 leading-relaxed">
+              {aiReply}
+            </div>
+          )}
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={aiQuestion}
+              onChange={(e) => setAiQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAskAI();
+              }}
+              placeholder="Tanyakan soal silat, subak, batik, atau prasasti..."
+              className="flex-1 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/10 text-xs text-white placeholder:text-white/35 focus:outline-none focus:border-cyan-400/60"
+            />
+            <button
+              onClick={handleAskAI}
+              disabled={aiLoading || !aiQuestion.trim()}
+              className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-xs font-bold text-white cursor-pointer"
+            >
+              {aiLoading ? '...' : 'Tanya'}
             </button>
           </div>
         </div>
