@@ -222,7 +222,9 @@ export class VoxelWorld {
         diffuseColor.rgb *= (1.0 + variation);
 
         // Subtle crisp voxel block edge definition (distance-faded to prevent distant moiré shimmering)
-        float borderFade = 1.0 - smoothstep(18.0, 56.0, length(cameraPosition - vWorldPos));
+        float camDistColor = length(cameraPosition - vWorldPos);
+        float borderFade = 1.0 - smoothstep(18.0, 56.0, camDistColor);
+        float detailFadeColor = 1.0 - smoothstep(22.0, 68.0, camDistColor);
         vec2 cellUv = fract(vLocalUv);
         vec2 edgeDist = min(cellUv, 1.0 - cellUv);
         float borderLine = 1.0 - smoothstep(0.0, 0.035, min(edgeDist.x, edgeDist.y));
@@ -298,7 +300,7 @@ export class VoxelWorld {
         }
 
         // Subtle Backlit Subsurface Scattering & Golden Grazing Rim Light on Grass, Foliage & Terrain
-        if (uShaderRealism > 0.3 && uSunDirection.y > -0.05 && detailFade > 0.05) {
+        if (uShaderRealism > 0.3 && uSunDirection.y > -0.05 && detailFadeColor > 0.05) {
           vec3 vDir = normalize(cameraPosition - vWorldPos);
           vec3 sDir = normalize(uSunDirection);
           if (mClass == 1 || mClass == 10) {
@@ -308,7 +310,7 @@ export class VoxelWorld {
           // Schlick grazing sun rim sheen for atmospheric depth
           float rim = pow(clamp(1.0 - max(0.0, dot(vDir, vWorldNormal)), 0.0, 1.0), 3.2);
           float sunAlign = max(0.0, dot(vWorldNormal, sDir) * 0.6 + 0.4);
-          diffuseColor.rgb += uSunColor * rim * sunAlign * 0.065 * uShaderRealism * detailFade;
+          diffuseColor.rgb += uSunColor * rim * sunAlign * 0.065 * uShaderRealism * detailFadeColor;
         }
 
         // Snow accumulation response on top surfaces (vWorldNormal.y > 0.7)
