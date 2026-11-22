@@ -390,13 +390,14 @@ export class TextureAtlas {
       }
     });
 
-    // 9. Oak Log Side
+    // 9. Oak Log Side (Crisp layered bark ridges & warm inner wood grain)
     drawTile(0, 1, (c, ox, oy) => {
-      fillBg(ox, oy, '#5c4028');
+      fillBg(ox, oy, '#6b4b2e');
       for (let y = 0; y < 16; y++) {
         for (let x = 0; x < 16; x++) {
-          if (x === 0 || x === 15 || x === 7 || x === 8) setPx(ox, oy, x, y, '#48301c');
-          else if (x === 3 || x === 11) setPx(ox, oy, x, y, '#6e4f34');
+          if (x === 0 || x === 7 || x === 8 || x === 15) setPx(ox, oy, x, y, '#4a321d');
+          else if (x === 2 || x === 10 || (x + y * 2) % 9 === 0) setPx(ox, oy, x, y, '#7f5b3a');
+          else if ((x * 3 + y) % 11 === 0) setPx(ox, oy, x, y, '#593d24');
         }
       }
     });
@@ -429,30 +430,39 @@ export class TextureAtlas {
       }
     });
 
-    // 12. Pine Log Side
+    // 12. Pine Log Side (Rich dark highland bark with vertical highlights)
     drawTile(3, 1, (c, ox, oy) => {
-      fillBg(ox, oy, '#3d281a');
+      fillBg(ox, oy, '#4b3221');
       for (let x = 0; x < 16; x++) {
-        if (x % 3 === 0) {
-          for (let y = 0; y < 16; y++) setPx(ox, oy, x, y, '#2d1b10');
+        for (let y = 0; y < 16; y++) {
+          if (x % 4 === 0) setPx(ox, oy, x, y, '#342114');
+          else if (x % 4 === 1 && y % 3 !== 0) setPx(ox, oy, x, y, '#5e402c');
         }
       }
     });
 
     // 13. Pine Log Top
     drawTile(4, 1, (c, ox, oy) => {
-      fillBg(ox, oy, '#2d1b10');
+      fillBg(ox, oy, '#342114');
       for (let x = 2; x < 14; x++) {
-        for (let y = 2; y < 14; y++) setPx(ox, oy, x, y, '#4a3322');
+        for (let y = 2; y < 14; y++) {
+          const d = Math.hypot(x - 7.5, y - 7.5);
+          if (d < 2.2) setPx(ox, oy, x, y, '#7d5b40');
+          else if (d < 4.5) setPx(ox, oy, x, y, '#664830');
+          else setPx(ox, oy, x, y, '#523824');
+        }
       }
     });
 
-    // 14. Pine Leaves
+    // 14. Pine Leaves (Crisp evergreen needle clusters with sunlit tips)
     drawTile(5, 1, (c, ox, oy) => {
-      fillBg(ox, oy, '#1e4834');
+      fillBg(ox, oy, '#265c42');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
-          if ((x + y) % 3 === 0) setPx(ox, oy, x, y, '#2a6348');
+          const n = (x * 7 + y * 13) % 11;
+          if (n < 3) setPx(ox, oy, x, y, '#377d5a');
+          else if (n === 3) setPx(ox, oy, x, y, '#4a966e');
+          else if (n > 8) setPx(ox, oy, x, y, '#1b4530');
         }
       }
     });
@@ -482,35 +492,47 @@ export class TextureAtlas {
       }
     });
 
-    // 17. Wood Planks [9, 1]
+    // 17. Wood Planks [9, 1] (Warm beveled planks with fine wood grain & seam shadows)
     drawTile(9, 1, (c, ox, oy) => {
-      fillBg(ox, oy, '#946d42');
+      fillBg(ox, oy, '#a97e4e');
       for (let y = 0; y < 16; y++) {
-        if (y === 0 || y === 4 || y === 8 || y === 12) {
-          for (let x = 0; x < 16; x++) setPx(ox, oy, x, y, '#70502e');
+        const isSeam = y === 0 || y === 4 || y === 8 || y === 12;
+        const isHighlight = y === 1 || y === 5 || y === 9 || y === 13;
+        for (let x = 0; x < 16; x++) {
+          if (isSeam) setPx(ox, oy, x, y, '#73512d');
+          else if (isHighlight) setPx(ox, oy, x, y, '#bd915e');
+          else if ((x + y * 3) % 9 === 0) setPx(ox, oy, x, y, '#986f41');
         }
       }
       for (let x = 0; x < 16; x += 8) {
-        setPx(ox, oy, x, 2, '#70502e');
-        setPx(ox, oy, x + 4, 6, '#70502e');
-        setPx(ox, oy, x, 10, '#70502e');
-        setPx(ox, oy, x + 4, 14, '#70502e');
+        for (let dy = 1; dy <= 3; dy++) {
+          setPx(ox, oy, x, dy, '#73512d');
+          setPx(ox, oy, x + 4, dy + 4, '#73512d');
+          setPx(ox, oy, x, dy + 8, '#73512d');
+          setPx(ox, oy, x + 4, dy + 12, '#73512d');
+        }
       }
     });
 
-    // 18. Stone Bricks [10, 1]
+    // 18. Stone Bricks [10, 1] (Crisp beveled masonry with mortar depth & subtle weathering)
     drawTile(10, 1, (c, ox, oy) => {
-      fillBg(ox, oy, '#757980');
-      for (let y = 0; y < 16; y += 4) {
-        for (let x = 0; x < 16; x++) setPx(ox, oy, x, y, '#4b4d52');
+      fillBg(ox, oy, '#888e96');
+      for (let y = 0; y < 16; y++) {
+        const isMortarH = y % 4 === 0;
+        const isBevelH = y % 4 === 1;
+        for (let x = 0; x < 16; x++) {
+          if (isMortarH) setPx(ox, oy, x, y, '#585c63');
+          else if (isBevelH) setPx(ox, oy, x, y, '#a4aab3');
+          else if ((x * 5 + y * 3) % 13 === 0) setPx(ox, oy, x, y, '#787e86');
+        }
       }
       for (let y = 0; y < 16; y += 8) {
-        setPx(ox, oy, 7, y + 1, '#4b4d52');
-        setPx(ox, oy, 7, y + 2, '#4b4d52');
-        setPx(ox, oy, 7, y + 3, '#4b4d52');
-        setPx(ox, oy, 15, y + 5, '#4b4d52');
-        setPx(ox, oy, 15, y + 6, '#4b4d52');
-        setPx(ox, oy, 15, y + 7, '#4b4d52');
+        for (let dy = 1; dy <= 3; dy++) {
+          setPx(ox, oy, 7, y + dy, '#585c63');
+          setPx(ox, oy, 8, y + dy, '#a4aab3');
+          setPx(ox, oy, 15, y + 4 + dy, '#585c63');
+          setPx(ox, oy, 0, y + 4 + dy, '#a4aab3');
+        }
       }
     });
 
@@ -1407,7 +1429,9 @@ export class TextureAtlas {
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.magFilter = THREE.NearestFilter;
-    texture.minFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestMipmapLinearFilter;
+    texture.generateMipmaps = true;
+    texture.anisotropy = 4;
     texture.wrapS = THREE.ClampToEdgeWrapping;
     texture.wrapT = THREE.ClampToEdgeWrapping;
     texture.needsUpdate = true;

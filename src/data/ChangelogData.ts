@@ -11,6 +11,27 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '8.3.0',
+    date: '2026-11-22',
+    title: 'Lively Nusantara Wildlife & Crisp Texture Polish: Kawanan Satwa Nusantara (Cap 34 + Herd/Flock Spawning), Tekstur Kayu/Bata/Pinus Ber-Bevel, dan Mipmap Anisotropy Anti-Shimmer',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Dunia Lebih Ramai & Kombinasi Kawanan Satwa (EcosystemManager.ts)',
+        items: [
+          'Menaikkan batas populasi satwa liar (20 → 34) serta mengaktifkan spawn berkelompok/kawanan (groupSize) agar burung, rusa, ternak, dan predator Nusantara terlihat aktif bersama di alam liar.'
+        ]
+      },
+      {
+        category: '2. Penyempurnaan Tekstur & Ketajaman Mipmap (TextureAtlas.ts)',
+        items: [
+          'Memperbarui tekstur Wood Planks, Stone Bricks, Oak Log, Pine Log, dan Pine Leaves dengan highlight bevel, grain kayu halus, dan bayangan mortar.',
+          'Mengaktifkan NearestMipmapLinearFilter + anisotropy 4× sehingga tekstur tetap tajam di dekat pemain namun bebas shimmering di kejauhan.'
+        ]
+      }
+    ]
+  },
+  {
     version: '8.2.0',
     date: '2026-11-22',
     title: 'Atmospheric Perfection: Volumetric FBM Clouds (Beer-Lambert & Silver-Lining), Multi-Layer Rain Streaks + Ground Splash Rings, dan Crystalline Tropical Water Shader',

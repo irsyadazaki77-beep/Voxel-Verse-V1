@@ -92,9 +92,12 @@ export class EcosystemManager {
     // 4. Process Weather & Time Activity Adjustments
     this.processWeatherAndTimeBehavior(wildEntities, timeOfDay, isRaining);
 
-    // 5. Dynamic Ecosystem Spawning (Maintain biome caps, min distance >= 24 blocks)
-    if (wildCount < 20) {
+    // 5. Dynamic Ecosystem Spawning (v8.3.0: Higher cap + multi-animal herd/flock combos for a bustling world)
+    if (wildCount < 34) {
       this.attemptNaturalSpawning(playerPos, timeOfDay, isRaining, anomalyActive, spawnCallback);
+      if (wildCount < 16) {
+        this.attemptNaturalSpawning(playerPos, timeOfDay, isRaining, anomalyActive, spawnCallback);
+      }
     }
 
     // 6. Livestock Item Production
@@ -273,7 +276,20 @@ export class EcosystemManager {
       return;
     }
 
-    spawnCallback(def.id, [spawnX, spawnY, spawnZ]);
+    // v8.3.0: Spawn authentic herds/flocks using def.groupSize (skip bosses/apex)
+    if (def.isBoss || def.role === 'APEX_BOSS') {
+      spawnCallback(def.id, [spawnX, spawnY, spawnZ]);
+      return;
+    }
+
+    const minG = Math.max(1, def.groupSize?.[0] || 1);
+    const maxG = Math.min(4, Math.max(minG, def.groupSize?.[1] || minG));
+    const count = minG + Math.floor(Math.random() * (maxG - minG + 1));
+    for (let i = 0; i < count; i++) {
+      const ox = i === 0 ? 0 : Math.round((Math.random() - 0.5) * 8);
+      const oz = i === 0 ? 0 : Math.round((Math.random() - 0.5) * 8);
+      spawnCallback(def.id, [spawnX + ox, spawnY, spawnZ + oz]);
+    }
   }
 
   // Trigger world ecosystem events
