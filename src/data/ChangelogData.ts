@@ -11,6 +11,32 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '8.2.0',
+    date: '2026-11-22',
+    title: 'Atmospheric Perfection: Volumetric FBM Clouds (Beer-Lambert & Silver-Lining), Multi-Layer Rain Streaks + Ground Splash Rings, dan Crystalline Tropical Water Shader',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Volumetric Procedural FBM Cloud Canopy (CloudSystem.ts)',
+        items: [
+          'Mengganti blok awan kotak-kotak dengan shader Volumetric FBM Cloud Canopy ber-domain-warping, Beer-Lambert self-shadowing, Henyey-Greenstein silver-lining cahaya matahari, serta kepadatan adaptif saat cerah, gerimis, maupun badai.'
+        ]
+      },
+      {
+        category: '2. Hujan Berlapis & Percikan Air Tanah (WeatherSystem.ts)',
+        items: [
+          'Meningkatkan kepadatan tetes hujan ke 3.600 streak dengan gradien ujung tetesan + motion blur serta menambahkan sistem GPU Rain Ground-Splash Rings (650 cincin percikan air di sekitar pemain saat hujan).'
+        ]
+      },
+      {
+        category: '3. Air Tropis Kristal & Riak Hujan Acak (VoxelWorld.ts)',
+        items: [
+          'Menyempurnakan waterMaterial dengan riak gelombang multidirectional dan cincin percikan hujan acak (multi-cell randomized hash) sehingga permukaan air tampak jernih dan organik.'
+        ]
+      }
+    ]
+  },
+  {
     version: '8.1.0',
     date: '2026-11-22',
     title: 'Cinematic Horizon & Natural Terrain Fix: Zero LOD-Chunk Overlap, High-Altitude Clouds (152m), Natural Sculpted Mountains & Zero Floating Cliffside Trees',

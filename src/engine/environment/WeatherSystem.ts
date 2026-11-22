@@ -13,6 +13,7 @@ export class WeatherSystem {
   };
 
   public rainMesh: THREE.LineSegments;
+  public rainSplashMesh: THREE.Points;
   public snowMesh: THREE.Points;
   public weatherGroup: THREE.Group;
   public scene: THREE.Scene;
@@ -22,9 +23,11 @@ export class WeatherSystem {
   private weatherTime: number = 0;
 
   private rainMaterial: THREE.ShaderMaterial;
+  private rainSplashMaterial: THREE.ShaderMaterial;
   private snowMaterial: THREE.ShaderMaterial;
 
-  private static readonly RAIN_STREAK_COUNT = 2400;
+  private static readonly RAIN_STREAK_COUNT = 3600;
+  private static readonly RAIN_SPLASH_COUNT = 650;
   private static readonly SNOW_FLAKE_COUNT = 1800;
 
   constructor(scene: THREE.Scene) {
@@ -87,12 +90,13 @@ export class WeatherSystem {
         uniform vec3 uCameraPos;
         uniform float uIntensity;
         varying float vAlpha;
+        varying float vTip;
 
         void main() {
-          vec3 boxSize = vec3(48.0, 32.0, 48.0);
+          vec3 boxSize = vec3(52.0, 34.0, 52.0);
           vec3 basePos = aSeed;
           basePos.y -= uTime * uFallSpeed;
-          basePos.xz += uWindVector.xz * (uTime * 0.7);
+          basePos.xz += uWindVector.xz * (uTime * 0.72);
 
           // Continuous wrapping box centered around player
           vec3 localOffset = mod(basePos + boxSize * 0.5, boxSize) - boxSize * 0.5;
@@ -102,19 +106,23 @@ export class WeatherSystem {
           vec3 fallDir = normalize(vec3(uWindVector.x * 0.28, -1.0, uWindVector.z * 0.28));
           vec3 worldPos = streakCenter + fallDir * (aStreakFactor - 0.5) * aStreakLength;
 
-          // Near and far camera fade
+          // Near and far camera fade + vertical droplet-tip gradient
           float camDist = length(worldPos - uCameraPos);
-          vAlpha = smoothstep(1.5, 3.5, camDist) * (1.0 - smoothstep(20.0, 24.0, camDist)) * uIntensity;
+          vAlpha = smoothstep(1.4, 3.2, camDist) * (1.0 - smoothstep(20.0, 26.0, camDist)) * uIntensity;
+          vTip = aStreakFactor;
 
           gl_Position = projectionMatrix * viewMatrix * vec4(worldPos, 1.0);
         }
       `,
       fragmentShader: `
         varying float vAlpha;
+        varying float vTip;
         void main() {
           if (vAlpha < 0.01) discard;
-          vec3 rainColor = vec3(0.75, 0.88, 1.0);
-          gl_FragColor = vec4(rainColor, vAlpha * 0.65);
+          // Motion-blurred rain streak: soft fading tail (0.0) -> crisp glinting droplet head (1.0)
+          float tipGrad = mix(0.18, 1.0, vTip);
+          vec3 rainColor = mix(vec3(0.68, 0.82, 0.96), vec3(0.90, 0.96, 1.0), vTip);
+          gl_FragColor = vec4(rainColor, vAlpha * tipGrad * 0.68);
         }
       `,
       transparent: true,
@@ -124,6 +132,72 @@ export class WeatherSystem {
     this.rainMesh = new THREE.LineSegments(rainGeo, this.rainMaterial);
     this.rainMesh.frustumCulled = false;
     this.weatherGroup.add(this.rainMesh);
+
+    // 1b. GPU Ground Rain-Splash Ring & Mist System (v8.2.0)
+    const splashCount = WeatherSystem.RAIN_SPLASH_COUNT;
+    const splashSeeds = new Float32Array(splashCount * 3);
+    const splashPhases = new Float32Array(splashCount);
+    for (let i = 0; i < splashCount; i++) {
+      splashSeeds[i * 3] = (Math.random() - 0.5) * 32.0;
+      splashSeeds[i * 3 + 1] = -1.35 + (Math.random() - 0.5) * 0.9;
+      splashSeeds[i * 3 + 2] = (Math.random() - 0.5) * 32.0;
+      splashPhases[i] = Math.random();
+    }
+    const splashGeo = new THREE.BufferGeometry();
+    splashGeo.setAttribute('position', new THREE.BufferAttribute(splashSeeds, 3));
+    splashGeo.setAttribute('aSeed', new THREE.BufferAttribute(splashSeeds, 3));
+    splashGeo.setAttribute('aPhase', new THREE.BufferAttribute(splashPhases, 1));
+
+    this.rainSplashMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uPlayerPos: { value: new THREE.Vector3(0, 0, 0) },
+        uIntensity: { value: 0.0 },
+      },
+      vertexShader: `
+        attribute vec3 aSeed;
+        attribute float aPhase;
+        uniform float uTime;
+        uniform vec3 uPlayerPos;
+        uniform float uIntensity;
+        varying float vLife;
+        varying float vDistFade;
+
+        void main() {
+          float cycle = fract(uTime * 2.4 + aPhase);
+          vLife = cycle;
+          vec3 worldPos = vec3(
+            uPlayerPos.x + aSeed.x,
+            uPlayerPos.y + aSeed.y + sin(cycle * 3.14159) * 0.14,
+            uPlayerPos.z + aSeed.z
+          );
+          float d = length(aSeed.xz);
+          vDistFade = (1.0 - smoothstep(10.0, 16.0, d)) * uIntensity;
+          vec4 mvPosition = modelViewMatrix * vec4(worldPos, 1.0);
+          gl_PointSize = clamp((10.0 + cycle * 24.0) / max(1.0, -mvPosition.z), 2.0, 18.0);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying float vLife;
+        varying float vDistFade;
+        void main() {
+          if (vDistFade < 0.02) discard;
+          vec2 uv = gl_PointCoord - vec2(0.5);
+          uv.y *= 1.8; // Perspective-squashed splash ring
+          float r = length(uv);
+          float ring = smoothstep(0.18, 0.30, r) * (1.0 - smoothstep(0.32, 0.48, r));
+          float alpha = ring * (1.0 - vLife) * vDistFade * 0.55;
+          if (alpha < 0.01) discard;
+          gl_FragColor = vec4(0.82, 0.92, 1.0, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.rainSplashMesh = new THREE.Points(splashGeo, this.rainSplashMaterial);
+    this.rainSplashMesh.frustumCulled = false;
+    this.weatherGroup.add(this.rainSplashMesh);
 
     // 2. GPU Turbulent Snowflake Flurry System
     const snowCount = WeatherSystem.SNOW_FLAKE_COUNT;
@@ -292,6 +366,11 @@ export class WeatherSystem {
     this.rainMaterial.uniforms.uCameraPos.value.copy(playerPos);
     this.rainMesh.visible = newRainInt > 0.01;
 
+    this.rainSplashMaterial.uniforms.uIntensity.value = newRainInt;
+    this.rainSplashMaterial.uniforms.uTime.value = this.weatherTime;
+    this.rainSplashMaterial.uniforms.uPlayerPos.value.copy(playerPos);
+    this.rainSplashMesh.visible = newRainInt > 0.01;
+
     const curSnowInt = this.snowMaterial.uniforms.uIntensity.value;
     const newSnowInt = THREE.MathUtils.lerp(curSnowInt, targetSnowIntensity, dt * 2.5);
     this.snowMaterial.uniforms.uIntensity.value = newSnowInt;
@@ -306,6 +385,8 @@ export class WeatherSystem {
     this.scene.remove(this.weatherGroup);
     this.rainMesh.geometry.dispose();
     this.rainMaterial.dispose();
+    this.rainSplashMesh.geometry.dispose();
+    this.rainSplashMaterial.dispose();
     this.snowMesh.geometry.dispose();
     this.snowMaterial.dispose();
   }

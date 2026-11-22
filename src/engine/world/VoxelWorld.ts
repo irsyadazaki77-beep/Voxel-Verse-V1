@@ -592,6 +592,21 @@ export class VoxelWorld {
         uniform float uRainIntensity;
         uniform float uWaterQuality;
         uniform float uCloudShadowDrift;
+
+        // v8.2.0: Organic Multi-Cell Raindrop Splash Rings on Water Surface (zero square-grid artifacts)
+        float waterRainRing(vec2 xz, float time, float scale) {
+          vec2 p = xz * scale;
+          vec2 cell = floor(p);
+          vec2 f = fract(p) - 0.5;
+          float h1 = fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.5453);
+          float h2 = fract(sin(dot(cell, vec2(269.5, 183.3))) * 43758.5453);
+          vec2 center = vec2(h1 - 0.5, h2 - 0.5) * 0.45;
+          float phase = fract(time * 1.8 + h1 * 6.2831);
+          float dist = length(f - center);
+          float ringRadius = phase * 0.48;
+          float ringMask = exp(-abs(dist - ringRadius) * 26.0) * (1.0 - phase);
+          return sin((dist - ringRadius) * 42.0) * ringMask;
+        }
         ${shader.fragmentShader}
       `.replace(
         '#include <map_fragment>',
@@ -609,29 +624,25 @@ export class VoxelWorld {
         #include <normal_fragment_begin>
         
         {
-          // Micro ripple normal perturbation in world space, then transformed to view space
-          float ripTime = uTime * 1.8;
-          vec2 rCoord = vWorldPosition.xz * 2.6;
+          // Multi-directional Gerstner-style swells + organic capillary ripples
+          float ripTime = uTime * 1.9;
+          vec2 rCoord = vWorldPosition.xz * 2.4;
           
-          float r1x = cos(rCoord.x * 1.3 + rCoord.y * 0.7 + ripTime * 1.5) * 0.055;
-          float r1z = sin(rCoord.y * 1.2 - rCoord.x * 0.8 + ripTime * 1.3) * 0.055;
-          float r2x = sin(rCoord.x * 2.8 - ripTime * 2.0) * 0.030;
-          float r2z = cos(rCoord.y * 2.6 + ripTime * 1.8) * 0.030;
-          float r3x = sin((rCoord.x + rCoord.y) * 4.5 + ripTime * 2.6) * 0.018;
-          float r3z = cos((rCoord.x - rCoord.y) * 4.2 - ripTime * 2.4) * 0.018;
+          float r1x = cos(rCoord.x * 1.25 + rCoord.y * 0.85 + ripTime * 1.45) * 0.058;
+          float r1z = sin(rCoord.y * 1.15 - rCoord.x * 0.90 + ripTime * 1.35) * 0.058;
+          float r2x = sin(rCoord.x * 2.9 - rCoord.y * 1.4 - ripTime * 2.1) * 0.032;
+          float r2z = cos(rCoord.y * 2.7 + rCoord.x * 1.6 + ripTime * 1.85) * 0.032;
+          float r3x = sin((rCoord.x + rCoord.y) * 4.8 + ripTime * 2.7) * 0.018;
+          float r3z = cos((rCoord.x - rCoord.y) * 4.4 - ripTime * 2.5) * 0.018;
           
-          // Rain-on-water concentric ripples
-          float rainRipplesX = 0.0;
-          float rainRipplesZ = 0.0;
+          // Randomized dual-layer raindrop concentric splash rings on water
+          float rainRipples = 0.0;
           if (uRainIntensity > 0.04) {
-            vec2 rainGrid = fract(vWorldPosition.xz * 2.2) - 0.5;
-            float rDist = length(rainGrid);
-            float splashWave = sin(rDist * 28.0 - uTime * 14.0) * exp(-rDist * 4.5);
-            rainRipplesX = splashWave * 0.07 * uRainIntensity;
-            rainRipplesZ = splashWave * 0.07 * uRainIntensity;
+            rainRipples = (waterRainRing(vWorldPosition.xz, uTime, 1.35) +
+                           waterRainRing(vWorldPosition.xz + vec2(3.7, 1.9), uTime * 1.15, 2.15)) * 0.14 * uRainIntensity;
           }
           
-          vec3 worldPerturb = vec3(r1x + r2x + r3x + rainRipplesX, 0.0, r1z + r2z + r3z + rainRipplesZ);
+          vec3 worldPerturb = vec3(r1x + r2x + r3x + rainRipples, 0.0, r1z + r2z + r3z + rainRipples);
           vec3 viewPerturb = (viewMatrix * vec4(worldPerturb, 0.0)).xyz;
           normal = normalize(normal + viewPerturb);
         }
@@ -643,23 +654,19 @@ export class VoxelWorld {
         
         {
           // Micro ripple normal perturbation in world space
-          float ripTime = uTime * 1.8;
-          vec2 rCoord = vWorldPosition.xz * 2.6;
-          float r1x = cos(rCoord.x * 1.3 + rCoord.y * 0.7 + ripTime * 1.5) * 0.055;
-          float r1z = sin(rCoord.y * 1.2 - rCoord.x * 0.8 + ripTime * 1.3) * 0.055;
-          float r2x = sin(rCoord.x * 2.8 - ripTime * 2.0) * 0.030;
-          float r2z = cos(rCoord.y * 2.6 + ripTime * 1.8) * 0.030;
+          float ripTime = uTime * 1.9;
+          vec2 rCoord = vWorldPosition.xz * 2.4;
+          float r1x = cos(rCoord.x * 1.25 + rCoord.y * 0.85 + ripTime * 1.45) * 0.058;
+          float r1z = sin(rCoord.y * 1.15 - rCoord.x * 0.90 + ripTime * 1.35) * 0.058;
+          float r2x = sin(rCoord.x * 2.9 - rCoord.y * 1.4 - ripTime * 2.1) * 0.032;
+          float r2z = cos(rCoord.y * 2.7 + rCoord.x * 1.6 + ripTime * 1.85) * 0.032;
           
-          float rainRipplesX = 0.0;
-          float rainRipplesZ = 0.0;
+          float rainRipples = 0.0;
           if (uRainIntensity > 0.04) {
-            vec2 rainGrid = fract(vWorldPosition.xz * 2.2) - 0.5;
-            float rDist = length(rainGrid);
-            float splashWave = sin(rDist * 28.0 - uTime * 14.0) * exp(-rDist * 4.5);
-            rainRipplesX = splashWave * 0.07 * uRainIntensity;
-            rainRipplesZ = splashWave * 0.07 * uRainIntensity;
+            rainRipples = (waterRainRing(vWorldPosition.xz, uTime, 1.35) +
+                           waterRainRing(vWorldPosition.xz + vec2(3.7, 1.9), uTime * 1.15, 2.15)) * 0.14 * uRainIntensity;
           }
-          vec3 worldPerturb = vec3(r1x + r2x + rainRipplesX, 0.0, r1z + r2z + rainRipplesZ);
+          vec3 worldPerturb = vec3(r1x + r2x + rainRipples, 0.0, r1z + r2z + rainRipples);
           vec3 worldN = normalize(vWorldNormal + worldPerturb);
 
           // 4. Smooth nonlinear absorption (Beer-Lambert law)
