@@ -59,9 +59,12 @@ export class DistantLODSystem {
       vertexColors: true,
       roughness: 0.94,
       metalness: 0.0,
-      flatShading: true,
+      flatShading: false, // v8.8.0: Use analytic smooth normals for natural mountain silhouettes
       fog: true,
       side: THREE.FrontSide,
+      polygonOffset: true,
+      polygonOffsetFactor: 3,
+      polygonOffsetUnits: 4,
     });
   }
 
@@ -148,8 +151,9 @@ export class DistantLODSystem {
     const originX = tx * tileSize;
     const originZ = tz * tileSize;
     const seaLevel = this.generator.params.seaLevel;
-    // Slight vertical offset (-0.65m) prevents z-fighting with full-detail chunks along the seam
-    const seamYOffset = ring === 1 ? -0.65 : -1.15;
+    // Vertical offset (-1.35m / -2.10m) + polygonOffset keeps LOD cleanly beneath full-detail chunks
+    // while allowing seamless horizon overlap so zero white sky-gaps appear along water/terrain borders
+    const seamYOffset = ring === 1 ? -1.35 : -2.10;
 
     let vIdx = 0;
     for (let gz = 0; gz < vertsPerSide; gz++) {
@@ -244,11 +248,11 @@ export class DistantLODSystem {
 
     const startTime = performance.now();
     const activeRadiusMeters = Math.max(48, activeRenderDistanceChunks * Math.max(CHUNK_SIZE_X, CHUNK_SIZE_Z));
-    // v8.1.0 Strict Non-Overlap Guard: LOD tiles must stay strictly OUTSIDE active full-detail voxel chunks
-    // (half-diagonal of a 64m tile is ~45m; keeping center >= activeRadius + 48 guarantees zero bleeding/z-fighting!)
-    const ring1Inner = activeRadiusMeters + 48;
+    // v8.8.0 Seamless Horizon Closure: Overlap Ring 1 slightly beneath the outer loaded chunk edge
+    // (protected by -1.35m seamYOffset + polygonOffset) so zero white chunk-gap patches appear on oceans or valleys.
+    const ring1Inner = Math.max(36, activeRadiusMeters - 8);
     const ring1Outer = activeRadiusMeters + 224;
-    const ring2Inner = ring1Outer + 32;
+    const ring2Inner = ring1Outer - 16;
     const ring2Outer = activeRadiusMeters + 480; // ~600m+ horizon
     this.maxVisibleDistanceMeters = ring2Outer;
 

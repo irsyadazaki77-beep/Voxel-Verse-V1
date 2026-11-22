@@ -558,14 +558,26 @@ export class PlayerController {
       }
       this.highestFallY = this.position.y;
     } else if (this.isSwimming) {
-      // Water physics: Buoyancy & Drag
+      // Water physics: Buoyancy, Drag & v8.8.0 Shoreline Auto-Breach Boost
       if (this.keys.jump) {
-        this.velocity.y = 3.8; // Ascend
+        if (!this.isEyesInWater && hasInput) {
+          // Check if player is pushing against a 1-block bank edge at the water surface
+          const lookStepX = Math.floor(this.position.x + Math.sign(this.velocity.x || moveX) * 0.65);
+          const lookStepZ = Math.floor(this.position.z + Math.sign(this.velocity.z || moveZ) * 0.65);
+          const feetY = Math.floor(this.position.y + 0.2);
+          const bankBlock = world.getBlock(lookStepX, feetY, lookStepZ);
+          const aboveBank = world.getBlock(lookStepX, feetY + 1, lookStepZ);
+          const isBankSolid = bankBlock !== BlockType.AIR && bankBlock !== BlockType.WATER && Boolean(BLOCK_DEFS[bankBlock]?.solid);
+          const isAboveClear = aboveBank === BlockType.AIR || !BLOCK_DEFS[aboveBank]?.solid;
+          this.velocity.y = isBankSolid && isAboveClear ? 6.6 : 4.2;
+        } else {
+          this.velocity.y = 4.0; // Ascend smoothly
+        }
       } else if (this.keys.crouch) {
         this.velocity.y = -3.8; // Descend
       } else {
-        // Neutral buoyancy drift
-        this.velocity.y -= (this.velocity.y + 0.2) * 4.0 * dt;
+        // Gentle neutral buoyancy drift
+        this.velocity.y -= (this.velocity.y + 0.15) * 4.0 * dt;
       }
       this.highestFallY = this.position.y;
     } else {
@@ -847,8 +859,38 @@ export class PlayerController {
     }
 
     // 1. Move along X axis
+    const wasGroundedAtStart = this.isGrounded;
+    const hasSupportUnder = (px: number, pz: number): boolean => {
+      const checkY = Math.floor(this.position.y - 0.12);
+      const offsets: [number, number][] = [
+        [0, 0],
+        [-hw * 0.85, -hw * 0.85],
+        [hw * 0.85, -hw * 0.85],
+        [-hw * 0.85, hw * 0.85],
+        [hw * 0.85, hw * 0.85],
+      ];
+      for (let i = 0; i < offsets.length; i++) {
+        const bx = Math.floor(px + offsets[i][0]);
+        const bz = Math.floor(pz + offsets[i][1]);
+        if (getBoxes(bx, checkY, bz).length > 0) return true;
+      }
+      return false;
+    };
+
+    const hasStepHeadroom = (targetY: number): boolean => {
+      const headY = Math.floor(targetY + height - 0.05);
+      const cx = Math.floor(this.position.x);
+      const cz = Math.floor(this.position.z);
+      return getBoxes(cx, headY, cz).length === 0;
+    };
+
+    const prevX = this.position.x;
     const dx = this.velocity.x * dt;
     this.position.x += dx;
+    if (this.isCrouching && wasGroundedAtStart && !this.isFlying && !hasSupportUnder(this.position.x, this.position.z)) {
+      this.position.x = prevX;
+      this.velocity.x = 0;
+    }
     let minX = Math.floor(this.position.x - hw);
     let maxX = Math.floor(this.position.x + hw);
     let minY = Math.floor(this.position.y);
@@ -883,10 +925,10 @@ export class PlayerController {
               pMaxZ > bMinZ + 0.001 &&
               pMinZ < bMaxZ - 0.001
             ) {
-              // Auto step-up check for slabs / stairs
+              // Auto step-up check for slabs / stairs (with headroom safety guard)
               const stepDiff = bMaxY - this.position.y;
               const isStepObstacle = stepDiff > 0 && stepDiff <= this.config.stepHeight + 0.05;
-              if (isStepObstacle && !this.isCrouching) {
+              if (isStepObstacle && !this.isCrouching && hasStepHeadroom(bMaxY)) {
                 this.stepSmoothingOffset = Math.max(-0.58, this.stepSmoothingOffset - stepDiff);
                 this.position.y = bMaxY;
                 continue;
@@ -900,9 +942,14 @@ export class PlayerController {
       }
     }
 
-    // 2. Move along Z axis
+    // 2. Move along Z axis (with v8.8.0 Crouch Edge-Safety Clamp)
+    const prevZ = this.position.z;
     const dz = this.velocity.z * dt;
     this.position.z += dz;
+    if (this.isCrouching && wasGroundedAtStart && !this.isFlying && !hasSupportUnder(this.position.x, this.position.z)) {
+      this.position.z = prevZ;
+      this.velocity.z = 0;
+    }
     minX = Math.floor(this.position.x - hw);
     maxX = Math.floor(this.position.x + hw);
     minZ = Math.floor(this.position.z - hw);
@@ -937,7 +984,7 @@ export class PlayerController {
             ) {
               const stepDiff = bMaxY - this.position.y;
               const isStepObstacle = stepDiff > 0 && stepDiff <= this.config.stepHeight + 0.05;
-              if (isStepObstacle && !this.isCrouching) {
+              if (isStepObstacle && !this.isCrouching && hasStepHeadroom(bMaxY)) {
                 this.stepSmoothingOffset = Math.max(-0.58, this.stepSmoothingOffset - stepDiff);
                 this.position.y = bMaxY;
                 continue;

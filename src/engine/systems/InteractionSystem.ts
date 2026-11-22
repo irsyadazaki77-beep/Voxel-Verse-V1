@@ -56,6 +56,8 @@ export class InteractionSystem implements GameSystem {
   public currentTargetedEntity: EntityState | null = null;
   private lastTargetPosKey: string = '';
   private lastBiteNotified: boolean = false;
+  private mineHitAudioTimer: number = 0;
+  private mineBreakCooldown: number = 0;
 
   constructor(runtime: GameRuntime) {
     this.runtime = runtime;
@@ -224,8 +226,11 @@ export class InteractionSystem implements GameSystem {
     const { player, world, entities, inputManager, audio, particles, stats, gameMode, weather, sky } = this.runtime;
     if (!player || !world) return;
 
-    // 0. Update Active 3D Fishing Session
+    // 0. Update Active 3D Fishing Session & Mining Cooldowns
     this.updateFishingTick(deltaTime);
+    if (this.mineBreakCooldown > 0) {
+      this.mineBreakCooldown = Math.max(0, this.mineBreakCooldown - deltaTime);
+    }
 
     // 1. Raycast for target block and target entity
     const eyePos = player.getCameraPosition();
@@ -295,18 +300,20 @@ export class InteractionSystem implements GameSystem {
       }
 
       // If didn't attack an entity or swing weapon, and we are targeting a block, perform progressive mining
-      if (!hasAttackedEntity && hit) {
+      if (!hasAttackedEntity && hit && this.mineBreakCooldown <= 0) {
         const breakCalc = MiningEngine.calculateBreakTime(hit.blockType, activeItem, gameMode);
         if (!breakCalc.canBreak) {
           this.miningState.active = false;
           this.miningState.progress = 0;
           this.miningState.targetPosKey = '';
+          this.mineHitAudioTimer = 0;
         } else {
           const hitKey = `${hit.blockPos[0]},${hit.blockPos[1]},${hit.blockPos[2]}`;
           if (this.miningState.targetPosKey !== hitKey) {
             this.miningState.targetPosKey = hitKey;
             this.miningState.progress = 0;
             this.miningState.breakTime = breakCalc.breakTime;
+            this.mineHitAudioTimer = 0;
           }
 
           this.miningState.active = true;
@@ -316,8 +323,11 @@ export class InteractionSystem implements GameSystem {
           player.triggerSwing();
           this.runtime.viewmodel?.triggerSwing('mine');
 
-          if (Math.random() < 0.12) {
+          // v8.8.0: Frame-rate independent rhythmic mining hit sound cadence (every 0.22s)
+          this.mineHitAudioTimer -= deltaTime;
+          if (this.mineHitAudioTimer <= 0) {
             audio.playBlockHit(BLOCK_DEFS[hit.blockType]?.soundType || 'stone');
+            this.mineHitAudioTimer = 0.22;
           }
 
           // Break Completion
@@ -347,6 +357,7 @@ export class InteractionSystem implements GameSystem {
             GameEventBus.emit('BLOCK_MINED', { blockType: hit.blockType, pos: hit.blockPos });
             BlockPlacementEngine.handleBlockDestruction(hit.blockPos, hit.blockType, world);
             audio.playBlockBreak();
+            player.applyScreenShake(0.06); // Subtle tactile break feedback
             if (stats) stats.addXP(2);
 
             // Add drops to inventory
@@ -372,6 +383,9 @@ export class InteractionSystem implements GameSystem {
             this.miningState.active = false;
             this.miningState.progress = 0;
             this.miningState.targetPosKey = '';
+            this.mineHitAudioTimer = 0;
+            // Brief 110ms break cadence prevents accidental double-breaking blocks behind in Creative/fast-tool mode
+            this.mineBreakCooldown = gameMode === 'creative' ? 0.14 : 0.08;
           }
         }
       }

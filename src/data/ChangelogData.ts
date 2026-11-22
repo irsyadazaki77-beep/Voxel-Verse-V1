@@ -11,6 +11,28 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '8.8.0',
+    date: '2026-11-22',
+    title: 'HD 64x64 Smooth Textures, Seamless Horizon LOD & Fluid Gameplay Polish',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Tekstur HD 64x64 Halus & Air Buih Pantai Organik (TextureAtlas.ts, VoxelWorld.ts, VoxelMesher.ts)',
+        items: [
+          'Upscaling per-tile 16x16 ke 64x64 (1024x1024 HD Atlas) dengan Linear + Trilinear Mipmap filtering dan Anisotropy 8x tanpa bleed antar-tile.',
+          'Menghapus pola papan catur pada tepi air dengan 2-Octave Organic FBM Seafoam dan permukaan air kontinu bebas garis blok.'
+        ]
+      },
+      {
+        category: '2. Horizon LOD Tanpa Celah Putih & Fisika Gameplay Responsif (DistantLODSystem.ts, PlayerController.ts, InteractionSystem.ts)',
+        items: [
+          'Menutup celah putih di batas chunk-LOD dengan seamless overlap + polygonOffset serta mengaktifkan smooth analytic normals pada pegunungan kejauhan.',
+          'Menambahkan Crouch Edge-Safety (anti jatuh saat menjongkok di tepi blok), Shoreline Auto-Breach (melompat keluar dari air ke daratan lebih mulus), Step-Up Headroom Check, dan ritme audio/cooldown penambangan bebas ketergantungan FPS.'
+        ]
+      }
+    ]
+  },
+  {
     version: '8.6.0',
     date: '2026-11-22',
     title: 'Architectural Sapphire & Cobalt Blue UI Identity: Antarmuka Biru Safir & Kobalt yang Tegas, Bersih Tanpa Warna Pelangi Campur-Aduk, dan Geometris',
