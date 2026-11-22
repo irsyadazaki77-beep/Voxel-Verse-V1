@@ -551,13 +551,21 @@ export class SkyEnvironment {
       }
     }
 
-    // Water 4.0: Bioluminescent Underwater Trench Atmosphere Override when player eyes are submerged
+    // v8.9.0: Crystalline Tropical Underwater Atmosphere when player eyes are submerged
     if (isEyesInWater) {
-      skyColor.setHex(0x063954);
-      fogColor.setHex(0x085a78);
-      sunIntensity = Math.max(0.55, sunIntensity * 0.65);
-      ambientIntensity = 0.78;
-      hemiIntensity = 0.58;
+      if (this.isNight) {
+        skyColor.setHex(0x072c44);
+        fogColor.setHex(0x0a3d5c);
+        sunIntensity = 0.42;
+        ambientIntensity = 0.72;
+        hemiIntensity = 0.58;
+      } else {
+        skyColor.setHex(0x137ba1);
+        fogColor.setHex(0x1688ad);
+        sunIntensity = Math.max(0.88, sunIntensity * 0.78);
+        ambientIntensity = 0.96;
+        hemiIntensity = 0.78;
+      }
       starOpacity = 0.0;
       auroraOpacity = 0.0;
     }
@@ -640,7 +648,7 @@ export class SkyEnvironment {
       this.scene.fog.color.copy(this.currentSkyHorizonColor);
       if (this.scene.fog instanceof THREE.FogExp2) {
         if (isEyesInWater) {
-          this.scene.fog.density = 0.020; // Clearer bioluminescent trench visibility
+          this.scene.fog.density = 0.014; // Crystal-clear tropical underwater visibility
         } else {
           const baseDensity = profile.fogDensity || 0.0035;
           const caveMultiplier = playerPos.y < 32 ? (1.0 + (32 - playerPos.y) * 0.06) : 1.0;

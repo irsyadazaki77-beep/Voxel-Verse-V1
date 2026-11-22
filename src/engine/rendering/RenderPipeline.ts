@@ -84,17 +84,27 @@ const CinematicPostShader = {
         c = max(vec3(0.0), c + diff * (uSharpenStrength * 1.15 * casWeight));
       }
 
-      // Underwater distortion, tropical seabed caustics & aquatic tint override
+      // v8.9.0: Clean Crystalline Tropical Underwater Atmosphere (Zero diagonal screen-space stripes!)
       if (uUnderwater > 0.01) {
-        vec2 distortedUv = vUv + vec2(sin(vUv.y * 20.0 + uTime * 3.0) * 0.0025, cos(vUv.x * 20.0 + uTime * 2.5) * 0.0025);
+        // Gentle liquid refraction micro-ripple
+        vec2 distortedUv = vUv + vec2(
+          sin(vUv.y * 12.0 + uTime * 2.1) * 0.0012,
+          cos(vUv.x * 10.0 + uTime * 1.8) * 0.0012
+        ) * uUnderwater;
         c = texture2D(tDiffuse, distortedUv).rgb;
-        // Procedural tropical underwater caustics shimmer
-        float caust1 = sin(vUv.x * 38.0 + uTime * 2.2) * cos(vUv.y * 34.0 - uTime * 1.9);
-        float caust2 = sin((vUv.x + vUv.y) * 26.0 - uTime * 2.8);
-        float causticMask = smoothstep(0.45, 0.98, (caust1 + caust2) * 0.5 + 0.5);
-        vec3 aquaTint = vec3(0.15, 0.72, 0.88);
-        c = mix(c, c * aquaTint * 1.48, uUnderwater * 0.45);
-        c += vec3(0.10, 0.32, 0.38) * causticMask * uUnderwater * 0.24;
+
+        // Physically inspired Beer-Lambert underwater spectral absorption (warmer reds attenuate, cyan-blue stays crisp)
+        vec3 waterAtten = vec3(0.74, 0.97, 1.08);
+        c = mix(c, c * waterAtten + vec3(0.01, 0.055, 0.085), uUnderwater * 0.58);
+
+        // Soft top-down diffused solar sheen near the water surface (no hard bands)
+        float surfaceGlow = smoothstep(0.32, 1.0, vUv.y);
+        float gentleSway = 0.75 + 0.25 * sin(vUv.x * 5.0 + uTime * 0.9) * cos(vUv.x * 3.1 - uTime * 0.65);
+        c += vec3(0.04, 0.16, 0.22) * surfaceGlow * gentleSway * uUnderwater * 0.42;
+
+        // Subtle deep-ocean lens vignette around edges
+        float uwVig = smoothstep(0.45, 0.98, distance(vUv, vec2(0.5, 0.5)));
+        c = mix(c, c * vec3(0.52, 0.78, 0.88), uwVig * uUnderwater * 0.45);
       } else if (uGodRayIntensity > 0.01 && uSunVisibility > 0.01) {
         // Lightweight Volumetric Tropical Sun Rays (God Rays) dynamically tracking sun screen projection
         vec2 toSun = vUv - uSunScreenPos;

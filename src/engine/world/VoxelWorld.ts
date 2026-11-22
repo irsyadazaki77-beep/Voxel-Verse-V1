@@ -790,11 +790,19 @@ export class VoxelWorld {
           compositeWater *= (1.0 - wCloudShadow * 0.14);
           
           // Pure seamless procedural water surface (prevents tiled atlas seams between water blocks)
-          diffuseColor.rgb = compositeWater;
-          
-          // Depth- and Fresnel-based transparency
-          float baseAlpha = mix(0.42, 0.92, depthAbsorption);
-          diffuseColor.a = clamp(baseAlpha + fresnel * (1.0 - baseAlpha) + foamBand * 0.28, 0.0, 0.96);
+          if (!gl_FrontFacing) {
+            // v8.9.0: Snell's Window luminous underside when diving and looking up at the water surface
+            vec3 underN = normalize(-vWorldNormal + worldPerturb * 0.7);
+            float snell = pow(clamp(dot(worldVDir, underN), 0.0, 1.0), 1.4);
+            vec3 snellWindowCol = mix(vec3(0.08, 0.44, 0.62), mix(vec3(0.32, 0.84, 0.96), uSunColor, 0.35), snell);
+            diffuseColor.rgb = snellWindowCol + specularStreak * 0.45;
+            diffuseColor.a = mix(0.68, 0.32, snell);
+          } else {
+            diffuseColor.rgb = compositeWater;
+            // Depth- and Fresnel-based transparency
+            float baseAlpha = mix(0.42, 0.92, depthAbsorption);
+            diffuseColor.a = clamp(baseAlpha + fresnel * (1.0 - baseAlpha) + foamBand * 0.28, 0.0, 0.96);
+          }
         }
         `
       );
