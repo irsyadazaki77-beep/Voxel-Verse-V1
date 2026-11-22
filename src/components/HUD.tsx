@@ -731,7 +731,7 @@ const HUDMultiPhaseBossBar: React.FC<{ activeBoss: BossCombatState }> = ({ activ
 
         {/* Stagger Warning Banner */}
         {isStaggered && (
-          <div className="mb-2 px-2.5 py-1 rounded bg-amber-500/20 border border-amber-400 flex items-center justify-between text-[11px] text-amber-200 animate-bounce">
+          <div className="mb-2 px-2.5 py-1 rounded bg-amber-500/20 border border-amber-400/70 flex items-center justify-between text-[11px] text-amber-200">
             <div className="flex items-center gap-1.5 font-bold">
               <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
               <span>POISE PECAH! BOSS TERTUNDUK!</span>
@@ -804,7 +804,7 @@ const HUDRelicDiscoveryModal: React.FC<{
         </p>
 
         {/* Relic Icon Box */}
-        <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/10 border-2 border-amber-400/60 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(245,158,11,0.4)] mb-4 animate-bounce">
+        <div className="w-16 h-16 mx-auto rounded-xl bg-amber-500/10 border border-amber-400/60 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(245,158,11,0.28)] mb-4">
           🏆
         </div>
 

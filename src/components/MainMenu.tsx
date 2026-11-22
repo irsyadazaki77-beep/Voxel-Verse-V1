@@ -428,7 +428,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
           <div className="w-full max-w-[460px] lg:max-w-[480px] space-y-4 my-auto">
             {/* Crash Recovery Prompt Banner */}
             {crashRecoveryData && (
-              <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-3xl backdrop-blur-2xl shadow-xl text-center space-y-2 animate-fade-in">
+              <div className="bg-[#14110b]/92 border border-amber-500/35 p-4 rounded-xl backdrop-blur-xl shadow-xl text-center space-y-2 animate-fade-in">
                 <div className="flex items-center justify-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider">
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   Unsaved Recovery Session Detected
@@ -532,7 +532,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
 
             {/* World Browser View */}
             {viewState === 'worlds' && (
-              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-white/15 p-6 shadow-2xl space-y-5 animate-fade-in">
+              <div className="bg-[#0e1015]/92 backdrop-blur-xl rounded-xl border border-amber-500/20 p-6 shadow-2xl space-y-5 animate-fade-in">
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <h3 className="text-base font-black uppercase tracking-wider">World Browser</h3>
                   <div className="flex items-center gap-2">
@@ -654,7 +654,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
 
             {/* Create World Flow View */}
             {viewState === 'create' && (
-              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-white/15 p-6 shadow-2xl space-y-5 animate-fade-in">
+              <div className="bg-[#0e1015]/92 backdrop-blur-xl rounded-xl border border-amber-500/20 p-6 shadow-2xl space-y-5 animate-fade-in">
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <h3 className="text-base font-black uppercase tracking-wider">New Realm Configuration</h3>
                   <div className="flex gap-2">
@@ -763,7 +763,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
 
             {/* Multiplayer View */}
             {viewState === 'multiplayer' && (
-              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-emerald-500/20 p-6 shadow-2xl space-y-4 animate-fade-in text-left">
+              <div className="bg-[#0e1015]/92 backdrop-blur-xl rounded-xl border border-emerald-500/25 p-6 shadow-2xl space-y-4 animate-fade-in text-left">
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <h3 className="text-base font-black uppercase tracking-wider text-emerald-400">Multiplayer Realms</h3>
                   <button
@@ -913,7 +913,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
 
             {/* Credits View */}
             {viewState === 'credits' && (
-              <div className="bg-[#090c15]/90 backdrop-blur-2xl rounded-3xl border border-white/15 p-6 shadow-2xl space-y-4 animate-fade-in text-center">
+              <div className="bg-[#0e1015]/92 backdrop-blur-xl rounded-xl border border-amber-500/20 p-6 shadow-2xl space-y-4 animate-fade-in text-center">
                 <h3 className="text-xl font-black uppercase tracking-wider text-sky-400">VoxelVerse Credits</h3>
                 <div className="space-y-2 text-xs text-white/70">
                   <p>VoxelVerse Procedural 3D Sandbox Engine</p>
@@ -936,7 +936,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
         {/* Rename Confirmation Modal */}
         {worldToRename && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-            <div className="w-full max-w-sm bg-[#0c0e14] rounded-3xl border border-white/15 p-6 space-y-4 text-white">
+            <div className="w-full max-w-sm bg-[#0e1015] rounded-xl border border-amber-500/25 p-6 space-y-4 text-white">
               <h4 className="font-bold text-sm uppercase">Rename Realm</h4>
               <input
                 type="text"
@@ -959,7 +959,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
         {/* Delete Confirmation Modal */}
         {deleteConfirmId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-            <div className="w-full max-w-sm bg-[#0c0e14] rounded-3xl border border-rose-500/30 p-6 space-y-4 text-white">
+            <div className="w-full max-w-sm bg-[#0e1015] rounded-xl border border-rose-500/30 p-6 space-y-4 text-white">
               <h4 className="font-bold text-sm uppercase text-rose-400">Delete Realm Confirmation</h4>
               <p className="text-xs text-white/60">Are you sure you want to delete this world? This action is permanent and cannot be undone.</p>
               <div className="flex gap-2">
