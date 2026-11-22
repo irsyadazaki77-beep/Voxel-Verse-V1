@@ -76,13 +76,13 @@ export const CraftingModal: React.FC<CraftingModalProps> = ({
     <div id="modal-crafting-overlay" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-in font-sans">
       <div
         id="modal-crafting-card"
-        className="w-full max-w-3xl bg-[#0e1015]/95 backdrop-blur-2xl rounded-2xl border border-white/10 p-6 shadow-2xl text-white relative flex flex-col max-h-[85vh]"
+        className="w-full max-w-3xl bg-[#0a101c]/96 backdrop-blur-2xl rounded-xl border border-sky-400/25 p-6 shadow-2xl text-white relative flex flex-col max-h-[85vh]"
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-white/10">
+        <div className="flex items-center justify-between pb-4 border-b border-sky-400/15">
           <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-white/90">
+            <div className="w-2.5 h-2.5 rounded-sm bg-sky-400"></div>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-sky-100">
               {activeStation === 'crafting_bench'
                 ? 'Artisan Workbench Assembly'
                 : activeStation === 'anvil'
@@ -93,19 +93,19 @@ export const CraftingModal: React.FC<CraftingModalProps> = ({
 
           <div className="flex items-center gap-3">
             {/* Station Switcher */}
-            <div className="bg-black/40 p-1 rounded-xl border border-white/10 flex gap-1 text-xs">
+            <div className="bg-[#10192b] p-1 rounded-lg border border-sky-400/20 flex gap-1 text-xs">
               <button
                 onClick={() => setActiveStation('hand')}
-                className={`px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                  activeStation === 'hand' ? 'bg-sky-500 text-white font-bold' : 'text-white/60 hover:text-white'
+                className={`px-3 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  activeStation === 'hand' ? 'bg-blue-600 text-white font-bold' : 'text-slate-300 hover:text-white'
                 }`}
               >
                 Field (2x2)
               </button>
               <button
                 onClick={() => setActiveStation('crafting_bench')}
-                className={`px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                  activeStation === 'crafting_bench' ? 'bg-sky-500 text-white font-bold' : 'text-white/60 hover:text-white'
+                className={`px-3 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                  activeStation === 'crafting_bench' ? 'bg-blue-600 text-white font-bold' : 'text-slate-300 hover:text-white'
                 }`}
               >
                 Workbench (3x3)

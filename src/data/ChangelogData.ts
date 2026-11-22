@@ -11,6 +11,32 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '10.0.0',
+    date: '2026-11-22',
+    title: 'Sapphire Definitive Edition: 10-Pillar Polish — Full Modal Alignment, Real 64x64 Block Thumbnails, Marine Fauna, 3D HP/NPC Plates & Dynamic Audio',
+    type: 'major',
+    changes: [
+      {
+        category: 'A. UI, Inventori & Identitas Visual Biru Safir (HUD.tsx, InventoryModal.tsx, CraftingModal.tsx, MapModal.tsx, DialogueModal.tsx, CharacterProgressionModal.tsx)',
+        items: [
+          'Menyatukan seluruh modal RPG ke palet Midnight Navy & Sapphire Blue, menambahkan tombol ringkas kartu misi & default ringkas Pusaka Dock, serta menampilkan thumbnail tekstur asli 64x64 HD di Hotbar dan Inventori.'
+        ]
+      },
+      {
+        category: 'B. Visual Dunia, Tekstur 64x64 Merata & Golden Hour (TextureAtlas.ts, SkyEnvironment.ts, EntityManager.ts)',
+        items: [
+          'Memperluas fine-grain HD 64x64 ke seluruh blok kayu, daun, bijih tambang, dan arsitektur Nusantara; menambahkan kilau emissive pada item drop langka & proyektil panah; memperkaya gradasi golden hour fajar/senja.'
+        ]
+      },
+      {
+        category: 'C & D. Biota Laut Baru, 3D HP Bar & NPC Nameplates, Audio Pitch Dinamis (CreatureRegistry.ts, EntityModelBuilder.ts, EcosystemManager.ts, EntityManager.ts, SoundSynthesizer.ts)',
+        items: [
+          'Menambahkan Penyu Hijau Nusantara (sea_turtle) & Pari Manta Samudra (manta_ray) di bawah laut, Floating 3D HP Bar + indikator STAGGERED di atas musuh terluka, 3D NPC Nameplates di desa, pembersihan memori sprite menyeluruh, serta variasi pitch audio organik.'
+        ]
+      }
+    ]
+  },
+  {
     version: '9.0.0',
     date: '2026-11-22',
     title: '3D Viewmodel & Dynamic Torch Light, Unified Sapphire Modals, 3D Combat Damage Sprites & Underwater Marine Ecosystem',

@@ -269,11 +269,11 @@ export const CharacterProgressionModal: React.FC<CharacterProgressionModalProps>
       id="modal-character-progression"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 select-none font-sans animate-fade-in"
     >
-      <div className="w-full max-w-5xl h-[86vh] bg-[#090d16] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
+      <div className="w-full max-w-5xl h-[86vh] bg-[#0a101c] border border-sky-400/25 rounded-xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         {/* Top Header Bar */}
-        <div className="flex items-center justify-between gap-6 px-6 py-4 border-b border-white/10 bg-[#0c1220]">
+        <div className="flex items-center justify-between gap-6 px-6 py-4 border-b border-sky-400/15 bg-[#0d1526]">
           <div className="flex items-center gap-4 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-400/40 flex items-center justify-center text-amber-300 font-bold text-sm font-mono tabular-nums shrink-0">
+            <div className="w-10 h-10 rounded-lg bg-blue-600/20 border border-sky-400/40 flex items-center justify-center text-sky-300 font-bold text-sm font-mono tabular-nums shrink-0">
               Lv.{playerLevel}
             </div>
             <div className="min-w-0">

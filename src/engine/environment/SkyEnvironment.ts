@@ -611,11 +611,16 @@ export class SkyEnvironment {
       skyMat.uniforms.topColor.value.copy(this.currentSkyZenithColor);
       skyMat.uniforms.bottomColor.value.copy(this.currentSkyHorizonColor); // use horizon/fog color to blend seamlessly
 
-      // Horizon band color: subtly brighter desaturated cyan-blue for silhouette readability
+      // Horizon band color: crisp aerial cyan-blue during midday, rich cinematic golden-peach during dawn/sunset
       const horizonCol = SkyEnvironment._scratchHorizonCol.copy(this.currentSkyHorizonColor).multiplyScalar(1.15);
       horizonCol.r = Math.min(1.0, horizonCol.r * 0.98 + 0.01);
       horizonCol.g = Math.min(1.0, horizonCol.g * 1.02 + 0.02);
       horizonCol.b = Math.min(1.0, horizonCol.b * 1.05 + 0.04);
+      if (sunsetFactor > 0.01 && !isEyesInWater) {
+        const goldenHorizon = SkyEnvironment._scratchTempCol.setRGB(1.0, 0.62, 0.36);
+        horizonCol.lerp(goldenHorizon, sunsetFactor * 0.58);
+        this.currentSunColor.lerp(SkyEnvironment._scratchC1.setRGB(1.0, 0.72, 0.42), sunsetFactor * 0.35);
+      }
       skyMat.uniforms.horizonColor.value.copy(horizonCol);
 
       skyMat.uniforms.sunDirection.value.copy(this.currentSunDirection);

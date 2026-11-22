@@ -256,6 +256,53 @@ export const CREATURE_REGISTRY: Record<string, CreatureDef> = {
     description: 'An elegant aquatic creature with luminous blue fins swimming in pristine waters.',
   },
 
+  // 7b. Sea Turtle (Penyu Hijau Nusantara — Reef Swimmer)
+  sea_turtle: {
+    id: 'sea_turtle',
+    name: 'Penyu Hijau Nusantara',
+    role: 'PASSIVE',
+    biomes: ['ocean', 'deep_ocean', 'beach'],
+    activity: 'all_day',
+    diet: 'HERBIVORE',
+    groupSize: [1, 3],
+    fearRadius: 6,
+    tameable: false,
+    breedable: false,
+    drops: [
+      { itemId: 'coastal_pearl', chance: 0.45, count: [1, 1] },
+    ],
+    rarity: 'uncommon',
+    modelType: 'sea_turtle',
+    baseHealth: 32,
+    baseSpeed: 1.5,
+    baseDamage: 0,
+    description: 'Penyu laut tropis bertempurung zamrud yang meluncur anggun di atas terumbu karang Nusantara.',
+  },
+
+  // 7c. Manta Ray (Pari Manta Samudra — Graceful Underwater Glider)
+  manta_ray: {
+    id: 'manta_ray',
+    name: 'Pari Manta Samudra',
+    role: 'PASSIVE',
+    biomes: ['ocean', 'deep_ocean'],
+    activity: 'all_day',
+    diet: 'HERBIVORE',
+    groupSize: [1, 2],
+    fearRadius: 7,
+    tameable: false,
+    breedable: false,
+    drops: [
+      { itemId: 'aether_glowfin', chance: 0.7, count: [1, 2] },
+      { itemId: 'coastal_pearl', chance: 0.35, count: [1, 1] },
+    ],
+    rarity: 'uncommon',
+    modelType: 'manta_ray',
+    baseHealth: 40,
+    baseSpeed: 2.3,
+    baseDamage: 0,
+    description: 'Pari manta bersayap lebar biru-kelam dengan corak safir bercahaya yang melayang mulus di perairan dalam.',
+  },
+
   // 8. Void Lynx (Rare Aether Predator)
   void_lynx: {
     id: 'void_lynx',

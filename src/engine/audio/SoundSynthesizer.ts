@@ -393,7 +393,9 @@ export class SoundSynthesizer {
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = type === 'crystal' ? 'highpass' : 'bandpass';
-    filter.frequency.setValueAtTime(type === 'crystal' ? 1200 : 400, t);
+    const hitJitter = 0.88 + Math.random() * 0.24;
+    const baseHitFreq = type === 'crystal' ? 1200 : type === 'wood' ? 520 : type === 'grass' || type === 'dirt' ? 320 : 420;
+    filter.frequency.setValueAtTime(baseHitFreq * hitJitter, t);
 
     const gain = this.ctx.createGain();
     const vol = this.masterVolume * this.sfxVolume * 0.25;
@@ -417,9 +419,10 @@ export class SoundSynthesizer {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(320, t);
-    osc.frequency.exponentialRampToValueAtTime(90, t + 0.12);
+    const breakJitter = 0.90 + Math.random() * 0.20;
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(320 * breakJitter, t);
+    osc.frequency.exponentialRampToValueAtTime(85 * breakJitter, t + 0.12);
 
     const vol = this.masterVolume * this.sfxVolume * 0.3;
     gain.gain.setValueAtTime(vol, t);
@@ -442,9 +445,10 @@ export class SoundSynthesizer {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
+    const placeJitter = 0.91 + Math.random() * 0.18;
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(140, t);
-    osc.frequency.exponentialRampToValueAtTime(45, t + 0.09);
+    osc.frequency.setValueAtTime(145 * placeJitter, t);
+    osc.frequency.exponentialRampToValueAtTime(48 * placeJitter, t + 0.09);
 
     const vol = this.masterVolume * this.sfxVolume * 0.35;
     gain.gain.setValueAtTime(vol, t);
@@ -1352,8 +1356,9 @@ export class SoundSynthesizer {
     const gain = this.ctx.createGain();
     osc.type = isFinisher ? 'sawtooth' : 'triangle';
 
-    const startFreq = comboStep === 0 ? 480 : comboStep === 1 ? 610 : 820;
-    const endFreq = comboStep === 0 ? 150 : comboStep === 1 ? 190 : 120;
+    const slashJitter = 0.93 + Math.random() * 0.14;
+    const startFreq = (comboStep === 0 ? 480 : comboStep === 1 ? 610 : 820) * slashJitter;
+    const endFreq = (comboStep === 0 ? 150 : comboStep === 1 ? 190 : 120) * slashJitter;
     const dur = isFinisher ? 0.22 : 0.13;
 
     osc.frequency.setValueAtTime(startFreq, t);

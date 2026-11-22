@@ -189,12 +189,12 @@ export const MapModal: React.FC<MapModalProps> = ({
 
   return (
     <div id="map_modal_overlay" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 select-none animate-in fade-in duration-200">
-      <div id="map_modal_container" className="bg-zinc-900 border border-zinc-700/80 rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl overflow-hidden text-zinc-100 font-sans">
+      <div id="map_modal_container" className="bg-[#0a101c] border border-sky-400/25 rounded-xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-100 font-sans">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/70">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-sky-400/15 bg-[#0d1526]">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+            <div className="p-2 rounded-lg bg-blue-600/20 border border-sky-400/35 text-sky-300">
               <Navigation className="w-6 h-6" />
             </div>
             <div>

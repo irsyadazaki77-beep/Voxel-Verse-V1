@@ -4,6 +4,8 @@ import { BlockType } from '../../types';
 
 export class TextureAtlas {
   public static atlasTexture: THREE.CanvasTexture | null = null;
+  private static hdAtlasCanvas: HTMLCanvasElement | null = null;
+  private static tileDataUrlCache: Map<string, string> = new Map();
   public static readonly ATLAS_COLS = 16;
   public static readonly ATLAS_ROWS = 16;
   public static readonly TILE_SIZE = 16;
@@ -1477,11 +1479,33 @@ export class TextureAtlas {
       hdCtx.putImageData(imgData, dx, dy);
     };
     addFineGrain(0, 0, 7); // grass_top
+    addFineGrain(1, 0, 6); // grass_side
     addFineGrain(2, 0, 8); // dirt
     addFineGrain(3, 0, 7); // stone
+    addFineGrain(4, 0, 6); // cobblestone
     addFineGrain(5, 0, 6); // sand
     addFineGrain(6, 0, 8); // gravel
+    addFineGrain(7, 0, 5); // clay
     addFineGrain(8, 0, 4); // snow
+    addFineGrain(12, 0, 7); // basalt
+    addFineGrain(14, 0, 7); // moss_stone
+    addFineGrain(15, 0, 6); // coral_block
+
+    // v10.0.0: Extend 64x64 HD fine-grain polish to Wood, Foliage, Ores & Nusantara Architecture
+    for (let col = 0; col <= 12; col++) {
+      addFineGrain(col, 1, 6); // Row 1: oak/pine/crystal logs, leaves, planks, stone bricks, pillars
+    }
+    for (let col = 0; col <= 10; col++) {
+      addFineGrain(col, 2, 7); // Row 2: copper, iron, gold, mythril, aether crystal, coal ores & metal blocks
+    }
+    for (let col = 0; col <= 15; col++) {
+      addFineGrain(col, 7, 6); // Row 7: teak, ulin, woven bamboo, terracotta, ijuk, andesite, volcanic brick
+    }
+    for (let col = 0; col <= 11; col++) {
+      addFineGrain(col, 8, 6); // Row 8: split gate, lanterns, batik carpet, starfall ore, bioluminescent coral
+    }
+
+    this.hdAtlasCanvas = hdCanvas;
 
     const texture = new THREE.CanvasTexture(hdCanvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -1495,6 +1519,59 @@ export class TextureAtlas {
 
     this.atlasTexture = texture;
     return texture;
+  }
+
+  /**
+   * v10.0.0: Returns a cached 64x64 PNG Data URL for a block's top/side tile so Hotbar & Inventory UI
+   * can display authentic HD voxel block thumbnails instead of generic box icons.
+   */
+  public static getBlockThumbnailDataURL(blockType: BlockType): string | null {
+    if (typeof document === 'undefined') return null;
+    if (!this.hdAtlasCanvas) {
+      this.getAtlasTexture();
+    }
+    if (!this.hdAtlasCanvas) return null;
+
+    // Prefer 'side' for grass/logs/furnace/chest so the block is immediately recognizable, 'top' for others
+    const face: 'top' | 'side' =
+      blockType === BlockType.GRASS ||
+      blockType === BlockType.SNOW ||
+      blockType === BlockType.OAK_LOG ||
+      blockType === BlockType.PINE_LOG ||
+      blockType === BlockType.TEAK_WOOD_LOG ||
+      blockType === BlockType.ULIN_IRONWOOD_LOG ||
+      blockType === BlockType.BOOKSHELF ||
+      blockType === BlockType.FURNACE ||
+      blockType === BlockType.CHEST
+        ? 'side'
+        : 'top';
+    const tileName = this.getTileForBlock(blockType, face);
+    const cached = this.tileDataUrlCache.get(tileName);
+    if (cached) return cached;
+
+    const coords = this.TILE_COORDS[tileName];
+    if (!coords) return null;
+
+    const hdSize = this.HD_TILE_SIZE;
+    const tmp = document.createElement('canvas');
+    tmp.width = hdSize;
+    tmp.height = hdSize;
+    const tCtx = tmp.getContext('2d');
+    if (!tCtx) return null;
+    tCtx.drawImage(
+      this.hdAtlasCanvas,
+      coords[0] * hdSize,
+      coords[1] * hdSize,
+      hdSize,
+      hdSize,
+      0,
+      0,
+      hdSize,
+      hdSize
+    );
+    const url = tmp.toDataURL('image/png');
+    this.tileDataUrlCache.set(tileName, url);
+    return url;
   }
 
   // Get UV rectangle coordinates [uMin, vMin, uMax, vMax] for a given tile

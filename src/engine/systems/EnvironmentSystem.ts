@@ -131,12 +131,26 @@ export class EnvironmentSystem implements GameSystem {
     }
 
     if (clouds) {
+      const cloudQuality = (settings?.graphics?.waterQuality === 'ultra') ? 'ultra'
+        : (settings?.graphics?.waterQuality === 'high') ? 'high'
+        : (settings?.graphics?.waterQuality === 'low') ? 'low'
+        : 'medium';
       clouds.update(
         deltaTime,
-        player.position,
+        camera ? camera.position : player.position,
         weather ? weather.weather : { type: 'clear', intensity: 0, windAngle: 0.5, windSpeed: 2.0, durationLeft: 0 },
         sky.timeOfDay,
-        sky.currentSunDirection
+        sky.currentSunDirection,
+        {
+          sunColor: sky.currentSunColor,
+          moonDirection: sky.currentMoonDirection,
+          moonColor: sky.currentMoonColor,
+          skyZenithColor: sky.currentSkyZenithColor,
+          skyHorizonColor: sky.currentSkyHorizonColor,
+          lightningFlash: sky.lightningFlashActive,
+          isEyesInWater: player.isEyesInWater,
+          quality: cloudQuality,
+        }
       );
     }
     if (particles) {

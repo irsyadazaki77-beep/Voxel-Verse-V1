@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { ItemStack, PlayerEquipment } from '../types';
 import { ITEM_DEFS } from '../engine/items/ItemRegistry';
+import { TextureAtlas } from '../engine/world/TextureAtlas';
 import { InventoryManager } from '../engine/items/InventoryManager';
 import { X, Shield, Droplets, Zap, Activity, Info, ChevronRight, Package, ArrowRightLeft } from 'lucide-react';
 
@@ -272,8 +273,22 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
             <div className="h-32 border-b border-[var(--vv-border-subtle)] bg-[var(--vv-elevated)] p-4 sm:p-6 shrink-0 flex items-center">
               {hoveredItem.item && ITEM_DEFS[hoveredItem.item.itemId] ? (
                 <div className="flex items-start gap-4 w-full animate-fade-in">
-                  <div className="w-16 h-16 rounded-xl bg-black/40 border border-[var(--vv-border)] flex items-center justify-center text-3xl shrink-0 shadow-inner">
-                    {ITEM_DEFS[hoveredItem.item.itemId].name.charAt(0)}
+                  <div className="w-16 h-16 rounded-xl bg-[#0a101c] border border-sky-400/30 flex items-center justify-center text-2xl font-bold shrink-0 shadow-inner overflow-hidden">
+                    {(() => {
+                      const hDef = ITEM_DEFS[hoveredItem.item.itemId];
+                      const thumb = hDef.blockType !== undefined ? TextureAtlas.getBlockThumbnailDataURL(hDef.blockType) : null;
+                      if (thumb) {
+                        return <img src={thumb} alt={hDef.name} className="w-12 h-12 rounded-md object-cover border border-sky-300/30" />;
+                      }
+                      return (
+                        <div
+                          className="w-11 h-11 rounded-lg flex items-center justify-center text-white text-lg font-mono font-bold border border-white/20"
+                          style={{ background: `linear-gradient(145deg, ${hDef.iconColor}, rgba(10,16,28,0.75))` }}
+                        >
+                          {hDef.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-start">
@@ -329,9 +344,27 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                     >
                       {item && def ? (
                         <>
-                          <div className="text-2xl sm:text-3xl filter drop-shadow-md transition-transform group-hover:scale-110">
-                            {def.name.charAt(0)}
-                          </div>
+                          {(() => {
+                            const thumb = def.blockType !== undefined ? TextureAtlas.getBlockThumbnailDataURL(def.blockType) : null;
+                            if (thumb) {
+                              return (
+                                <img
+                                  src={thumb}
+                                  alt={def.name}
+                                  draggable={false}
+                                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-md object-cover border border-sky-300/30 shadow-sm"
+                                />
+                              );
+                            }
+                            return (
+                              <div
+                                className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center text-white text-xs font-mono font-bold border border-white/20 shadow-inner"
+                                style={{ background: `linear-gradient(145deg, ${def.iconColor}, rgba(10,16,28,0.75))` }}
+                              >
+                                {def.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            );
+                          })()}
                           {item.count > 1 && (
                             <div className="absolute bottom-1 right-1.5 text-[10px] font-mono font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] bg-black/50 px-1 rounded">
                               {item.count}

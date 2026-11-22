@@ -84,10 +84,11 @@ export class EntityManager {
     this.entityGroup = new THREE.Group();
 
     if (!EntityManager.projectileGeometry) {
-      const geo = new THREE.CylinderGeometry(0.02, 0.02, 0.6, 4);
+      const geo = new THREE.CylinderGeometry(0.024, 0.024, 0.65, 5);
       geo.rotateX(Math.PI / 2);
       EntityManager.projectileGeometry = geo;
-      EntityManager.projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc });
+      // v10.0.0: Luminous sapphire-tinted arrow shaft for crisp visibility day & night
+      EntityManager.projectileMaterial = new THREE.MeshBasicMaterial({ color: 0x7dd3fc });
     }
 
     if (!EntityManager.groundItemGeometry) {
@@ -714,8 +715,14 @@ export class EntityManager {
         const def = CREATURE_REGISTRY[creatureId];
         if (!def) return;
         const groundY = world.getSpawnHeight(pos[0], pos[2]);
-        const isAquatic = creatureId === 'glowfin' || def.modelType === 'glowfin';
-        // Only spawn aquatic fish if the target column is actual water below sea level (SEA_LEVEL = 28)
+        const isAquatic =
+          creatureId === 'glowfin' ||
+          creatureId === 'sea_turtle' ||
+          creatureId === 'manta_ray' ||
+          def.modelType === 'glowfin' ||
+          def.modelType === 'sea_turtle' ||
+          def.modelType === 'manta_ray';
+        // Only spawn aquatic creatures if the target column is actual water below sea level (SEA_LEVEL = 28)
         if (isAquatic && groundY >= 27) return;
         const spawnY = isAquatic
           ? Math.min(26.6, Math.max(groundY + 1.0, groundY + 1.2 + Math.random() * Math.max(1.0, 26.5 - groundY)))
@@ -986,7 +993,13 @@ export class EntityManager {
       }
 
       if (!isStationaryAtDistance) {
-        const isAquaticEntity = state.modelType === 'glowfin' || id.startsWith('glowfin');
+        const isAquaticEntity =
+          state.modelType === 'glowfin' ||
+          state.modelType === 'sea_turtle' ||
+          state.modelType === 'manta_ray' ||
+          id.startsWith('glowfin') ||
+          id.startsWith('sea_turtle') ||
+          id.startsWith('manta_ray');
         const cx = Math.floor(state.position[0]);
         const cz = Math.floor(state.position[2]);
         const groundY = world.getSpawnHeight(cx, cz);
@@ -1103,8 +1116,12 @@ export class EntityManager {
         }
       }
 
+      // v10.0.0: Overhead 3D Health Bars (for damaged creatures/mobs) & NPC Interaction Nameplates
+      this.updateEntityOverheadSprite(id, state, mesh, distToPlayerSq2D);
+
       // Despawn distant entities (never despawn NPCs, bosses, or tamed companions)
       if (distToPlayerSq2D > 6400 && state.type !== 'npc' && !state.isTamed && !state.isBoss && state.type !== 'boss') { // 80m squared = 6400
+        this.disposeEntityOverheadSprite(mesh);
         if (rig) {
           CreatureAnimationEngine.cleanup(rig);
         }
@@ -1268,6 +1285,7 @@ export class EntityManager {
         }
       });
 
+      this.disposeEntityOverheadSprite(mesh);
       this.entityGroup.remove(mesh);
       this.entities.delete(entityId);
       PoiseSystem.removeEntity(entityId);
@@ -1444,9 +1462,154 @@ export class EntityManager {
     return id;
   }
 
+  private disposeEntityOverheadSprite(mesh: THREE.Group): void {
+    const existing = mesh.userData.overheadSprite as THREE.Sprite | undefined;
+    if (existing) {
+      mesh.remove(existing);
+      const mat = existing.material as THREE.SpriteMaterial;
+      if (mat.map) mat.map.dispose();
+      mat.dispose();
+      mesh.userData.overheadSprite = undefined;
+      mesh.userData.overheadKey = undefined;
+    }
+  }
+
+  private updateEntityOverheadSprite(
+    id: string,
+    state: EntityState,
+    mesh: THREE.Group,
+    distToPlayerSq2D: number
+  ): void {
+    if (typeof document === 'undefined') return;
+
+    const isNpc = state.type === 'npc';
+    const isBoss = !!(state.isBoss || state.type === 'boss');
+    const isDamaged = !isNpc && !isBoss && state.health > 0 && state.health < state.maxHealth;
+
+    if (isNpc) {
+      if (distToPlayerSq2D > 196) {
+        if (mesh.userData.overheadSprite) mesh.userData.overheadSprite.visible = false;
+        return;
+      }
+      const key = `npc:${state.name}`;
+      if (mesh.userData.overheadKey !== key) {
+        this.disposeEntityOverheadSprite(mesh);
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 56;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, 256, 56);
+          ctx.fillStyle = 'rgba(10, 16, 28, 0.86)';
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.roundRect(8, 8, 240, 40, 8);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.font = '700 17px "Inter", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#e0f2fe';
+          const shortName = state.name.length > 20 ? state.name.slice(0, 19) + '…' : state.name;
+          ctx.fillText(`✦ ${shortName}`, 128, 28);
+
+          const tex = new THREE.CanvasTexture(canvas);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const sprite = new THREE.Sprite(
+            new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+          );
+          sprite.position.set(0, 2.55, 0);
+          sprite.scale.set(2.1, 0.46, 1);
+          mesh.add(sprite);
+          mesh.userData.overheadSprite = sprite;
+          mesh.userData.overheadKey = key;
+        }
+      } else if (mesh.userData.overheadSprite) {
+        mesh.userData.overheadSprite.visible = true;
+      }
+      return;
+    }
+
+    if (isDamaged && distToPlayerSq2D <= 576) {
+      const staggered = PoiseSystem.isEntityStaggered(id);
+      const hpBucket = Math.ceil((state.health / Math.max(1, state.maxHealth)) * 20);
+      const key = `hp:${hpBucket}:${staggered ? 1 : 0}`;
+      if (mesh.userData.overheadKey !== key) {
+        this.disposeEntityOverheadSprite(mesh);
+        const canvas = document.createElement('canvas');
+        canvas.width = 160;
+        canvas.height = 36;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, 160, 36);
+          ctx.fillStyle = 'rgba(10, 16, 28, 0.88)';
+          ctx.strokeStyle = staggered ? 'rgba(56, 189, 248, 0.9)' : 'rgba(148, 163, 184, 0.45)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(10, 16, 140, 14, 4);
+          ctx.fill();
+          ctx.stroke();
+
+          const ratio = Math.max(0, Math.min(1, state.health / Math.max(1, state.maxHealth)));
+          ctx.fillStyle = staggered ? '#38bdf8' : ratio < 0.3 ? '#f43f5e' : '#fb7185';
+          ctx.beginPath();
+          ctx.roundRect(12, 18, Math.max(4, Math.round(136 * ratio)), 10, 3);
+          ctx.fill();
+
+          if (staggered) {
+            ctx.font = '800 12px "JetBrains Mono", monospace';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText('STAGGERED', 80, 11);
+          }
+
+          const tex = new THREE.CanvasTexture(canvas);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const sprite = new THREE.Sprite(
+            new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+          );
+          sprite.position.set(0, 2.25, 0);
+          sprite.scale.set(1.35, 0.30, 1);
+          mesh.add(sprite);
+          mesh.userData.overheadSprite = sprite;
+          mesh.userData.overheadKey = key;
+        }
+      } else if (mesh.userData.overheadSprite) {
+        mesh.userData.overheadSprite.visible = true;
+      }
+    } else if (mesh.userData.overheadSprite) {
+      this.disposeEntityOverheadSprite(mesh);
+    }
+  }
+
   public spawnGroundItem(itemId: string, count: number, pos: THREE.Vector3): void {
     const geo = EntityManager.groundItemGeometry || new THREE.BoxGeometry(0.28, 0.28, 0.28);
-    const mat = new THREE.MeshLambertMaterial({ color: 0x59b3f2 });
+    const idLower = itemId.toLowerCase();
+    const isRareOrGlowing =
+      idLower.includes('aether') ||
+      idLower.includes('crystal') ||
+      idLower.includes('gold') ||
+      idLower.includes('mythril') ||
+      idLower.includes('mustika') ||
+      idLower.includes('pearl') ||
+      idLower.includes('starfall') ||
+      idLower.includes('torch') ||
+      idLower.includes('lantern');
+    const mat = isRareOrGlowing
+      ? new THREE.MeshStandardMaterial({
+          color: idLower.includes('gold') || idLower.includes('torch') ? 0xfbbf24 : 0x38bdf8,
+          emissive: new THREE.Color(idLower.includes('gold') || idLower.includes('torch') ? 0xd97706 : 0x0284c7),
+          emissiveIntensity: 0.85,
+          roughness: 0.25,
+          metalness: 0.55,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: 0x60a5fa,
+          roughness: 0.65,
+          metalness: 0.15,
+        });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(pos);
     this.entityGroup.add(mesh);

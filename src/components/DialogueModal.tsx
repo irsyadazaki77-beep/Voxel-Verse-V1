@@ -236,12 +236,12 @@ export const DialogueModal: React.FC<DialogueModalProps> = ({
 
   return (
     <div id="modal-dialogue-overlay" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-fade-in font-sans">
-      <div className="w-full max-w-xl bg-[#0e1015]/95 backdrop-blur-2xl rounded-2xl border border-white/10 p-6 shadow-2xl text-white relative flex flex-col space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-xl bg-[#0a101c]/96 backdrop-blur-2xl rounded-xl border border-sky-400/25 p-6 shadow-2xl text-white relative flex flex-col space-y-4 max-h-[90vh] overflow-y-auto">
         
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-white/10">
+        <div className="flex items-center justify-between pb-3 border-b border-sky-400/15">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-lg">
+            <div className="w-9 h-9 rounded-lg bg-blue-600/20 border border-sky-400/35 flex items-center justify-center text-lg">
               {regInfo.icon}
             </div>
             <div>

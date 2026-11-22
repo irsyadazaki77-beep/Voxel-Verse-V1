@@ -2403,6 +2403,12 @@ export class EntityModelBuilder {
       case 'fish':
         return this.buildGlowfin(variant);
 
+      case 'sea_turtle':
+        return this.buildSeaTurtle(variant);
+
+      case 'manta_ray':
+        return this.buildMantaRay(variant);
+
       case 'void_lynx':
       case 'lynx':
       case 'cat':
@@ -2551,6 +2557,88 @@ export class EntityModelBuilder {
       default:
         return this.buildStag(variant);
     }
+  }
+
+  // =========================================================================
+  // v10.0.0: AQUATIC MARINE LIFE (PENYU HIJAU NUSANTARA & PARI MANTA SAMUDRA)
+  // =========================================================================
+  public static buildSeaTurtle(variant: number = 0): THREE.Group {
+    const root = new THREE.Group();
+    const shellMat = new THREE.MeshStandardMaterial({
+      color: variant % 2 === 0 ? 0x1e6b4c : 0x2a7a58,
+      roughness: 0.65,
+      metalness: 0.08,
+    });
+    const rimMat = new THREE.MeshStandardMaterial({ color: 0x144734, roughness: 0.75 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x4ca67a, roughness: 0.7 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.24, 0.86), shellMat);
+    shell.position.set(0, 0.22, 0);
+    const shellTop = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.10, 0.64), rimMat);
+    shellTop.position.set(0, 0.36, 0);
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 0.76), new THREE.MeshStandardMaterial({ color: 0xd9c79e, roughness: 0.8 }));
+    belly.position.set(0, 0.09, 0);
+
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.20, 0.28), skinMat);
+    head.position.set(0, 0.22, 0.54);
+    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), eyeMat);
+    eyeL.position.set(0.12, 0.25, 0.62);
+    const eyeR = eyeL.clone();
+    eyeR.position.x = -0.12;
+
+    const flipperFL = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.18), skinMat);
+    flipperFL.position.set(0.46, 0.16, 0.22);
+    flipperFL.rotation.y = -0.25;
+    const flipperFR = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.18), skinMat);
+    flipperFR.position.set(-0.46, 0.16, 0.22);
+    flipperFR.rotation.y = 0.25;
+    const flipperBL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.14), skinMat);
+    flipperBL.position.set(0.34, 0.14, -0.36);
+    const flipperBR = flipperBL.clone();
+    flipperBR.position.x = -0.34;
+
+    root.add(shell, shellTop, belly, head, eyeL, eyeR, flipperFL, flipperFR, flipperBL, flipperBR);
+    return root;
+  }
+
+  public static buildMantaRay(variant: number = 0): THREE.Group {
+    const root = new THREE.Group();
+    const topMat = new THREE.MeshStandardMaterial({
+      color: variant % 2 === 0 ? 0x0f2b4c : 0x163861,
+      roughness: 0.42,
+      metalness: 0.18,
+    });
+    const spotMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: new THREE.Color(0x0284c7),
+      emissiveIntensity: 0.45,
+      roughness: 0.3,
+    });
+    const bellyMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.7 });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.14, 0.95), topMat);
+    body.position.set(0, 0.25, 0);
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.06, 0.84), bellyMat);
+    belly.position.set(0, 0.16, 0);
+
+    const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.07, 0.62), topMat);
+    wingL.position.set(0.72, 0.24, -0.05);
+    wingL.rotation.z = 0.08;
+    const wingR = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.07, 0.62), topMat);
+    wingR.position.set(-0.72, 0.24, -0.05);
+    wingR.rotation.z = -0.08;
+
+    const stripeL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.02, 0.12), spotMat);
+    stripeL.position.set(0.48, 0.30, 0.08);
+    const stripeR = stripeL.clone();
+    stripeR.position.x = -0.48;
+
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 1.05), topMat);
+    tail.position.set(0, 0.22, -0.92);
+
+    root.add(body, belly, wingL, wingR, stripeL, stripeR, tail);
+    return root;
   }
 
   // =========================================================================
