@@ -57,9 +57,9 @@ export class DistantLODSystem {
 
     this.material = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.92,
-      metalness: 0.02,
-      flatShading: false,
+      roughness: 0.94,
+      metalness: 0.0,
+      flatShading: true,
       fog: true,
       side: THREE.FrontSide,
     });
@@ -243,12 +243,13 @@ export class DistantLODSystem {
     if (!this.enabled) return;
 
     const startTime = performance.now();
-    const activeRadiusMeters = Math.max(32, activeRenderDistanceChunks * Math.max(CHUNK_SIZE_X, CHUNK_SIZE_Z));
-    // Inner cutoff slightly inside active radius so there is zero gap at chunk borders
-    const ring1Inner = Math.max(24, activeRadiusMeters - 20);
-    const ring1Outer = activeRadiusMeters + 192; // +12 chunks
-    const ring2Inner = ring1Outer - 32;
-    const ring2Outer = activeRadiusMeters + 448; // +28 chunks (~600m+ horizon)
+    const activeRadiusMeters = Math.max(48, activeRenderDistanceChunks * Math.max(CHUNK_SIZE_X, CHUNK_SIZE_Z));
+    // v8.1.0 Strict Non-Overlap Guard: LOD tiles must stay strictly OUTSIDE active full-detail voxel chunks
+    // (half-diagonal of a 64m tile is ~45m; keeping center >= activeRadius + 48 guarantees zero bleeding/z-fighting!)
+    const ring1Inner = activeRadiusMeters + 48;
+    const ring1Outer = activeRadiusMeters + 224;
+    const ring2Inner = ring1Outer + 32;
+    const ring2Outer = activeRadiusMeters + 480; // ~600m+ horizon
     this.maxVisibleDistanceMeters = ring2Outer;
 
     const centerTx1 = Math.floor(playerPos.x / this.RING1_TILE_SIZE);
@@ -268,7 +269,7 @@ export class DistantLODSystem {
         const tileCenterZ = (entry.tz + 0.5) * entry.tileSize;
         const dist = Math.hypot(tileCenterX - playerPos.x, tileCenterZ - playerPos.z);
 
-        const minAllowed = entry.ring === 1 ? ring1Inner - entry.tileSize * 0.45 : ring2Inner - entry.tileSize * 0.45;
+        const minAllowed = entry.ring === 1 ? ring1Inner - 8 : ring2Inner - 16;
         const maxAllowed = entry.ring === 1 ? ring1Outer + entry.tileSize * 0.75 : ring2Outer + entry.tileSize * 0.75;
 
         if (dist < minAllowed || dist > maxAllowed) {

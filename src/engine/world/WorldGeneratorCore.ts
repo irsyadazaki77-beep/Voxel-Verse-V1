@@ -131,15 +131,16 @@ export class WorldGeneratorCore {
       baseHeight = baseHeight * (1.0 - plateauStrength * 0.75) + mesaHeight * (plateauStrength * 0.75);
     }
 
-    // Sheer karst & limestone cliff walls (Toraja / Eastern Isles / Papua)
-    if (tp.cliffStrength && tp.cliffStrength > 0.05 && peaks > 0.40) {
-      const cliffFactor = Math.pow((peaks - 0.40) * 2.0, 0.75) * tp.cliffStrength * 16;
+    // Sheer karst & limestone cliff walls (toned for natural sculpted silhouettes, not razor needles)
+    if (tp.cliffStrength && tp.cliffStrength > 0.05 && peaks > 0.48) {
+      const cliffFactor = Math.min(14, Math.pow((peaks - 0.48) * 1.8, 0.85) * tp.cliffStrength * 10);
       baseHeight += cliffFactor;
     }
 
-    // Mountain scaling
-    if (peaks > 0.46) {
-      baseHeight += Math.pow((peaks - 0.46) * 2.1, 1.8) * p.mountainHeightScale * tp.mountainScale;
+    // Broad, majestic mountain ranges (capped smoothly to eliminate spiky vertical needles)
+    if (peaks > 0.50) {
+      const rawMount = Math.pow((peaks - 0.50) * 1.75, 1.55) * (p.mountainHeightScale * 0.62) * Math.min(1.25, tp.mountainScale);
+      baseHeight += Math.min(34, rawMount);
     }
 
     // v7.5.0 Landform 3: Towering Nusantara Stratovolcano & Lava Caldera
@@ -484,6 +485,14 @@ export class WorldGeneratorCore {
         const height = heightMap[lx + lz * 16];
         
         if (height < p.seaLevel + 1) continue;
+
+        // v8.1.0 Slope Guard: Never spawn trees on sheer vertical cliff walls (eliminates floating cliffside trees!)
+        const hL = heightMap[(lx - 1) + lz * 16];
+        const hR = heightMap[(lx + 1) + lz * 16];
+        const hB = heightMap[lx + (lz - 1) * 16];
+        const hF = heightMap[lx + (lz + 1) * 16];
+        const maxSlope = Math.max(Math.abs(height - hL), Math.abs(height - hR), Math.abs(height - hB), Math.abs(height - hF));
+        if (maxSlope > 1) continue;
 
         // Prevent trees from spawning inside structures
         let insideStructure = false;

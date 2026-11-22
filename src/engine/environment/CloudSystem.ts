@@ -33,9 +33,9 @@ export class CloudSystem {
         uBaseColor: { value: this.currentBaseColor },
         uUndersideColor: { value: this.currentUndersideColor },
         uHighlightColor: { value: this.currentHighlightColor },
-        uHorizonRadius: { value: 275.0 },
+        uHorizonRadius: { value: 520.0 },
         uCameraPos: { value: new THREE.Vector3(0, 0, 0) },
-        uOpacity: { value: 0.88 },
+        uOpacity: { value: 0.72 },
       },
       vertexShader: `
         varying vec3 vWorldPos;
@@ -99,8 +99,8 @@ export class CloudSystem {
   }
 
   private generateTieredVoxelDeck(): void {
-    const formationCount = 16;
-    const radius = 260;
+    const formationCount = 18;
+    const radius = 480;
 
     // Structure for stepped stylized voxel formations
     this.cloudFormationCenters = [];
@@ -109,10 +109,11 @@ export class CloudSystem {
     let totalBoxes = 0;
     for (let f = 0; f < formationCount; f++) {
       const angle = (f / formationCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
-      const dist = 60 + Math.random() * (radius - 80);
+      const dist = 80 + Math.random() * (radius - 100);
       const cx = Math.cos(angle) * dist;
       const cz = Math.sin(angle) * dist;
-      const cy = 94 + (Math.random() - 0.5) * 6;
+      // v8.1.0: High-altitude cloud deck (y = 148..162) so clouds soar above peaks and never slice through mountains
+      const cy = 152 + (Math.random() - 0.5) * 14;
 
       this.cloudFormationCenters.push({ x: cx, y: cy, z: cz });
 

@@ -11,6 +11,27 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '8.1.0',
+    date: '2026-11-22',
+    title: 'Cinematic Horizon & Natural Terrain Fix: Zero LOD-Chunk Overlap, High-Altitude Clouds (152m), Natural Sculpted Mountains & Zero Floating Cliffside Trees',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Eliminasi Tumpang Tindih Distant LOD & Chunk Voxel (DistantLODSystem.ts)',
+        items: [
+          'Memastikan cincin Distant LOD mulai secara ketat di luar radius chunk voxel aktif (+48m) dengan flatShading selaras gaya voxel sehingga tidak ada lagi kerucut LOD mulus yang menembus chunk di depan pemain.'
+        ]
+      },
+      {
+        category: '2. Awan Langit Tinggi & Pegunungan Natural (CloudSystem.ts & WorldGeneratorCore.ts)',
+        items: [
+          'Menaikkan dek awan dari y=94 → y=152 (horizon 520m, opacity 0.72) agar awan melayang indah di atas puncak tertinggi dan tidak pernah memotong gunung.',
+          'Menghaluskan formula gunung & tebing agar berbentuk pegunungan megah yang alami (bukan jarum tajam vertikal) serta menambahkan slope guard (maxSlope <= 1) agar pohon tidak lagi melayang di dinding tebing curam.'
+        ]
+      }
+    ]
+  },
+  {
     version: '8.0.0',
     date: '2026-11-22',
     title: 'Nusantara Alive — Visual, Texture & Living Animation Overhaul: Eliminasi Bayangan Hitam Pekat, Hand-Crafted Pixel Art Textures, Wind-Sway Foliage, Open Scenic Spawn & Crisp RPG Hotbar Icons',
