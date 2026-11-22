@@ -7,6 +7,7 @@ export class TextureAtlas {
   public static readonly ATLAS_COLS = 16;
   public static readonly ATLAS_ROWS = 16;
   public static readonly TILE_SIZE = 16;
+  public static readonly HD_TILE_SIZE = 64; // v8.7.0: 4x HD Smooth Painterly Atlas (1024x1024)
 
   // Tile index coordinates in 16x16 atlas (column, row)
   public static readonly TILE_COORDS: Record<string, [number, number]> = {
@@ -200,96 +201,96 @@ export class TextureAtlas {
     };
 
     // Procedural pixel tile designs (v8.0.0 Vibrant Nusantara Hand-Crafted Pixel Art):
-    // 1. Dirt (Warm rich volcanic tropical soil with organic pebbles)
+    // 1. Dirt (Smooth warm volcanic tropical soil with soft subtle mottling)
     drawTile(2, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#7b5538');
+      fillBg(ox, oy, '#825c3f');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
           const r = Math.sin(x * 12.3 + y * 91.7) * 43758.5453;
           const noise = r - Math.floor(r);
-          if (noise > 0.78) setPx(ox, oy, x, y, '#634229');
-          else if (noise < 0.22) setPx(ox, oy, x, y, '#916746');
-          else if ((x * 7 + y * 13) % 23 === 0) setPx(ox, oy, x, y, '#a68262');
+          if (noise > 0.78) setPx(ox, oy, x, y, '#734f34');
+          else if (noise < 0.24) setPx(ox, oy, x, y, '#926a4b');
+          else if ((x * 7 + y * 13) % 29 === 0) setPx(ox, oy, x, y, '#a17a5a');
         }
       }
     });
 
-    // 2. Grass Top (Lush vibrant sunlit Nusantara emerald turf with blade clusters)
+    // 2. Grass Top (Lush silky sunlit Nusantara emerald turf with gentle color variation)
     drawTile(0, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#58ab3c');
+      fillBg(ox, oy, '#5eb042');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
           const r = Math.sin(x * 37.1 + y * 53.9) * 23421.631;
           const noise = r - Math.floor(r);
-          if (noise > 0.78) setPx(ox, oy, x, y, '#438d2b');
-          else if (noise < 0.28) setPx(ox, oy, x, y, '#6ec44b');
-          else if ((x * 5 + y * 11) % 19 === 0) setPx(ox, oy, x, y, '#86d65c');
+          if (noise > 0.78) setPx(ox, oy, x, y, '#4f9c35');
+          else if (noise < 0.28) setPx(ox, oy, x, y, '#6ec050');
+          else if ((x * 5 + y * 11) % 23 === 0) setPx(ox, oy, x, y, '#7ece5d');
         }
       }
     });
 
-    // 3. Grass Side (Lush overhanging grass fringe + warm soil + subtle shadow lip)
+    // 3. Grass Side (Lush overhanging grass fringe + warm soil + soft shadow lip)
     drawTile(1, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#7b5538');
+      fillBg(ox, oy, '#825c3f');
       for (let x = 0; x < 16; x++) {
         for (let y = 3; y < 16; y++) {
           const r = Math.sin(x * 12.3 + y * 91.7) * 43758.5453;
           const n = r - Math.floor(r);
-          if (n > 0.76) setPx(ox, oy, x, y, '#634229');
-          else if (n < 0.18) setPx(ox, oy, x, y, '#916746');
+          if (n > 0.76) setPx(ox, oy, x, y, '#734f34');
+          else if (n < 0.18) setPx(ox, oy, x, y, '#926a4b');
         }
       }
       for (let x = 0; x < 16; x++) {
-        const hang = 3 + Math.floor((Math.sin(x * 2.1 + 0.5) + 1) * 1.5);
+        const hang = 3 + Math.floor((Math.sin(x * 2.1 + 0.5) + 1) * 1.4);
         for (let y = 0; y <= hang; y++) {
-          if (y === 0) setPx(ox, oy, x, y, (x % 2 === 0) ? '#76cc52' : '#65ba44');
-          else if (y === hang) setPx(ox, oy, x, y, '#3f8328');
-          else setPx(ox, oy, x, y, (x + y) % 2 === 0 ? '#58ab3c' : '#4a9631');
+          if (y === 0) setPx(ox, oy, x, y, (x % 2 === 0) ? '#72c554' : '#65b848');
+          else if (y === hang) setPx(ox, oy, x, y, '#4a9432');
+          else setPx(ox, oy, x, y, (x + y) % 2 === 0 ? '#5eb042' : '#53a239');
         }
-        if (hang + 1 < 16) setPx(ox, oy, x, hang + 1, '#583923'); // soft contact shadow under grass lip
+        if (hang + 1 < 16) setPx(ox, oy, x, hang + 1, '#68472e');
       }
     });
 
-    // 4. Stone (Clean layered limestone/andesite strata with highlights)
+    // 4. Stone (Clean silky layered limestone/andesite strata)
     drawTile(3, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#8d939c');
+      fillBg(ox, oy, '#90969f');
       for (let y = 0; y < 16; y++) {
-        const band = (y % 4 === 0) ? '#818790' : (y % 4 === 2) ? '#979da6' : '#8d939c';
+        const band = (y % 4 === 0) ? '#888e97' : (y % 4 === 2) ? '#989ea7' : '#90969f';
         for (let x = 0; x < 16; x++) {
           setPx(ox, oy, x, y, band);
           const r = Math.sin(x * 17.3 + y * 29.1) * 12345.67;
           const noise = r - Math.floor(r);
-          if (noise > 0.84) setPx(ox, oy, x, y, '#6e747d');
-          else if (noise < 0.18) setPx(ox, oy, x, y, '#a6acb5');
+          if (noise > 0.85) setPx(ox, oy, x, y, '#7f858f');
+          else if (noise < 0.16) setPx(ox, oy, x, y, '#a2a8b1');
         }
       }
     });
 
-    // 5. Cobblestone (Hand-fitted rounded stones with bright bevels & soft mortar)
+    // 5. Cobblestone (Hand-fitted rounded stones with soft bevels & gentle mortar)
     drawTile(4, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#646971');
+      fillBg(ox, oy, '#6e737c');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
           const rowOffset = Math.floor(y / 5) % 2 === 0 ? 0 : 2;
           const isMortar = ((x + rowOffset) % 5 === 0 || y % 5 === 0);
           const isTopBevel = ((y % 5) === 1 && !isMortar);
-          if (isMortar) setPx(ox, oy, x, y, '#4a4e56');
-          else if (isTopBevel) setPx(ox, oy, x, y, '#a2a8b2');
-          else setPx(ox, oy, x, y, (x + y) % 2 === 0 ? '#858b94' : '#9197a0');
+          if (isMortar) setPx(ox, oy, x, y, '#595e66');
+          else if (isTopBevel) setPx(ox, oy, x, y, '#a4aab4');
+          else setPx(ox, oy, x, y, (x + y) % 2 === 0 ? '#888e97' : '#9298a1');
         }
       }
     });
 
-    // 6. Sand (Warm sunlit tropical beach sand with gentle wind ripples)
+    // 6. Sand (Silky sunlit tropical beach sand with soft wind ripples & zero harsh noise)
     drawTile(5, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#edd796');
+      fillBg(ox, oy, '#eedaa0');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
-          const ripple = Math.sin(x * 0.55 + y * 1.15);
-          if (ripple > 0.65) setPx(ox, oy, x, y, '#f6e6b4');
-          else if (ripple < -0.65) setPx(ox, oy, x, y, '#d9bf77');
+          const ripple = Math.sin(x * 0.45 + y * 0.95);
+          if (ripple > 0.55) setPx(ox, oy, x, y, '#f5e6b8');
+          else if (ripple < -0.55) setPx(ox, oy, x, y, '#e3cc8c');
           const r = Math.sin(x * 9.1 + y * 73.3) * 9876.54;
-          if (r - Math.floor(r) > 0.88) setPx(ox, oy, x, y, '#cbb066');
+          if (r - Math.floor(r) > 0.92) setPx(ox, oy, x, y, '#d8be7b');
         }
       }
     });
@@ -1426,12 +1427,68 @@ export class TextureAtlas {
       }
     });
 
-    const texture = new THREE.CanvasTexture(canvas);
+    // v8.7.0: Per-Tile Clamped HD 64x64 Smooth Painterly Upscaling Pipeline (1024x1024 Atlas)
+    // Upscaling each 16x16 tile individually guarantees ZERO neighbor-tile color bleed while making
+    // all voxel surfaces 4x smoother, cleaner, and painterly with Linear + Trilinear Mipmap filtering.
+    const hdSize = this.HD_TILE_SIZE;
+    const hdCanvas = document.createElement('canvas');
+    hdCanvas.width = this.ATLAS_COLS * hdSize;
+    hdCanvas.height = this.ATLAS_ROWS * hdSize;
+    const hdCtx = hdCanvas.getContext('2d')!;
+    hdCtx.imageSmoothingEnabled = true;
+    hdCtx.imageSmoothingQuality = 'high';
+
+    const tileTmp = document.createElement('canvas');
+    tileTmp.width = this.TILE_SIZE;
+    tileTmp.height = this.TILE_SIZE;
+    const tileCtx = tileTmp.getContext('2d')!;
+    tileCtx.imageSmoothingEnabled = false;
+
+    for (let row = 0; row < this.ATLAS_ROWS; row++) {
+      for (let col = 0; col < this.ATLAS_COLS; col++) {
+        const sx = col * this.TILE_SIZE;
+        const sy = row * this.TILE_SIZE;
+        tileCtx.clearRect(0, 0, this.TILE_SIZE, this.TILE_SIZE);
+        tileCtx.drawImage(canvas, sx, sy, this.TILE_SIZE, this.TILE_SIZE, 0, 0, this.TILE_SIZE, this.TILE_SIZE);
+
+        const dx = col * hdSize;
+        const dy = row * hdSize;
+        hdCtx.drawImage(tileTmp, 0, 0, this.TILE_SIZE, this.TILE_SIZE, dx, dy, hdSize, hdSize);
+      }
+    }
+
+    // Subtle 64x64 organic fine-grain polish on key natural terrain tiles (Row 0: grass, dirt, stone, sand)
+    const addFineGrain = (col: number, row: number, strength: number) => {
+      const dx = col * hdSize;
+      const dy = row * hdSize;
+      const imgData = hdCtx.getImageData(dx, dy, hdSize, hdSize);
+      const data = imgData.data;
+      for (let py = 0; py < hdSize; py++) {
+        for (let px = 0; px < hdSize; px++) {
+          const i = (py * hdSize + px) * 4;
+          if (data[i + 3] < 200) continue;
+          const n = Math.sin(px * 12.9898 + py * 78.233 + col * 37.0) * 43758.5453;
+          const delta = ((n - Math.floor(n)) - 0.5) * strength;
+          data[i] = Math.max(0, Math.min(255, data[i] + delta));
+          data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + delta));
+          data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + delta));
+        }
+      }
+      hdCtx.putImageData(imgData, dx, dy);
+    };
+    addFineGrain(0, 0, 7); // grass_top
+    addFineGrain(2, 0, 8); // dirt
+    addFineGrain(3, 0, 7); // stone
+    addFineGrain(5, 0, 6); // sand
+    addFineGrain(6, 0, 8); // gravel
+    addFineGrain(8, 0, 4); // snow
+
+    const texture = new THREE.CanvasTexture(hdCanvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    texture.magFilter = THREE.NearestFilter;
-    texture.minFilter = THREE.NearestMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
     texture.generateMipmaps = true;
-    texture.anisotropy = 4;
+    texture.anisotropy = 8;
     texture.wrapS = THREE.ClampToEdgeWrapping;
     texture.wrapT = THREE.ClampToEdgeWrapping;
     texture.needsUpdate = true;
@@ -1451,9 +1508,9 @@ export class TextureAtlas {
     }
     const tileW = 1.0 / this.ATLAS_COLS;
     const tileH = 1.0 / this.ATLAS_ROWS;
-    // Half-texel padding inset to prevent neighbor tile bleeding
-    const padX = 0.5 / (this.ATLAS_COLS * this.TILE_SIZE);
-    const padY = 0.5 / (this.ATLAS_ROWS * this.TILE_SIZE);
+    // Safe 1.5-texel padding inset in 1024x1024 HD space to prevent bilinear/mipmap neighbor tile bleeding
+    const padX = 1.5 / (this.ATLAS_COLS * this.HD_TILE_SIZE);
+    const padY = 1.5 / (this.ATLAS_ROWS * this.HD_TILE_SIZE);
 
     const uMin = coords[0] * tileW + padX;
     const vMin = 1.0 - (coords[1] + 1) * tileH + padY;

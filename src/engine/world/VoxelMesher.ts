@@ -831,13 +831,13 @@ export class VoxelMesher {
               const isSolid = (bx: number, by: number, bz: number) => VoxelMesher.isSolidOpaque(getBlockRaw(bx, by, bz).type);
 
               if (isSolid(x - 1, y, z) || isSolid(x + 1, y, z) || isSolid(x, y, z - 1) || isSolid(x, y, z + 1)) {
-                shoreFactor = 1.0;
+                shoreFactor = 0.92; // Actual shoreline bank contact -> organic seafoam ribbon
+              } else if (isSolid(x - 1, y, z - 1) || isSolid(x + 1, y, z - 1) || isSolid(x - 1, y, z + 1) || isSolid(x + 1, y, z + 1)) {
+                shoreFactor = 0.68; // Corner shore transition
               } else if (isSolid(x, y - 1, z)) {
-                shoreFactor = 0.88;
+                shoreFactor = 0.36; // Shallow turquoise water bed (clear water, no full-tile foam)
               } else if (isSolid(x - 1, y - 1, z) || isSolid(x + 1, y - 1, z) || isSolid(x, y - 1, z - 1) || isSolid(x, y - 1, z + 1)) {
-                shoreFactor = 0.72;
-              } else if (isSolid(x - 2, y, z) || isSolid(x + 2, y, z) || isSolid(x, y, z - 2) || isSolid(x, y, z + 2)) {
-                shoreFactor = 0.45;
+                shoreFactor = 0.22;
               }
 
               const causticFactor = Math.max(0.0, 1.0 - depthCount / 5.0);

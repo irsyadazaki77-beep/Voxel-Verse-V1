@@ -180,18 +180,20 @@ export class VoxelWorld {
           int nClass = int(vMaterialClass + 0.5);
           vec2 bUv = fract(vLocalUv);
           vec3 worldBump = vec3(0.0);
-          if (nClass == 2) { // STONE micro-relief & mortar
-            float n1 = sin(bUv.x * 25.13 + vWorldPos.z * 3.0) * cos(bUv.y * 25.13 + vWorldPos.x * 3.0);
-            worldBump = vec3(n1 * 0.055, sin(bUv.y * 25.13) * 0.04, cos(bUv.y * 31.4) * 0.055);
-          } else if (nClass == 3) { // WOOD grain & plank grooves
-            float grain = sin(bUv.y * 37.7 + sin(bUv.x * 6.28) * 1.4) * 0.05;
-            worldBump = vec3(grain * 0.5, grain * 0.5, grain);
-          } else if (nClass == 0 || nClass == 1) { // SOIL / GRASS micro-grit
-            float grit = sin(vWorldPos.x * 16.0 + vWorldPos.z * 14.0) * cos(vWorldPos.z * 18.0);
-            worldBump = vec3(grit * 0.04, grit * 0.025, grit * 0.04);
+          if (nClass == 2) { // STONE subtle strata micro-relief
+            float n1 = (puddleNoise2D(vWorldPos.xz * 4.5 + vWorldPos.y * 2.1) - 0.5) * 0.045;
+            float n2 = (puddleNoise2D(vWorldPos.xy * 5.2 + vWorldPos.z * 3.1) - 0.5) * 0.045;
+            worldBump = vec3(n1, n2 * 0.5, n2);
+          } else if (nClass == 3) { // WOOD smooth grain
+            float grain = sin(bUv.y * 28.0 + puddleNoise2D(bUv * 6.0) * 2.2) * 0.032;
+            worldBump = vec3(grain * 0.4, grain * 0.4, grain);
+          } else if (nClass == 0 || nClass == 1) { // SOIL / SAND / GRASS soft organic micro-relief
+            float g1 = (puddleNoise2D(vWorldPos.xz * 5.5) - 0.5) * 0.032;
+            float g2 = (puddleNoise2D(vWorldPos.xz * 11.0 + 13.7) - 0.5) * 0.018;
+            worldBump = vec3(g1 + g2, (g1 - g2) * 0.4, g2 - g1);
           } else if (nClass == 4) { // METAL brushed sheen
-            float brush = sin(bUv.x * 50.0) * 0.03;
-            worldBump = vec3(brush, brush * 0.35, brush * 0.5);
+            float brush = sin(bUv.x * 42.0) * 0.022;
+            worldBump = vec3(brush, brush * 0.3, brush * 0.4);
           }
           // Project bump tangentially to vWorldNormal so vertical walls & ceilings never distort along their normal
           vec3 tangentBump = worldBump - vWorldNormal * dot(worldBump, vWorldNormal);
@@ -221,14 +223,14 @@ export class VoxelWorld {
         float variation = (h - 0.5) * 0.04;
         diffuseColor.rgb *= (1.0 + variation);
 
-        // Subtle crisp voxel block edge definition (distance-faded to prevent distant moiré shimmering)
+        // Subtle soft voxel block edge definition (distance-faded to keep surfaces ultra-smooth)
         float camDistColor = length(cameraPosition - vWorldPos);
-        float borderFade = 1.0 - smoothstep(18.0, 56.0, camDistColor);
+        float borderFade = 1.0 - smoothstep(14.0, 42.0, camDistColor);
         float detailFadeColor = 1.0 - smoothstep(22.0, 68.0, camDistColor);
         vec2 cellUv = fract(vLocalUv);
         vec2 edgeDist = min(cellUv, 1.0 - cellUv);
-        float borderLine = 1.0 - smoothstep(0.0, 0.035, min(edgeDist.x, edgeDist.y));
-        diffuseColor.rgb *= (1.0 - borderLine * 0.055 * borderFade);
+        float borderLine = 1.0 - smoothstep(0.0, 0.025, min(edgeDist.x, edgeDist.y));
+        diffuseColor.rgb *= (1.0 - borderLine * 0.024 * borderFade);
 
         // MaterialClass Properties Resolver
         float roughnessVal = 0.82;
@@ -616,6 +618,25 @@ export class VoxelWorld {
         uniform float uWaterQuality;
         uniform float uCloudShadowDrift;
 
+        // v8.7.0: Organic 2D Value Noise & FBM for Silky-Smooth Seafoam (zero checkerboard artifacts!)
+        float waterValueNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = fract(sin(dot(i, vec2(127.1, 311.7))) * 43758.5453);
+          float b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(127.1, 311.7))) * 43758.5453);
+          float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+          float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        float waterFoamFBM(vec2 p) {
+          float v = 0.0;
+          v += 0.62 * waterValueNoise(p);
+          v += 0.38 * waterValueNoise(p * 2.13 + vec2(4.7, 2.3));
+          return v;
+        }
+
         // v8.2.0: Organic Multi-Cell Raindrop Splash Rings on Water Surface (zero square-grid artifacts)
         float waterRainRing(vec2 xz, float time, float scale) {
           vec2 p = xz * scale;
@@ -742,36 +763,38 @@ export class VoxelWorld {
             waterBodyColor += mix(uSunColor, vec3(0.35, 0.95, 0.88), 0.5) * causticLattice * shallowCaustic * 0.28;
           }
           
-          // Shoreline Foam & Dynamic Wave Surge (Smooth distance field in G channel)
+          // Shoreline Foam & Dynamic Wave Surge (v8.7.0: Smooth organic FBM seafoam, zero checkerboard dots)
           #ifdef USE_COLOR
           float shoreProximity = vColor.g;
           #else
           float shoreProximity = 0.0;
           #endif
-          float shoreWave = sin(vWorldPosition.x * 2.2 + vWorldPosition.z * 1.8 - uTime * 2.8) * 0.5 + 0.5;
-          float foamBand = smoothstep(0.58 + shoreWave * 0.22, 1.0, shoreProximity);
-          float bubbleNoise = sin(vWorldPosition.x * 14.0 + uTime * 2.5) * cos(vWorldPosition.z * 14.0 - uTime * 2.2);
-          foamBand *= smoothstep(-0.25, 0.75, bubbleNoise);
+          float foamFlow = waterFoamFBM(vWorldPosition.xz * 1.45 + vec2(uTime * 0.38, -uTime * 0.28));
+          float foamDetail = waterFoamFBM(vWorldPosition.xz * 3.4 - vec2(uTime * 0.55, uTime * 0.42));
+          float shoreWave = sin(vWorldPosition.x * 1.3 + vWorldPosition.z * 1.1 - uTime * 2.1 + foamFlow * 2.5) * 0.5 + 0.5;
+          float foamEdge = smoothstep(0.66, 0.96, shoreProximity);
+          float foamBand = foamEdge * smoothstep(0.36, 0.72, foamFlow * 0.65 + foamDetail * 0.35 + shoreWave * 0.22);
           
-          // Ultra-shallow wet edge tint
-          float shallowWetEdge = smoothstep(0.40, 0.95, shoreProximity);
-          waterBodyColor = mix(waterBodyColor, mix(uWaterBaseColor, vec3(0.35, 0.85, 0.95), 0.45), shallowWetEdge * 0.5);
+          // Ultra-shallow crystal turquoise tint
+          float shallowWetEdge = smoothstep(0.25, 0.92, shoreProximity);
+          waterBodyColor = mix(waterBodyColor, mix(uWaterBaseColor, vec3(0.32, 0.84, 0.92), 0.42), shallowWetEdge * 0.45);
           
-          // Composite Water Color with Fresnel Reflection and Foam
-          vec3 compositeWater = mix(waterBodyColor, skyReflection, fresnel * 0.84);
-          vec3 seafoamColor = vec3(0.92, 0.97, 1.0);
-          compositeWater = mix(compositeWater, seafoamColor, foamBand * 0.88);
+          // Composite Water Color with Fresnel Reflection and Organic Seafoam
+          vec3 compositeWater = mix(waterBodyColor, skyReflection, fresnel * 0.82);
+          vec3 seafoamColor = vec3(0.93, 0.98, 1.0);
+          compositeWater = mix(compositeWater, seafoamColor, foamBand * 0.72);
           compositeWater += specularStreak;
           
           // Cloud shadow approximation on water surface
           float wCloudShadow = smoothstep(0.35, 0.75, sin(vWorldPosition.x * 0.016 + uCloudShadowDrift) * cos(vWorldPosition.z * 0.016 + uCloudShadowDrift * 0.8));
           compositeWater *= (1.0 - wCloudShadow * 0.14);
           
-          diffuseColor.rgb = mix(diffuseColor.rgb, compositeWater, 0.90);
+          // Pure seamless procedural water surface (prevents tiled atlas seams between water blocks)
+          diffuseColor.rgb = compositeWater;
           
           // Depth- and Fresnel-based transparency
-          float baseAlpha = mix(0.46, 0.94, depthAbsorption);
-          diffuseColor.a = clamp(baseAlpha + fresnel * (1.0 - baseAlpha) + foamBand * 0.35, 0.0, 0.98);
+          float baseAlpha = mix(0.42, 0.92, depthAbsorption);
+          diffuseColor.a = clamp(baseAlpha + fresnel * (1.0 - baseAlpha) + foamBand * 0.28, 0.0, 0.96);
         }
         `
       );
