@@ -539,16 +539,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }}
           className="absolute inset-0 z-40 bg-black/40 backdrop-blur-[2px] hidden md:flex flex-col items-center justify-center cursor-pointer select-none animate-fade-in"
         >
-          <div className="bg-[#0c0e14]/90 border border-sky-400/40 p-6 rounded-3xl shadow-2xl text-center space-y-3 max-w-sm pointer-events-auto">
-            <div className="w-12 h-12 mx-auto rounded-2xl bg-sky-500/20 border border-sky-400 flex items-center justify-center text-sky-400 text-xl font-bold animate-bounce">
-              🎮
-            </div>
-            <h3 className="text-base font-black uppercase tracking-wider text-white">Klik Layar Untuk Bergerak</h3>
-            <p className="text-xs text-white/70 leading-relaxed">
-              Klik di mana saja pada layar untuk mengaktifkan kendali kamera dan karakter. Gunakan <kbd className="px-1.5 py-0.5 bg-white/10 rounded font-mono text-sky-300 font-bold">WASD</kbd> untuk jalan & <kbd className="px-1.5 py-0.5 bg-white/10 rounded font-mono text-sky-300 font-bold">Space</kbd> untuk lompat.
+          <div className="bg-[#0e1015]/94 border border-amber-500/25 p-6 rounded-xl shadow-2xl text-center space-y-3 max-w-sm pointer-events-auto">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-amber-200">Klik Layar Untuk Bergerak</h3>
+            <p className="text-xs text-stone-300 leading-relaxed">
+              Klik di mana saja pada layar untuk mengaktifkan kendali kamera dan karakter. Gunakan <kbd className="px-1.5 py-0.5 bg-white/10 rounded font-mono text-amber-300 font-semibold">WASD</kbd> untuk jalan & <kbd className="px-1.5 py-0.5 bg-white/10 rounded font-mono text-amber-300 font-semibold">Space</kbd> untuk lompat.
             </p>
-            <div className="pt-1 text-[11px] font-mono text-sky-400 font-bold uppercase tracking-widest animate-pulse">
-              [ Klik Layar Untuk Mulai ]
+            <div className="pt-1 text-[11px] font-mono text-amber-300/90 font-semibold uppercase tracking-widest">
+              Klik di mana saja untuk mulai
             </div>
           </div>
         </div>

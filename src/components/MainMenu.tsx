@@ -399,16 +399,16 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
         {/* Realtime Stylized Voxel Diorama Background */}
         <MenuVoxelDiorama />
 
-        {/* Ambient Dark Gradient on Left for Pristine UI Contrast */}
-        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-r from-[#04060c]/95 via-[#060812]/85 lg:via-[#060812]/70 to-transparent w-full lg:w-[52%] h-full" />
+        {/* Ambient Dark Vignette on Left for Crisp Readability without Hiding Diorama */}
+        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-r from-[#090a0d]/92 via-[#0b0d12]/72 to-transparent w-full lg:w-[50%] h-full" />
 
         {/* Top Header Branding & Version Tag */}
         <div className="relative z-10 flex items-center justify-between px-6 lg:px-12 pt-6">
           <VoxelVerseLogo size="md" variant="full" />
 
-          <div className="flex items-center gap-3">
-            <span className="text-[9px] font-mono px-2 py-0.5 text-white/40 border border-white/10 rounded-full font-bold">
-              v0.9.1
+          <div className="flex items-center gap-2.5">
+            <span className="text-[10px] font-mono px-2.5 py-1 text-amber-200/80 bg-[#12141a]/85 border border-amber-500/25 rounded-md font-semibold tracking-wider">
+              NUSANTARA EDITION · v8.4
             </span>
           </div>
         </div>
@@ -453,75 +453,76 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
               </div>
             )}
 
-            {/* Main Navigation Card */}
+            {/* Main Navigation Card — Carved Obsidian & Antique Gold */}
             {viewState === 'main' && (
-              <div className="bg-[#070a12]/70 backdrop-blur-3xl rounded-3xl border border-white/5 p-7 shadow-2xl space-y-5 animate-fade-in relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-sky-500/5 to-transparent pointer-events-none" />
-                
-                <div className="space-y-1.5 text-left relative z-10">
+              <div className="bg-[#0e1015]/88 backdrop-blur-xl rounded-xl border border-amber-500/20 p-6 sm:p-7 shadow-[0_24px_60px_rgba(0,0,0,0.65)] space-y-5 animate-fade-in relative overflow-hidden">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent pointer-events-none" />
+
+                <div className="space-y-1 text-left relative z-10 pb-1 border-b border-white/8">
                   <VoxelVerseLogo size="lg" variant="full" />
+                  <p className="text-xs text-stone-400 pt-1">
+                    Jelajahi kepulauan voxel, bangun kerajaan adat, dan taklukkan penjaga purba.
+                  </p>
                 </div>
 
                 <div className="space-y-2.5 pt-1 relative z-10">
                   {/* Primary Continue / Play Button */}
                   <button
                     onClick={handleContinue}
-                    className="group relative w-full py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white rounded-2xl font-black text-sm uppercase tracking-wider shadow-xl shadow-sky-500/20 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.98] hover:-translate-y-1 hover:shadow-sky-500/40 overflow-hidden"
+                    className="group w-full py-3.5 bg-gradient-to-b from-[#e0b865] to-[#b88933] hover:from-[#ecc574] hover:to-[#c9983d] text-[#14110b] rounded-lg font-extrabold text-sm uppercase tracking-wider shadow-[0_6px_20px_rgba(212,168,83,0.22)] border border-amber-300/40 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
                   >
-                    <Play className="w-4 h-4 fill-white transition-transform group-hover:scale-110 group-hover:translate-x-0.5" />
+                    <Play className="w-4 h-4 fill-[#14110b]" />
                     <span>Continue Game</span>
-                    {/* Subtle Sweep Effect */}
-                    <div className="absolute inset-0 -translate-x-[150%] group-hover:translate-x-[150%] transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12" />
                   </button>
 
                   {/* Singleplayer Realms */}
                   <button
                     onClick={() => setViewState('worlds')}
-                    className="group w-full py-3.5 bg-white/5 hover:bg-white/10 text-white/90 hover:text-white rounded-2xl font-bold text-sm border border-white/10 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] hover:-translate-y-0.5 shadow-lg shadow-black/20"
+                    className="group w-full py-3 bg-[#161922] hover:bg-[#1d212d] text-stone-100 rounded-lg font-semibold text-sm border border-white/10 hover:border-amber-500/30 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
                   >
-                    <Compass className="w-4 h-4 text-sky-400 transition-transform group-hover:rotate-45" />
+                    <Compass className="w-4 h-4 text-amber-400" />
                     <span>Singleplayer Realms</span>
                   </button>
 
-                   {/* Multiplayer */}
+                  {/* Multiplayer */}
                   <button
                     onClick={() => setViewState('multiplayer')}
-                    className="group w-full py-3.5 bg-emerald-950/30 hover:bg-emerald-900/50 text-emerald-300 rounded-2xl font-bold text-sm border border-emerald-500/20 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] hover:-translate-y-0.5 shadow-lg shadow-black/20"
+                    className="group w-full py-3 bg-[#161922] hover:bg-[#1d212d] text-stone-100 rounded-lg font-semibold text-sm border border-white/10 hover:border-emerald-400/35 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
                   >
-                    <Globe className="w-4 h-4 text-emerald-400 transition-transform group-hover:rotate-12" />
+                    <Globe className="w-4 h-4 text-emerald-400" />
                     <span>Multiplayer</span>
                   </button>
 
                   {/* Nusantara Heritage Mode */}
                   <button
                     onClick={onEnterHeritageMode}
-                    className="group w-full py-3.5 bg-sky-950/35 hover:bg-sky-900/50 text-sky-300 rounded-2xl font-bold text-sm border border-sky-400/20 transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 active:scale-[0.98] hover:-translate-y-0.5 shadow-lg shadow-black/20"
+                    className="group w-full py-3 bg-[#161922] hover:bg-[#1d212d] text-amber-200 rounded-lg font-semibold text-sm border border-amber-500/20 hover:border-amber-400/40 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
                   >
-                    <Compass className="w-4 h-4 text-sky-400 transition-transform group-hover:rotate-45" />
-                    <span className="tracking-wide">Nusantara Heritage Mode</span>
+                    <Scroll className="w-4 h-4 text-amber-400" />
+                    <span>Nusantara Heritage Mode</span>
                   </button>
 
-                  {/* Settings, Credits & Updates */}
-                  <div className="grid grid-cols-3 gap-2.5 pt-1">
+                  {/* Settings, Updates & Credits */}
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/8">
                     <button
                       onClick={() => setShowSettingsModal(true)}
-                      className="group py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-2xl font-bold text-xs border border-white/5 transition-all duration-300 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] hover:-translate-y-0.5"
+                      className="py-2.5 bg-white/[0.04] hover:bg-white/[0.09] text-stone-300 hover:text-white rounded-lg font-medium text-xs border border-white/8 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <SettingsIcon className="w-3.5 h-3.5 transition-transform group-hover:rotate-90" />
+                      <SettingsIcon className="w-3.5 h-3.5 text-stone-400" />
                       <span>Settings</span>
                     </button>
                     <button
                       onClick={() => setShowChangelogModal(true)}
-                      className="group py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-2xl font-bold text-xs border border-white/5 transition-all duration-300 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] hover:-translate-y-0.5"
+                      className="py-2.5 bg-white/[0.04] hover:bg-white/[0.09] text-stone-300 hover:text-white rounded-lg font-medium text-xs border border-white/8 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <History className="w-3.5 h-3.5 transition-transform group-hover:-translate-y-0.5" />
+                      <History className="w-3.5 h-3.5 text-stone-400" />
                       <span>Updates</span>
                     </button>
                     <button
                       onClick={() => setViewState('credits')}
-                      className="group py-3 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white rounded-2xl font-bold text-xs border border-white/5 transition-all duration-300 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] hover:-translate-y-0.5"
+                      className="py-2.5 bg-white/[0.04] hover:bg-white/[0.09] text-stone-300 hover:text-white rounded-lg font-medium text-xs border border-white/8 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <Scroll className="w-3.5 h-3.5 transition-transform group-hover:-translate-y-0.5" />
+                      <Scroll className="w-3.5 h-3.5 text-stone-400" />
                       <span>Credits</span>
                     </button>
                   </div>

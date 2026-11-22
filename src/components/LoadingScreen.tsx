@@ -133,15 +133,15 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
           </div>
         ) : (
           /* Stage Progress Bar */
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <div className="flex justify-between text-xs font-mono">
-              <span className="text-sky-300 uppercase font-bold">{stageName}</span>
-              <span className="text-white/70">{Math.round(progressPercent)}%</span>
+              <span className="text-amber-300 uppercase font-semibold tracking-wider">{stageName}</span>
+              <span className="text-stone-300">{Math.round(progressPercent)}%</span>
             </div>
 
-            <div className="w-full h-2.5 bg-white/5 rounded-full p-0.5 border border-white/10 overflow-hidden">
+            <div className="w-full h-2 bg-white/5 rounded-md p-0.5 border border-amber-500/20 overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(56,189,248,0.5)]"
+                className="h-full bg-gradient-to-r from-[#b88933] via-[#e0b865] to-[#f3d488] rounded-sm transition-all duration-300"
                 style={{ width: `${Math.max(4, Math.min(100, progressPercent))}%` }}
               ></div>
             </div>
@@ -150,8 +150,8 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
       </div>
 
       {/* Bottom Tip */}
-      <div className="text-center text-xs text-white/40 font-mono min-h-[24px]">
-        💡 <span className="text-white/60">Tip:</span> {GAME_TIPS[tipIndex]}
+      <div className="text-center text-xs text-stone-400 font-mono min-h-[24px]">
+        <span className="text-amber-400/90 font-semibold">Tip:</span> {GAME_TIPS[tipIndex]}
       </div>
     </div>
   );

@@ -11,6 +11,26 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '8.4.0',
+    date: '2026-11-22',
+    title: 'Nusantara Carved Obsidian & Antique Gold Frontend Overhaul: Merombak Main Menu, Pause Menu, Loading Screen & Overlay dari UI generik menjadi antarmuka RPG Nusantara yang bersih dan kohesif',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Identitas Visual Carved Obsidian & Antique Gold (index.css, MainMenu.tsx)',
+        items: [
+          'Mengganti palet neon-cyan generik dan kartu rounded-3xl dengan tema Obsidian Basalt (#0e1015) + Antique Gold (#d4a853), tombol taktil ber-bevel, serta hierarki tipografi yang bersih tanpa emoji berlebih.'
+        ]
+      },
+      {
+        category: '2. Penyempurnaan Pause Menu, Loading Screen & Pointer Overlay (PauseMenu.tsx, LoadingScreen.tsx, GameCanvas.tsx)',
+        items: [
+          'Mengganti seluruh emoji mentah (🎮, ⚙, 🌐, ▶, 💡) dengan ikon Lucide yang konsisten, menghapus animasi bounce/pulse yang mengganggu, dan menyelaraskan progress bar serta overlay klik-layar dengan tema emas Nusantara.'
+        ]
+      }
+    ]
+  },
+  {
     version: '8.3.0',
     date: '2026-11-22',
     title: 'Lively Nusantara Wildlife & Crisp Texture Polish: Kawanan Satwa Nusantara (Cap 34 + Herd/Flock Spawning), Tekstur Kayu/Bata/Pinus Ber-Bevel, dan Mipmap Anisotropy Anti-Shimmer',
