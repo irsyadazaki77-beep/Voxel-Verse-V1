@@ -568,10 +568,18 @@ const HUDVitalsBars = React.memo(() => {
       if (levelTextRef.current) levelTextRef.current.innerText = `Lv. ${stats.level}`;
 
       if (oxygenContainerRef.current) {
-        if (stats.oxygen < stats.maxOxygen) {
+        const rt = (window as any).__voxelRuntime;
+        const isSubmerged = !!(rt?.player?.isEyesInWater) || stats.oxygen < stats.maxOxygen;
+        if (isSubmerged) {
           oxygenContainerRef.current.style.display = 'flex';
-          if (oxygenRef.current) oxygenRef.current.style.width = `${(stats.oxygen / stats.maxOxygen) * 100}%`;
-          if (oxygenTextRef.current) oxygenTextRef.current.innerText = `${Math.round(stats.oxygen)}%`;
+          const oxyPct = Math.max(0, Math.min(100, (stats.oxygen / Math.max(1, stats.maxOxygen)) * 100));
+          if (oxygenRef.current) oxygenRef.current.style.width = `${oxyPct}%`;
+          const depthMeters = rt?.player ? Math.max(1, Math.round(28 - rt.player.position.y)) : 1;
+          if (oxygenTextRef.current) {
+            oxygenTextRef.current.innerText = rt?.player?.isEyesInWater
+              ? `${Math.round(oxyPct)}% · ${depthMeters}m`
+              : `${Math.round(oxyPct)}%`;
+          }
         } else {
           oxygenContainerRef.current.style.display = 'none';
         }
@@ -581,23 +589,23 @@ const HUDVitalsBars = React.memo(() => {
 
   return (
     <div className="flex flex-col items-center gap-1 w-full max-w-md pointer-events-auto">
-      {/* Oxygen Bar (only when underwater) */}
+      {/* Sapphire Diving & Oxygen Bar (shown whenever diving underwater or regenerating oxygen) */}
       <div
-        className="w-full px-3 py-1 rounded-full bg-slate-950/80 border border-sky-400/30 items-center justify-between gap-2 hidden"
+        className="w-full px-3.5 py-1 rounded-lg bg-[#0a101c]/92 border border-sky-400/35 items-center justify-between gap-2.5 hidden shadow-lg"
         ref={oxygenContainerRef}
       >
-        <div className="flex items-center gap-1 text-[10px] font-semibold text-sky-300">
-          <Wind className="w-3 h-3" />
-          <span>Oksigen</span>
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-sky-300 shrink-0">
+          <Wind className="w-3 h-3 text-sky-400" />
+          <span>Oksigen Selam</span>
         </div>
-        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-          <div className="h-full bg-sky-400 rounded-full transition-all" ref={oxygenRef} style={{ width: '100%' }} />
+        <div className="flex-1 h-1.5 bg-sky-950/90 rounded-full overflow-hidden border border-sky-400/20">
+          <div className="h-full bg-gradient-to-r from-blue-500 to-sky-300 rounded-full transition-all duration-150" ref={oxygenRef} style={{ width: '100%' }} />
         </div>
-        <span className="text-[10px] font-mono tabular-nums text-sky-300" ref={oxygenTextRef}>100%</span>
+        <span className="text-[10px] font-mono tabular-nums text-sky-200 shrink-0" ref={oxygenTextRef}>100%</span>
       </div>
 
-      {/* Unified Minimalist Vitals Pill (Health · Hunger · Stamina) */}
-      <div className="grid grid-cols-3 gap-3 w-full px-3.5 py-1.5 rounded-full bg-slate-950/75 border border-white/10 shadow-lg">
+      {/* Unified Minimalist Vitals Bar (Health · Hunger · Stamina) — Sapphire Slate */}
+      <div className="grid grid-cols-3 gap-3 w-full px-3.5 py-1.5 rounded-lg bg-[#0a101c]/88 border border-sky-400/20 shadow-lg">
         {/* Health */}
         <div className="voxel-panel-subtle !bg-transparent !border-0 !shadow-none flex items-center gap-1.5 transition-opacity duration-500">
           <Heart className="w-3 h-3 text-rose-400 fill-rose-400 shrink-0" />
@@ -638,12 +646,12 @@ const HUDVitalsBars = React.memo(() => {
         </div>
       </div>
 
-      {/* Hairline XP Bar */}
+      {/* Hairline XP Bar (Sapphire Blue) */}
       <div className="w-full flex items-center gap-2 px-3">
-        <span className="text-[9px] font-mono tabular-nums font-semibold text-emerald-400 shrink-0" ref={levelTextRef}>Lv. 1</span>
+        <span className="text-[9px] font-mono tabular-nums font-semibold text-sky-400 shrink-0" ref={levelTextRef}>Lv. 1</span>
         <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
           <div
-            className="h-full bg-emerald-400 rounded-full transition-all duration-200"
+            className="h-full bg-sky-400 rounded-full transition-all duration-200"
             ref={xpRef}
             style={{ width: '0%' }}
           />
@@ -676,10 +684,10 @@ const HUDMultiPhaseBossBar: React.FC<{ activeBoss: BossCombatState }> = ({ activ
     }`}>
       <div className={`p-3.5 rounded-xl border backdrop-blur-md shadow-2xl relative overflow-hidden transition-all duration-300 ${
         activeBoss.enraged 
-          ? 'bg-rose-950/90 border-rose-500 shadow-[0_0_35px_rgba(244,63,94,0.45)]' 
+          ? 'bg-rose-950/92 border-rose-500 shadow-[0_0_35px_rgba(244,63,94,0.45)]' 
           : activeBoss.isShielded 
-            ? 'bg-cyan-950/90 border-cyan-500/80 shadow-[0_0_30px_rgba(6,182,212,0.35)]' 
-            : 'bg-zinc-950/90 border-amber-600/50 shadow-[0_0_25px_rgba(217,119,6,0.25)]'
+            ? 'bg-cyan-950/92 border-cyan-400/80 shadow-[0_0_30px_rgba(6,182,212,0.35)]' 
+            : 'bg-[#0a101c]/94 border-sky-400/45 shadow-[0_0_25px_rgba(37,99,235,0.30)]'
       }`}>
         {/* Top Header: Boss Name & Phase Badge */}
         <div className="flex items-center justify-between mb-1.5">
@@ -692,7 +700,7 @@ const HUDMultiPhaseBossBar: React.FC<{ activeBoss: BossCombatState }> = ({ activ
                 ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
                 : activeBoss.isShielded 
                   ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : 'bg-blue-500/20 text-sky-300 border-sky-400/40'
             }`}>
               {activeBoss.phaseSubtitle || `FASE ${activeBoss.phase}`}
             </span>
@@ -704,10 +712,10 @@ const HUDMultiPhaseBossBar: React.FC<{ activeBoss: BossCombatState }> = ({ activ
               {[1, 2, 3].map((pNum) => (
                 <div
                   key={`boss-node-${pNum}`}
-                  className={`w-2.5 h-2.5 rounded-full border transition-all ${
+                  className={`w-2.5 h-2.5 rounded-sm border transition-all ${
                     activeBoss.phase >= pNum 
-                      ? activeBoss.enraged ? 'bg-rose-500 border-rose-300 shadow-[0_0_8px_#f43f5e]' : 'bg-amber-400 border-amber-200 shadow-[0_0_6px_#fbbf24]' 
-                      : 'bg-zinc-800 border-zinc-700'
+                      ? activeBoss.enraged ? 'bg-rose-500 border-rose-300 shadow-[0_0_8px_#f43f5e]' : 'bg-sky-400 border-sky-200 shadow-[0_0_6px_#38bdf8]' 
+                      : 'bg-slate-800 border-slate-700'
                   }`}
                 />
               ))}
@@ -911,14 +919,14 @@ const HUDWeaponSkillWidget: React.FC = () => {
       <button
         onClick={handleTrigger}
         title={skill ? `${skill.name} [R]` : 'Jurus Pusaka [R]'}
-        className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+        className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
           isCooldown
-            ? 'bg-slate-950/80 border-white/10 opacity-65'
-            : 'bg-slate-900/90 hover:bg-slate-800 border-amber-400/40 text-amber-300 active:scale-95'
+            ? 'bg-[#0a101c]/85 border-white/10 opacity-65'
+            : 'bg-[#10192b]/95 hover:bg-[#162238] border-sky-400/40 text-sky-300 active:scale-95'
         }`}
       >
         {isCooldown && (
-          <div className="absolute inset-0 bg-black/80 rounded-xl flex items-center justify-center text-[10px] font-mono tabular-nums font-bold text-amber-300 z-20">
+          <div className="absolute inset-0 bg-black/80 rounded-lg flex items-center justify-center text-[10px] font-mono tabular-nums font-bold text-sky-300 z-20">
             {skillState.cooldownSeconds}s
           </div>
         )}
@@ -2013,17 +2021,17 @@ export const HUD: React.FC<HUDProps> = ({
 
             return (
               <div className="flex flex-col items-center gap-1.5 w-full max-w-[480px] pointer-events-auto">
-                {/* 1. Expandable Contextual Pusaka & Vehicle Action Row */}
+                {/* 1. Expandable Contextual Pusaka & Vehicle Action Row — Sapphire Blue Identity */}
                 {hasSpecialContext && !pusakaCardMinimized && (
-                  <div className="w-full rounded-xl bg-slate-950/95 border border-amber-400/35 px-3 py-2 shadow-xl flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between border-b border-white/10 pb-1">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300">
+                  <div className="w-full rounded-xl bg-[#0a101c]/95 border border-sky-400/30 px-3 py-2 shadow-xl flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between border-b border-sky-400/15 pb-1">
+                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-sky-300">
                         ✦ Aksi Pusaka & Kendaraan Kontekstual
                       </span>
                       <button
                         onClick={() => setPusakaCardMinimized(true)}
                         title="Lipat Panel Pusaka [B]"
-                        className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/15 text-[9px] font-mono text-zinc-300 cursor-pointer"
+                        className="px-2 py-0.5 rounded bg-sky-500/10 hover:bg-sky-500/20 text-[9px] font-mono text-sky-200 cursor-pointer"
                       >
                         ▾ Lipat [B]
                       </button>
@@ -2475,8 +2483,8 @@ export const HUD: React.FC<HUDProps> = ({
         <div className="flex items-center gap-2 max-w-[98vw]">
           <HUDWeaponSkillWidget />
 
-          {/* Minimalist Hotbar (1-9) — Solid Matte Obsidian for 60 FPS GPU Compositing */}
-          <div className="flex items-center gap-1 p-1.5 rounded-2xl bg-slate-950/92 border border-white/10 shadow-xl pointer-events-auto overflow-x-auto">
+          {/* Minimalist Hotbar (1-9) — Architectural Sapphire Slate for 60 FPS GPU Compositing */}
+          <div className="flex items-center gap-1 p-1.5 rounded-xl bg-[#0a101c]/94 border border-sky-400/25 shadow-xl pointer-events-auto overflow-x-auto">
           {hotbar.map((slot, idx) => {
             const isActive = idx === activeHotbarIndex;
             const itemDef = slot ? ITEM_DEFS[slot.itemId] : null;

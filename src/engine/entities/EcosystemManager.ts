@@ -229,6 +229,21 @@ export class EcosystemManager {
 
     const stability = WorldStabilitySystem.stability;
 
+    // v9.0.0: Coastal & Underwater Marine Ecosystem Priority
+    // When the player is diving, swimming, or walking along the coast (y <= 36), actively spawn schools of tropical fish
+    if (playerPos[1] <= 36 && Math.random() < 0.52) {
+      const schoolCount = 4 + Math.floor(Math.random() * 3); // 4-6 schooling fish
+      const schoolRadius = 10.0 + Math.random() * 14.0;
+      const sxBase = Math.floor(playerPos[0] + Math.cos(angle) * schoolRadius);
+      const szBase = Math.floor(playerPos[2] + Math.sin(angle) * schoolRadius);
+      for (let i = 0; i < schoolCount; i++) {
+        const ox = Math.round((Math.random() - 0.5) * 5);
+        const oz = Math.round((Math.random() - 0.5) * 5);
+        spawnCallback('glowfin', [sxBase + ox, spawnY, szBase + oz]);
+      }
+      return;
+    }
+
     // 15% chance to attempt spawning a Mythic Nusantara creature when conditions match
     if (Math.random() < 0.25) {
       const mythicKeys = Object.keys(CREATURE_REGISTRY).filter((k) => CREATURE_REGISTRY[k].isMythic);

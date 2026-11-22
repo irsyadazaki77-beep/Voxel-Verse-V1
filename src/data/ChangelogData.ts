@@ -11,6 +11,28 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '9.0.0',
+    date: '2026-11-22',
+    title: '3D Viewmodel & Dynamic Torch Light, Unified Sapphire Modals, 3D Combat Damage Sprites & Underwater Marine Ecosystem',
+    type: 'major',
+    changes: [
+      {
+        category: '1. First-Person Viewmodel 3D Detail & Cahaya Obor Dinamis (FirstPersonViewmodel.ts)',
+        items: [
+          'Merombak lengan first-person menjadi Explorer Forearm 3D dengan Sapphire Bracer & Hand Cuff, model 3D detail khusus untuk Pickaxe, Axe, Sword, Spear, Keris Luk-5, Shield, Torch, dan Lantern.',
+          'Memetakan UV 6 sisi dari 64x64 HD TextureAtlas untuk semua blok yang dipegang di tangan serta menambahkan Dynamic Handheld PointLight dengan flame flicker real-time.'
+        ]
+      },
+      {
+        category: '2. Konsistensi Total UI Biru Safir, 3D Damage Popups & Biota Laut Hidup (MahakaryaNusantaraModal.tsx, HUD.tsx, EntityManager.ts, EcosystemManager.ts)',
+        items: [
+          'Menyatukan panel Mahakarya Nusantara, Vitals, Boss Bar, dan Pusaka Dock ke identitas Sapphire & Cobalt Blue dengan tata letak bebas tumpang-tindih di atas hotbar.',
+          'Menambahkan 3D Floating Damage Number Sprites & Scale-Punch Hit Feedback saat menyerang musuh, indikator Oksigen & Kedalaman Selam real-time, serta kawanan ikan tropis (schooling glowfin) yang berenang di kolom air.'
+        ]
+      }
+    ]
+  },
+  {
     version: '8.8.0',
     date: '2026-11-22',
     title: 'HD 64x64 Smooth Textures, Seamless Horizon LOD & Fluid Gameplay Polish',

@@ -23,6 +23,11 @@ export interface FloatingText {
   position: THREE.Vector3;
   color: string;
   life: number; // 0 to 1
+  sprite?: THREE.Sprite;
+  vx?: number;
+  vy?: number;
+  vz?: number;
+  isCrit?: boolean;
 }
 
 export interface GroundItem {
@@ -708,14 +713,21 @@ export class EntityManager {
       (creatureId, pos) => {
         const def = CREATURE_REGISTRY[creatureId];
         if (!def) return;
-        const spawnY = world.getSpawnHeight(pos[0], pos[2]);
+        const groundY = world.getSpawnHeight(pos[0], pos[2]);
+        const isAquatic = creatureId === 'glowfin' || def.modelType === 'glowfin';
+        // Only spawn aquatic fish if the target column is actual water below sea level (SEA_LEVEL = 28)
+        if (isAquatic && groundY >= 27) return;
+        const spawnY = isAquatic
+          ? Math.min(26.6, Math.max(groundY + 1.0, groundY + 1.2 + Math.random() * Math.max(1.0, 26.5 - groundY)))
+          : groundY;
+        const rot = Math.random() * Math.PI * 2;
         this.spawnEntity({
-          id: `${creatureId}_${Date.now()}_${Math.floor(Math.random() * 100)}`,
+          id: `${creatureId}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
           type: def.role === 'PREDATOR' ? 'hostile' : 'passive',
           name: def.name,
           position: [pos[0], spawnY, pos[2]],
-          velocity: [0, 0, 0],
-          rotation: Math.random() * Math.PI * 2,
+          velocity: isAquatic ? [Math.sin(rot) * def.baseSpeed, 0, Math.cos(rot) * def.baseSpeed] : [0, 0, 0],
+          rotation: rot,
           health: def.baseHealth,
           maxHealth: def.baseHealth,
           damage: def.baseDamage,
@@ -974,37 +986,73 @@ export class EntityManager {
       }
 
       if (!isStationaryAtDistance) {
-        // Apply Gravity & Movement
-        state.velocity[1] -= 18.0 * dt; // Gravity
-        state.position[0] += state.velocity[0] * dt;
-        state.position[1] += state.velocity[1] * dt;
-        state.position[2] += state.velocity[2] * dt;
-
-        // Ground Snap Collision (Voxel Aware)
+        const isAquaticEntity = state.modelType === 'glowfin' || id.startsWith('glowfin');
         const cx = Math.floor(state.position[0]);
         const cz = Math.floor(state.position[2]);
         const groundY = world.getSpawnHeight(cx, cz);
-        
-        if (state.position[1] <= groundY) {
-          state.position[1] = groundY;
-          if (state.velocity[1] < 0) state.velocity[1] = 0;
-        }
 
-        // Wall Collision X
-        if (state.velocity[0] !== 0) {
+        if (isAquaticEntity && groundY < 27.2) {
+          // v9.0.0: 3D Underwater Schooling Boids & Smooth Cruising Physics
+          const swimSpd = Math.max(1.4, state.speed || 2.0);
+          if (Math.hypot(state.velocity[0], state.velocity[2]) < 0.4 || (this.frameCount + id.length * 13) % 90 === 0) {
+            state.rotation += (Math.random() - 0.5) * 1.1;
+          }
+          // Steer away from shallow beach walls so fish stay in water
+          const aheadX = Math.floor(state.position[0] + Math.sin(state.rotation) * 2.2);
+          const aheadZ = Math.floor(state.position[2] + Math.cos(state.rotation) * 2.2);
+          if (world.getSpawnHeight(aheadX, aheadZ) >= 27.0) {
+            state.rotation += Math.PI * 0.75 + (Math.random() - 0.5) * 0.4;
+          }
+          state.velocity[0] = Math.sin(state.rotation) * swimSpd;
+          state.velocity[2] = Math.cos(state.rotation) * swimSpd;
+          state.velocity[1] = Math.sin(now * 0.003 + id.length) * 0.35;
+
+          state.position[0] += state.velocity[0] * dt;
+          state.position[1] += state.velocity[1] * dt;
+          state.position[2] += state.velocity[2] * dt;
+
+          const minSwimY = groundY + 0.85;
+          const maxSwimY = 26.8;
+          if (state.position[1] < minSwimY) state.position[1] = minSwimY;
+          if (state.position[1] > maxSwimY) state.position[1] = maxSwimY;
+        } else {
+          // Apply Standard Terrestrial Gravity & Movement
+          state.velocity[1] -= 18.0 * dt; // Gravity
+          state.position[0] += state.velocity[0] * dt;
+          state.position[1] += state.velocity[1] * dt;
+          state.position[2] += state.velocity[2] * dt;
+
+          if (state.position[1] <= groundY) {
+            state.position[1] = groundY;
+            if (state.velocity[1] < 0) state.velocity[1] = 0;
+          }
+
+          // Wall Collision X
+          if (state.velocity[0] !== 0) {
             const blockX = world.getBlock(Math.floor(state.position[0] + Math.sign(state.velocity[0]) * 0.4), Math.floor(state.position[1] + 0.5), cz);
             if (blockX !== 0) {
-                state.velocity[0] = 0;
+              state.velocity[0] = 0;
             }
-        }
-        
-        // Wall Collision Z
-        if (state.velocity[2] !== 0) {
+          }
+
+          // Wall Collision Z
+          if (state.velocity[2] !== 0) {
             const blockZ = world.getBlock(cx, Math.floor(state.position[1] + 0.5), Math.floor(state.position[2] + Math.sign(state.velocity[2]) * 0.4));
             if (blockZ !== 0) {
-                state.velocity[2] = 0;
+              state.velocity[2] = 0;
             }
+          }
         }
+      }
+
+      // v9.0.0: Combat Hit Scale-Punch Squash & Stretch Feedback
+      if ((state as any).hitPunchTimer && (state as any).hitPunchTimer > 0) {
+        (state as any).hitPunchTimer = Math.max(0, (state as any).hitPunchTimer - dt);
+        const punchT = (state as any).hitPunchTimer / 0.15;
+        const baseScale = typeof state.scale === 'number' ? state.scale : state.isBaby ? 0.5 : 1.0;
+        const xzPunch = baseScale * (1.0 + punchT * 0.14);
+        const yPunch = baseScale * (1.0 - punchT * 0.10);
+        mesh.scale.set(xzPunch, yPunch, xzPunch);
       }
 
       // Update 3D Mesh (with Phase 2 Aerial Levitation for Naga Baruklinting / Antaboga)
@@ -1092,12 +1140,34 @@ export class EntityManager {
       }
     }
 
-    // Update Floating Damage Texts
+    // Update 3D Floating Damage Number Sprites
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       const ft = this.floatingTexts[i];
-      ft.life -= dt * 1.5;
-      ft.position.y += dt * 0.8;
+      ft.life -= dt * 1.25;
+      if (ft.vx !== undefined && ft.vy !== undefined && ft.vz !== undefined) {
+        ft.vy -= 4.2 * dt;
+        ft.position.x += ft.vx * dt;
+        ft.position.y += ft.vy * dt;
+        ft.position.z += ft.vz * dt;
+      } else {
+        ft.position.y += dt * 0.9;
+      }
+      if (ft.sprite) {
+        ft.sprite.position.copy(ft.position);
+        const mat = ft.sprite.material as THREE.SpriteMaterial;
+        mat.opacity = Math.max(0, Math.min(1, ft.life * 1.4));
+        const pop = ft.life > 0.82 ? 1.0 + (1.0 - ft.life) * 2.2 : 1.0;
+        const baseW = ft.isCrit ? 1.65 : 1.25;
+        const baseH = ft.isCrit ? 0.48 : 0.36;
+        ft.sprite.scale.set(baseW * pop, baseH * pop, 1);
+      }
       if (ft.life <= 0) {
+        if (ft.sprite) {
+          this.entityGroup.remove(ft.sprite);
+          const mat = ft.sprite.material as THREE.SpriteMaterial;
+          if (mat.map) mat.map.dispose();
+          mat.dispose();
+        }
         this.floatingTexts.splice(i, 1);
       }
     }
@@ -1148,16 +1218,17 @@ export class EntityManager {
     state.velocity[1] += isCritical ? 5.5 : 3.8;
     state.velocity[2] += knockDir.z * force;
 
-    // Zero-allocation Visual 3.0 Hit Flash, Flinch & Stagger
+    // Zero-allocation Visual 3.0 Hit Flash, Flinch, Stagger & v9.0.0 Scale Punch
+    (state as any).hitPunchTimer = 0.15;
     const hitRig = mesh.userData.rig as CreatureRig | undefined;
     if (hitRig) {
       CreatureAnimationEngine.triggerHit(hitRig, isCritical, isStaggered);
     }
 
-    // Spawn Floating Damage Text (Golden for Crits, Crimson for Normal)
-    const floatText = isCritical ? `CRIT! -${Math.round(damage)}` : `-${Math.round(damage)}`;
-    const floatColor = isCritical ? '#fbbf24' : '#ff4444';
-    this.addFloatingText(floatText, new THREE.Vector3(...state.position).add(new THREE.Vector3(0, 1.8, 0)), floatColor);
+    // Spawn 3D Floating Damage Number Sprite (Sapphire/Gold for Crits, Crisp Coral-Red for Normal)
+    const floatText = isCritical ? `⚡ CRIT! -${Math.round(damage)}` : `-${Math.round(damage)}`;
+    const floatColor = isCritical ? '#38bdf8' : '#fb7185';
+    this.addFloatingText(floatText, new THREE.Vector3(...state.position).add(new THREE.Vector3(0, 1.75, 0)), floatColor);
 
     const killed = state.health <= 0;
     if (killed) {
@@ -1470,12 +1541,53 @@ export class EntityManager {
   }
 
   public addFloatingText(text: string, position: THREE.Vector3, color: string = '#ffffff'): void {
+    const isCrit = text.includes('CRIT') || text.includes('STAGGER');
+    let sprite: THREE.Sprite | undefined;
+
+    if (typeof document !== 'undefined') {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 72;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.font = isCrit ? '900 34px "JetBrains Mono", monospace' : '800 30px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // Crisp dark midnight-navy outline for readability against any sky or terrain
+        ctx.lineWidth = 7;
+        ctx.strokeStyle = '#070b14';
+        ctx.strokeText(text, 128, 36);
+        ctx.fillStyle = color;
+        ctx.fillText(text, 128, 36);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const mat = new THREE.SpriteMaterial({
+          map: tex,
+          transparent: true,
+          depthTest: false,
+          depthWrite: false,
+        });
+        sprite = new THREE.Sprite(mat);
+        sprite.position.copy(position);
+        sprite.scale.set(isCrit ? 1.65 : 1.25, isCrit ? 0.48 : 0.36, 1);
+        sprite.renderOrder = 999;
+        this.entityGroup.add(sprite);
+      }
+    }
+
     this.floatingTexts.push({
       id: `ft_${Date.now()}_${Math.random()}`,
       text,
       position: position.clone(),
       color,
       life: 1.0,
+      sprite,
+      vx: (Math.random() - 0.5) * 1.1,
+      vy: isCrit ? 2.6 : 2.1,
+      vz: (Math.random() - 0.5) * 1.1,
+      isCrit,
     });
   }
 

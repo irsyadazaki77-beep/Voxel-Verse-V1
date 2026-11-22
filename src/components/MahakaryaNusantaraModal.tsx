@@ -88,12 +88,12 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
       )}
 
       {state.photoModeActive && state.photoFrame === 'UKIRAN_MAJAPAHIT' && (
-        <div className="fixed inset-3 border-2 border-amber-500/60 rounded-2xl pointer-events-none z-20 flex flex-col justify-between p-3">
-          <div className="flex justify-between text-[11px] font-mono text-amber-300/90">
-            <span>VOXELVERSE · WARISAN MAJAPAHIT</span>
+        <div className="fixed inset-3 border-2 border-sky-400/50 rounded-xl pointer-events-none z-20 flex flex-col justify-between p-3">
+          <div className="flex justify-between text-[11px] font-mono text-sky-300/90">
+            <span>VOXELVERSE · WARISAN NUSANTARA</span>
             <span className="tabular-nums">FOV {state.photoFov}°</span>
           </div>
-          <div className="flex justify-between text-[11px] font-mono text-amber-300/90">
+          <div className="flex justify-between text-[11px] font-mono text-sky-300/90">
             <span>BUSANA: {state.activeWardrobeName}</span>
             <span>KHODAM: {state.activeKhodamName || 'Nonaktif'}</span>
           </div>
@@ -101,18 +101,18 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
       )}
 
       {state.photoModeActive && state.photoFrame === 'WAYANG_KLASIK' && (
-        <div className="fixed inset-4 border border-amber-300/50 rounded-xl pointer-events-none z-20 flex items-end justify-center pb-4">
-          <span className="px-3 py-1 rounded bg-slate-950/90 border border-amber-400/40 text-xs font-serif italic text-amber-200">
+        <div className="fixed inset-4 border border-sky-300/40 rounded-xl pointer-events-none z-20 flex items-end justify-center pb-4">
+          <span className="px-3 py-1 rounded bg-[#0a101c]/92 border border-sky-400/35 text-xs font-serif italic text-sky-200">
             “Lakon Mahakarya Bumi Nusantara”
           </span>
         </div>
       )}
 
-      {/* Minimal Top Badge (Never blocks center 3D viewport) */}
+      {/* Minimal Top Badge (Never blocks center 3D viewport — Sapphire Blue Identity) */}
       <div className="w-full flex justify-center pt-3 pointer-events-none z-30">
-        <div className="px-4 py-1.5 rounded-xl bg-[#0b0e17] border border-amber-500/35 text-xs text-slate-200 flex items-center gap-3 pointer-events-auto shadow-xl">
-          <span className="font-bold text-amber-300 whitespace-nowrap">
-            Mahakarya Nusantara v4.8
+        <div className="px-4 py-1.5 rounded-xl bg-[#0a101c]/95 border border-sky-400/30 text-xs text-slate-200 flex items-center gap-3 pointer-events-auto shadow-xl">
+          <span className="font-bold text-sky-300 whitespace-nowrap">
+            Mahakarya Nusantara v9.0
           </span>
           <span className="text-slate-500" aria-hidden="true">·</span>
           <span className="text-slate-300 text-[11px] whitespace-nowrap">
@@ -128,21 +128,21 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
               }
               onClose();
             }}
-            className="ml-2 px-2.5 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap"
+            className="ml-2 px-2.5 py-0.5 rounded-lg bg-[#162238] hover:bg-[#1e2f4d] border border-sky-400/20 text-sky-100 text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap"
           >
             Tutup [ESC]
           </button>
         </div>
       </div>
 
-      {/* Unified Collapsible Bottom Control Dock (100% Unobstructed Center 3D Viewport) */}
-      <div className="w-full flex flex-col items-center pb-4 px-3 pointer-events-none z-30">
+      {/* Unified Collapsible Bottom Control Dock (Positioned above Vitals & Hotbar with pb-24 so it NEVER overlaps Hotbar) */}
+      <div className="w-full flex flex-col items-center pb-24 px-3 pointer-events-none z-30">
         <div className="w-full max-w-[940px] flex flex-col items-center pointer-events-auto">
           {/* Collapse / Expand Toggle Drawer Handle */}
           <div className="flex items-center gap-2 mb-1.5">
             <button
               onClick={() => setDockCollapsed((prev) => !prev)}
-              className="px-3.5 py-1 rounded-lg bg-[#0d111c] hover:bg-[#161c2e] border border-slate-700/80 text-[11px] font-medium text-amber-300 cursor-pointer transition-colors whitespace-nowrap shadow-lg"
+              className="px-3.5 py-1 rounded-lg bg-[#0a101c]/95 hover:bg-[#162238] border border-sky-400/30 text-[11px] font-medium text-sky-300 cursor-pointer transition-colors whitespace-nowrap shadow-lg"
             >
               {dockCollapsed ? '▴ Tampilkan Panel Mahakarya' : '▾ Sembunyikan Kontrol (Mode Zen)'}
             </button>
@@ -160,24 +160,24 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
                     );
                   }
                 }}
-                className="px-3.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] cursor-pointer transition-colors whitespace-nowrap shadow-lg"
+                className="px-3.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 border border-sky-400/40 text-white font-bold text-[11px] cursor-pointer transition-colors whitespace-nowrap shadow-lg"
               >
                 Potret Layar (PNG)
               </button>
             )}
           </div>
 
-          {/* Collapsible Dock Container (Solid high-contrast dark slate — zero backdrop-filter stall) */}
+          {/* Collapsible Dock Container (Architectural Sapphire Midnight Navy) */}
           {!dockCollapsed && (
-            <div className="w-full rounded-2xl bg-[#0b0e17] border border-slate-800 shadow-2xl p-4 text-slate-100">
+            <div className="w-full rounded-xl bg-[#0a101c]/96 border border-sky-400/25 shadow-2xl p-4 text-slate-100">
               {/* Segmented Tab Bar */}
-              <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-800/90 overflow-x-auto">
-                <div className="flex items-center gap-1 p-1 bg-[#131826] rounded-xl">
+              <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-sky-400/15 overflow-x-auto">
+                <div className="flex items-center gap-1 p-1 bg-[#10192b] rounded-lg border border-sky-400/15">
                   <button
                     onClick={() => setActiveTab('SAMUDRA_KERETA')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       activeTab === 'SAMUDRA_KERETA'
-                        ? 'bg-amber-500 text-slate-950'
+                        ? 'bg-blue-600 text-white shadow-sm'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
@@ -185,9 +185,9 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
                   </button>
                   <button
                     onClick={() => setActiveTab('GAMELAN_STUDIO')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       activeTab === 'GAMELAN_STUDIO'
-                        ? 'bg-amber-500 text-slate-950'
+                        ? 'bg-blue-600 text-white shadow-sm'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
@@ -195,9 +195,9 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
                   </button>
                   <button
                     onClick={() => setActiveTab('KHODAM_ARENA')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       activeTab === 'KHODAM_ARENA'
-                        ? 'bg-amber-500 text-slate-950'
+                        ? 'bg-blue-600 text-white shadow-sm'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
@@ -205,9 +205,9 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
                   </button>
                   <button
                     onClick={() => setActiveTab('BUSANA_FOTO')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       activeTab === 'BUSANA_FOTO'
-                        ? 'bg-amber-500 text-slate-950'
+                        ? 'bg-blue-600 text-white shadow-sm'
                         : 'text-slate-300 hover:text-white'
                     }`}
                   >
@@ -215,10 +215,10 @@ export const MahakaryaNusantaraModal: React.FC<MahakaryaNusantaraModalProps> = (
                   </button>
                   <button
                     onClick={() => setActiveTab('ERA_KEEMASAN')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                       activeTab === 'ERA_KEEMASAN'
-                        ? 'bg-emerald-400 text-slate-950'
-                        : 'text-emerald-300 hover:text-white'
+                        ? 'bg-sky-500 text-slate-950 shadow-sm'
+                        : 'text-sky-300 hover:text-white'
                     }`}
                   >
                     05. Era Keemasan v6.0
