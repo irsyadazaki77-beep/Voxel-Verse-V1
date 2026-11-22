@@ -11,6 +11,34 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '8.0.0',
+    date: '2026-11-22',
+    title: 'Nusantara Alive — Visual, Texture & Living Animation Overhaul: Eliminasi Bayangan Hitam Pekat, Hand-Crafted Pixel Art Textures, Wind-Sway Foliage, Open Scenic Spawn & Crisp RPG Hotbar Icons',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Perbaikan Pencahayaan PBR & Safe Open-Clearing Spawn (LightingEngine.ts, VoxelMesher.ts, SkyEnvironment.ts, SafeSpawnResolver.ts)',
+        items: [
+          'Menghilangkan triple-darkening di sisi dinding/bayangan (floor cahaya naik dari 0.16 → 0.50, AO minimum 0.74, ambient/hemisphere tropical sky bounce ditingkatkan) agar siang hari tampak terang, jernih, dan penuh warna.',
+          'Memperbaiki SafeSpawnResolver agar memindai lahan terbuka yang datar & cerah (slope <= 3 dalam 5×5) sehingga pemain tidak lagi spawn terjebak di celah batu gelap.'
+        ]
+      },
+      {
+        category: '2. Upgrade Tekstur Pixel-Art & Animasi Dunia Hidup (TextureAtlas.ts, VoxelWorld.ts, EnvironmentSystem.ts)',
+        items: [
+          'Merombak tekstur utama (Grass, Dirt, Stone, Cobblestone, Sand, Basalt, Oak Leaves) menjadi pixel-art Nusantara yang lebih cerah, berlapis, dan bertekstur tajam.',
+          'Menambahkan animasi angin tropis (vertex wind sway) pada seluruh dedaunan & vegetasi serta meningkatkan kepadatan partikel alami (kunang-kunang malam, debu cahaya surya siang, serpihan daun).'
+        ]
+      },
+      {
+        category: '3. Perbaikan HUD Overlap, Ikon Hotbar RPG & Pointer Lock Fallback (GameCanvas.tsx, HUD.tsx)',
+        items: [
+          'Mengganti singkatan 2 huruf di slot hotbar dengan ikon RPG visual yang tajam, mengunci MobileControls hanya pada perangkat mobile agar tidak menumpuk HUD desktop, serta menangani fallback klik-layar jika Pointer Lock dibatasi browser.'
+        ]
+      }
+    ]
+  },
+  {
     version: '7.5.0',
     date: '2026-11-21',
     title: 'World Diversity & Landform Overhaul: Gunung Berapi & Kaldera Lava, Gugusan Pulau Karst Raja Ampat, Pulau Melayang Aether, 3 Bioma Gua Bawah Tanah, Hutan Bambu/Kelapa/Rimba Raksasa & Perbaikan Populasi Desa/Candi',

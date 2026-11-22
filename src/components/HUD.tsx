@@ -23,7 +23,15 @@ import {
   Crosshair as CrosshairIcon,
   Flame,
   Volume2,
-  Activity
+  Activity,
+  Pickaxe,
+  Axe,
+  Sword,
+  Box,
+  Gem,
+  FlaskConical,
+  Leaf,
+  Hammer
 } from 'lucide-react';
 import { TelemetryStore, TelemetryData } from '../engine/ui/TelemetryStore';
 import { GameEventBus } from '../engine/events/GameEventBus';
@@ -1313,7 +1321,7 @@ export const HUD: React.FC<HUDProps> = ({
       )}
 
       {/* Top Bar (Telemetry on Left, Objective in Center, Minimalist Actions on Right) */}
-      <div className="flex justify-between items-start w-full relative z-20">
+      <div className="flex flex-wrap justify-between items-start gap-2 w-full relative z-20">
         {/* Left: Telemetry & Compact Objective */}
         {!zenHudMode ? (
           <div className="flex flex-col gap-2">
@@ -1436,8 +1444,8 @@ export const HUD: React.FC<HUDProps> = ({
 
         {/* Right: Unified Shortcut Dock (Dock Pintasan Terpadu) & Compass Radar */}
         {!zenHudMode && (
-          <div className="flex flex-col items-end gap-2 pointer-events-auto relative">
-            <div className="flex items-center gap-1 p-1 rounded-full bg-slate-950/92 border border-white/10 shadow-lg">
+          <div className="flex flex-col items-end gap-2 pointer-events-auto relative max-w-full">
+            <div className="flex flex-wrap items-center justify-end gap-0.5 p-1 rounded-full bg-slate-950/92 border border-white/10 shadow-lg max-w-full">
               {autoSaveState !== 'idle' && (
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-[10px] font-mono text-emerald-300 tabular-nums">
                   {autoSaveState === 'saving' ? 'Menyimpan...' : 'Tersimpan ✓'}
@@ -2500,11 +2508,26 @@ export const HUD: React.FC<HUDProps> = ({
               >
                 {slot && itemDef ? (
                   <div className="flex flex-col items-center justify-center w-full h-full p-0.5 relative">
-                    <div 
-                      className="w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-md flex items-center justify-center font-bold text-[9px] text-white" 
-                      style={{ backgroundColor: itemDef.iconColor }}
+                    <div
+                      className="w-6 h-6 sm:w-6.5 sm:h-6.5 rounded-lg flex items-center justify-center text-white shadow-inner border border-white/25"
+                      style={{
+                        background: `linear-gradient(145deg, ${itemDef.iconColor}, rgba(10,14,22,0.55))`,
+                      }}
                     >
-                      {itemDef.name.substring(0, 2).toUpperCase()}
+                      {(() => {
+                        const idLower = (itemDef.id + ' ' + itemDef.name).toLowerCase();
+                        if (idLower.includes('pickaxe') || idLower.includes('beliung')) return <Pickaxe className="w-3.5 h-3.5 drop-shadow" />;
+                        if (idLower.includes('axe') || idLower.includes('kapak')) return <Axe className="w-3.5 h-3.5 drop-shadow" />;
+                        if (idLower.includes('sword') || idLower.includes('keris') || idLower.includes('blade') || idLower.includes('spear')) return <Sword className="w-3.5 h-3.5 drop-shadow" />;
+                        if (idLower.includes('shield') || idLower.includes('perisai')) return <Shield className="w-3.5 h-3.5 drop-shadow" />;
+                        if (idLower.includes('torch') || idLower.includes('lantern') || idLower.includes('obor') || idLower.includes('lentera')) return <Flame className="w-3.5 h-3.5 text-amber-200 drop-shadow" />;
+                        if (idLower.includes('potion') || idLower.includes('jamu') || idLower.includes('elixir')) return <FlaskConical className="w-3.5 h-3.5 drop-shadow" />;
+                        if (idLower.includes('crystal') || idLower.includes('aether') || idLower.includes('gem') || idLower.includes('ore') || idLower.includes('pearl')) return <Gem className="w-3.5 h-3.5 drop-shadow" />;
+                        if (idLower.includes('meat') || idLower.includes('ration') || idLower.includes('rice') || idLower.includes('beras') || idLower.includes('food') || idLower.includes('bread') || idLower.includes('fish')) return <Utensils className="w-3.5 h-3.5 drop-shadow" />;
+                        if (idLower.includes('herb') || idLower.includes('leaf') || idLower.includes('seed') || idLower.includes('bamboo') || idLower.includes('spice')) return <Leaf className="w-3.5 h-3.5 drop-shadow" />;
+                        if (idLower.includes('hammer') || idLower.includes('bench') || idLower.includes('anvil')) return <Hammer className="w-3.5 h-3.5 drop-shadow" />;
+                        return <Box className="w-3.5 h-3.5 drop-shadow" />;
+                      })()}
                     </div>
 
                     {slot.count > 1 && (

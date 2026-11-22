@@ -9,7 +9,7 @@ import { WeatherState } from '../../types';
 
 export class SkyEnvironment {
   public scene: THREE.Scene;
-  public timeOfDay: number = 6.0; // 0 to 24 hours
+  public timeOfDay: number = 8.5; // 0 to 24 hours (v8.0.0: bright sunlit Nusantara morning on start)
   public timeScale: number = 0.05; // 1 real sec = 0.05 game hours
 
   public sunLight: THREE.DirectionalLight;
@@ -96,11 +96,11 @@ export class SkyEnvironment {
     this.sunLight.shadow.normalBias = 0.025;
     this.scene.add(this.sunLight);
 
-    // 2. Ambient & Hemisphere Light Fill
-    this.ambientLight = new THREE.AmbientLight(0xddeeff, 0.40);
+    // 2. Ambient & Hemisphere Light Fill (Bright tropical sky bounce so shaded walls stay crisp & vibrant)
+    this.ambientLight = new THREE.AmbientLight(0xe6f2ff, 0.56);
     this.scene.add(this.ambientLight);
 
-    this.hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x554433, 0.48);
+    this.hemiLight = new THREE.HemisphereLight(0x9ed8ff, 0x5f7d4c, 0.74);
     this.scene.add(this.hemiLight);
 
     // 3. Sun Orb (Voxel Stylized Diamond Box)

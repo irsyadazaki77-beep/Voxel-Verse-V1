@@ -98,6 +98,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [activeBossState, setActiveBossState] = useState<BossCombatState | null>(null);
   const [targetHitState, setTargetHitState] = useState<any | null>(null);
   const [isPointerLocked, setIsPointerLocked] = useState(false);
+  const [pointerPromptDismissed, setPointerPromptDismissed] = useState(false);
+
+  const safeRequestPointerLock = () => {
+    setPointerPromptDismissed(true);
+    try {
+      const maybePromise = (containerRef.current as any)?.requestPointerLock?.();
+      if (maybePromise && typeof maybePromise.catch === 'function') {
+        maybePromise.catch(() => {
+          // Graceful fallback in webview/iframe environments where Pointer Lock is restricted
+          setPointerPromptDismissed(true);
+        });
+      }
+    } catch {
+      setPointerPromptDismissed(true);
+    }
+  };
   const [showDebugMap, setShowDebugMap] = useState(false);
   const [touchTelemetry, setTouchTelemetry] = useState<TouchDebugData | null>(null);
   const [showTouchDebug, setShowTouchDebug] = useState<boolean>(SettingsManager.get().mobileControls.showTouchDebug);
@@ -510,16 +526,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         className="w-full h-full cursor-crosshair"
         onClick={() => {
           if (activeModal === 'none' && !isPointerLocked) {
-            containerRef.current?.requestPointerLock();
+            safeRequestPointerLock();
           }
         }}
       />
 
-      {/* Touch locked guidance overlay */}
-      {activeModal === 'none' && !isPointerLocked && isWorldLoaded && (
+      {/* Touch locked guidance overlay (gracefully dismissible if pointer lock is restricted) */}
+      {activeModal === 'none' && !isPointerLocked && !pointerPromptDismissed && isWorldLoaded && (
         <div
           onClick={() => {
-            containerRef.current?.requestPointerLock();
+            safeRequestPointerLock();
           }}
           className="absolute inset-0 z-40 bg-black/40 backdrop-blur-[2px] hidden md:flex flex-col items-center justify-center cursor-pointer select-none animate-fade-in"
         >
@@ -883,7 +899,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         />
       )}
 
-      {/* Mobile Input Controls Overlay */}
+      {/* Mobile Input Controls Overlay (strictly gated by isMobile to prevent desktop HUD overlap) */}
+      {isMobile && (
       <MobileControls
         isBlocked={activeModal !== 'none'}
         onTelemetryUpdate={setTouchTelemetry}
@@ -952,6 +969,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
         }}
       />
+      )}
 
       {/* Multitouch Telemetry Debug Overlay */}
       {showTouchDebug && (

@@ -109,6 +109,7 @@ export class VoxelWorld {
         attribute vec2 localUv;
         attribute vec4 tileRect;
         attribute float materialClass;
+        uniform float uTime;
         varying vec2 vLocalUv;
         varying vec4 vTileRect;
         varying vec3 vWorldPos;
@@ -123,6 +124,14 @@ export class VoxelWorld {
         vMaterialClass = materialClass;
         #include <begin_vertex>
         vec4 wPos = modelMatrix * vec4(transformed, 1.0);
+        // v8.0.0: Living Tropical Wind Sway on foliage (leaves, tall grass, flowers, rice stalks)
+        if (materialClass > 9.5 && materialClass < 10.5) {
+          float gust = sin(uTime * 2.1 + wPos.x * 0.42 + wPos.z * 0.31) * 0.065
+                     + cos(uTime * 3.6 + wPos.y * 0.8 + wPos.x * 0.7) * 0.028;
+          transformed.x += gust;
+          transformed.z += gust * 0.65;
+          wPos = modelMatrix * vec4(transformed, 1.0);
+        }
         vWorldPos = wPos.xyz;
         vWorldNormal = normalize((modelMatrix * vec4(objectNormal, 0.0)).xyz);
         `

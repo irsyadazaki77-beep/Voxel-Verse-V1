@@ -199,84 +199,97 @@ export class TextureAtlas {
       ctx.fillRect(ox, oy, 16, 16);
     };
 
-    // Procedural pixel tile designs:
-    // 1. Dirt
+    // Procedural pixel tile designs (v8.0.0 Vibrant Nusantara Hand-Crafted Pixel Art):
+    // 1. Dirt (Warm rich volcanic tropical soil with organic pebbles)
     drawTile(2, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#60422c');
+      fillBg(ox, oy, '#7b5538');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
           const r = Math.sin(x * 12.3 + y * 91.7) * 43758.5453;
-          const noise = (r - Math.floor(r));
-          if (noise > 0.75) setPx(ox, oy, x, y, '#4e3321');
-          else if (noise < 0.2) setPx(ox, oy, x, y, '#704e35');
+          const noise = r - Math.floor(r);
+          if (noise > 0.78) setPx(ox, oy, x, y, '#634229');
+          else if (noise < 0.22) setPx(ox, oy, x, y, '#916746');
+          else if ((x * 7 + y * 13) % 23 === 0) setPx(ox, oy, x, y, '#a68262');
         }
       }
     });
 
-    // 2. Grass Top
+    // 2. Grass Top (Lush vibrant sunlit Nusantara emerald turf with blade clusters)
     drawTile(0, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#4c8c36');
+      fillBg(ox, oy, '#58ab3c');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
           const r = Math.sin(x * 37.1 + y * 53.9) * 23421.631;
-          const noise = (r - Math.floor(r));
-          if (noise > 0.8) setPx(ox, oy, x, y, '#3e752b');
-          else if (noise < 0.25) setPx(ox, oy, x, y, '#5ba642');
+          const noise = r - Math.floor(r);
+          if (noise > 0.78) setPx(ox, oy, x, y, '#438d2b');
+          else if (noise < 0.28) setPx(ox, oy, x, y, '#6ec44b');
+          else if ((x * 5 + y * 11) % 19 === 0) setPx(ox, oy, x, y, '#86d65c');
         }
       }
     });
 
-    // 3. Grass Side (Grass top + dirt bottom)
+    // 3. Grass Side (Lush overhanging grass fringe + warm soil + subtle shadow lip)
     drawTile(1, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#60422c');
-      // dirt noise
+      fillBg(ox, oy, '#7b5538');
       for (let x = 0; x < 16; x++) {
         for (let y = 3; y < 16; y++) {
           const r = Math.sin(x * 12.3 + y * 91.7) * 43758.5453;
-          if (r - Math.floor(r) > 0.75) setPx(ox, oy, x, y, '#4e3321');
+          const n = r - Math.floor(r);
+          if (n > 0.76) setPx(ox, oy, x, y, '#634229');
+          else if (n < 0.18) setPx(ox, oy, x, y, '#916746');
         }
       }
-      // grass hanging blades
       for (let x = 0; x < 16; x++) {
-        const hang = 2 + Math.floor((Math.sin(x * 2.5) + 1) * 1.5);
+        const hang = 3 + Math.floor((Math.sin(x * 2.1 + 0.5) + 1) * 1.5);
         for (let y = 0; y <= hang; y++) {
-          setPx(ox, oy, x, y, (x + y) % 2 === 0 ? '#4c8c36' : '#3e752b');
+          if (y === 0) setPx(ox, oy, x, y, (x % 2 === 0) ? '#76cc52' : '#65ba44');
+          else if (y === hang) setPx(ox, oy, x, y, '#3f8328');
+          else setPx(ox, oy, x, y, (x + y) % 2 === 0 ? '#58ab3c' : '#4a9631');
         }
+        if (hang + 1 < 16) setPx(ox, oy, x, hang + 1, '#583923'); // soft contact shadow under grass lip
       }
     });
 
-    // 4. Stone
+    // 4. Stone (Clean layered limestone/andesite strata with highlights)
     drawTile(3, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#787c82');
-      for (let x = 0; x < 16; x++) {
-        for (let y = 0; y < 16; y++) {
+      fillBg(ox, oy, '#8d939c');
+      for (let y = 0; y < 16; y++) {
+        const band = (y % 4 === 0) ? '#818790' : (y % 4 === 2) ? '#979da6' : '#8d939c';
+        for (let x = 0; x < 16; x++) {
+          setPx(ox, oy, x, y, band);
           const r = Math.sin(x * 17.3 + y * 29.1) * 12345.67;
-          const noise = (r - Math.floor(r));
-          if (noise > 0.82) setPx(ox, oy, x, y, '#62666c');
-          else if (noise < 0.18) setPx(ox, oy, x, y, '#8c9096');
+          const noise = r - Math.floor(r);
+          if (noise > 0.84) setPx(ox, oy, x, y, '#6e747d');
+          else if (noise < 0.18) setPx(ox, oy, x, y, '#a6acb5');
         }
       }
     });
 
-    // 5. Cobblestone
+    // 5. Cobblestone (Hand-fitted rounded stones with bright bevels & soft mortar)
     drawTile(4, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#50545a');
+      fillBg(ox, oy, '#646971');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
-          const isBorder = (x % 5 === 0 || y % 5 === 0);
-          if (isBorder) setPx(ox, oy, x, y, '#383a3e');
-          else setPx(ox, oy, x, y, (x + y) % 2 === 0 ? '#72767d' : '#82878e');
+          const rowOffset = Math.floor(y / 5) % 2 === 0 ? 0 : 2;
+          const isMortar = ((x + rowOffset) % 5 === 0 || y % 5 === 0);
+          const isTopBevel = ((y % 5) === 1 && !isMortar);
+          if (isMortar) setPx(ox, oy, x, y, '#4a4e56');
+          else if (isTopBevel) setPx(ox, oy, x, y, '#a2a8b2');
+          else setPx(ox, oy, x, y, (x + y) % 2 === 0 ? '#858b94' : '#9197a0');
         }
       }
     });
 
-    // 6. Sand
+    // 6. Sand (Warm sunlit tropical beach sand with gentle wind ripples)
     drawTile(5, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#dfc578');
+      fillBg(ox, oy, '#edd796');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
+          const ripple = Math.sin(x * 0.55 + y * 1.15);
+          if (ripple > 0.65) setPx(ox, oy, x, y, '#f6e6b4');
+          else if (ripple < -0.65) setPx(ox, oy, x, y, '#d9bf77');
           const r = Math.sin(x * 9.1 + y * 73.3) * 9876.54;
-          if (r - Math.floor(r) > 0.8) setPx(ox, oy, x, y, '#cdb265');
+          if (r - Math.floor(r) > 0.88) setPx(ox, oy, x, y, '#cbb066');
         }
       }
     });
@@ -339,11 +352,13 @@ export class TextureAtlas {
       }
     });
     drawTile(12, 0, (c, ox, oy) => {
-      fillBg(ox, oy, '#33363b');
+      // Volcanic Basalt (readable slate columns with warm mineral highlights, not pitch black)
+      fillBg(ox, oy, '#525864');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
-          if (x % 4 === 0) setPx(ox, oy, x, y, '#222428');
-          else if ((x + y) % 5 === 0) setPx(ox, oy, x, y, '#464a52');
+          if (x % 4 === 0) setPx(ox, oy, x, y, '#3e434d');
+          else if (x % 4 === 1 && y % 3 !== 0) setPx(ox, oy, x, y, '#666e7d');
+          else if ((x + y) % 5 === 0) setPx(ox, oy, x, y, '#5c6370');
         }
       }
     });
@@ -399,15 +414,17 @@ export class TextureAtlas {
       }
     });
 
-    // 11. Oak Leaves
+    // 11. Oak Leaves (Lush sunlit clustered tropical canopy with bright leaf tips)
     drawTile(2, 1, (c, ox, oy) => {
-      fillBg(ox, oy, '#326c26');
+      fillBg(ox, oy, '#3f8a2e');
       for (let x = 0; x < 16; x++) {
         for (let y = 0; y < 16; y++) {
+          const cluster = Math.sin(x * 1.15) * Math.cos(y * 1.15);
           const r = Math.sin(x * 19.3 + y * 41.7) * 31415.92;
           const n = r - Math.floor(r);
-          if (n > 0.8) setPx(ox, oy, x, y, '#224e18');
-          else if (n < 0.3) setPx(ox, oy, x, y, '#488f36');
+          if (cluster > 0.35 || n < 0.22) setPx(ox, oy, x, y, '#64bd47');
+          else if (n < 0.34) setPx(ox, oy, x, y, '#7ed158');
+          else if (cluster < -0.45 || n > 0.82) setPx(ox, oy, x, y, '#2b631f');
         }
       }
     });

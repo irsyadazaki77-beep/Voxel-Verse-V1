@@ -200,10 +200,12 @@ export class LightingEngine {
     const bb = ((packed >> 8) & 0x0f) / 15.0;
     const sun = (((packed >> 12) & 0x0f) / 15.0) * sunIntensity;
 
-    // Combine sunlight (neutral) with colored block light (slightly boosted for vibrancy)
-    const r = Math.min(1.18, Math.max(0.16, Math.max(sun, br * 1.12) + br * 0.14));
-    const g = Math.min(1.18, Math.max(0.16, Math.max(sun, bg * 1.12) + bg * 0.14));
-    const b = Math.min(1.18, Math.max(0.16, Math.max(sun, bb * 1.12) + bb * 0.14));
+    // v8.0.0: Balanced PBR-friendly lighting curve (prevents triple-darkening under Three.js real-time shadows + SSAO)
+    // Shaded areas retain readable 0.50 bounce ambient while colored torch/lava/Aether/mushroom glow radiates up to 1.28.
+    const sunCurve = 0.50 + sun * 0.50;
+    const r = Math.min(1.28, Math.max(sunCurve, 0.42 + br * 0.78) + br * 0.14);
+    const g = Math.min(1.28, Math.max(sunCurve, 0.42 + bg * 0.78) + bg * 0.14);
+    const b = Math.min(1.28, Math.max(sunCurve, 0.42 + bb * 0.78) + bb * 0.14);
     return { r, g, b };
   }
 

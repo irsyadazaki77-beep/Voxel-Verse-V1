@@ -149,21 +149,20 @@ export class EnvironmentSystem implements GameSystem {
         particles.spawnWaterFoamSpray(player.position);
       }
 
-      // VoxelVerse v5.0.0: Contextual Nature Particles (Kunang-Kunang Malam, Debu Cahaya Fajar/Senja & Serpihan Daun Bioma)
+      // VoxelVerse v8.0.0: Lively Atmospheric Particles (Kunang-Kunang Malam, Debu Cahaya Siang/Fajar/Senja & Serpihan Daun Bioma)
       this.ambientMoteTimer += deltaTime;
-      if (this.ambientMoteTimer >= 0.36 && !player.isEyesInWater && (this.runtime.currentFps || 60) >= 42) {
+      if (this.ambientMoteTimer >= 0.20 && !player.isEyesInWater && (this.runtime.currentFps || 60) >= 35) {
         this.ambientMoteTimer = 0;
         const tod = sky.timeOfDay;
-        const isNightFireflyHours = tod >= 19.0 || tod <= 5.0;
-        const isGoldenHour = (tod >= 5.2 && tod <= 8.0) || (tod >= 16.0 && tod <= 19.0);
+        const isNightFireflyHours = tod >= 18.5 || tod <= 5.5;
         const weatherClear = !weather || weather.weather.type === 'clear' || weather.weather.type === 'rimba_mist';
 
-        if (weatherClear && (isNightFireflyHours || isGoldenHour)) {
+        if (weatherClear) {
           const angle = Math.random() * Math.PI * 2;
-          const dist = 3.0 + Math.random() * 10.5;
+          const dist = 2.5 + Math.random() * 11.5;
           EnvironmentSystem._tmpAtmosVec.set(
             player.position.x + Math.cos(angle) * dist,
-            player.position.y + 0.5 + Math.random() * 2.8,
+            player.position.y + 0.4 + Math.random() * 3.2,
             player.position.z + Math.sin(angle) * dist
           );
           particles.spawnFireflyOrSunMote(EnvironmentSystem._tmpAtmosVec, isNightFireflyHours);

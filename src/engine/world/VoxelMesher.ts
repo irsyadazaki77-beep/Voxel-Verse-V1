@@ -426,7 +426,7 @@ export class VoxelMesher {
   }
 
   private static aoToFactor(ao: number): number {
-    return 0.58 + (ao / 3.0) * 0.42;
+    return 0.74 + (ao / 3.0) * 0.26;
   }
 
   // Fast Block Property Checkers
@@ -687,7 +687,7 @@ export class VoxelMesher {
               x3 = d; y3 = v + h; z3 = u;     lu3x = 0; lu3y = h;
             }
 
-            const dirShade = isTop ? 1.0 : isBottom ? 0.68 : (isFront || isBack) ? 0.85 : 0.90;
+            const dirShade = isTop ? 1.0 : isBottom ? 0.78 : (isFront || isBack) ? 0.90 : 0.94;
             const f0 = VoxelMesher.aoToFactor(ao0) * dirShade;
             const f1 = VoxelMesher.aoToFactor(ao1) * dirShade;
             const f2 = VoxelMesher.aoToFactor(ao2) * dirShade;
