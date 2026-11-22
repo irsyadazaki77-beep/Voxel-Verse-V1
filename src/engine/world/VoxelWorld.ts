@@ -775,11 +775,11 @@ export class VoxelWorld {
       );
     };
 
-    // Wireframe block outline for targeted block (v8.5.0: sleek Antique-Gold outline)
+    // Wireframe block outline for targeted block (v8.6.0: sleek Sapphire Ice-Blue outline)
     const wireGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.003, 1.003, 1.003));
     this.highlightMesh = new THREE.LineSegments(
       wireGeo,
-      new THREE.LineBasicMaterial({ color: 0xe5be6e, linewidth: 2.0, transparent: true, opacity: 0.68 })
+      new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2.0, transparent: true, opacity: 0.72 })
     );
     this.highlightMesh.visible = false;
     this.worldGroup.add(this.highlightMesh);

@@ -11,6 +11,26 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '8.6.0',
+    date: '2026-11-22',
+    title: 'Architectural Sapphire & Cobalt Blue UI Identity: Antarmuka Biru Safir & Kobalt yang Tegas, Bersih Tanpa Warna Pelangi Campur-Aduk, dan Geometris',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Identitas Biru Safir & Kobalt Terpadu (index.css, MainMenu.tsx, PauseMenu.tsx, LoadingScreen.tsx)',
+        items: [
+          'Menyatukan seluruh permukaan UI ke palet Deep Midnight Navy (#0a101c) dan Royal Cobalt / Sapphire Blue (#2563eb / #38bdf8) dengan sudut geometris tegas (rounded-lg / rounded-xl) tanpa tombol warna-warni campur aduk.'
+        ]
+      },
+      {
+        category: '2. Penyempurnaan HUD Dock & Target Outline Biru (HUD.tsx, GameCanvas.tsx, VoxelWorld.ts)',
+        items: [
+          'Menyelaraskan dock tombol kanan atas HUD (Karakter, Peta, Mahakarya, Pintasan, Menu), progress bar, dan highlight blok target 3D ke aksen Sapphire Blue yang seragam dan rapi.'
+        ]
+      }
+    ]
+  },
+  {
     version: '8.5.0',
     date: '2026-11-22',
     title: 'Ultra Living Shaders & Silky-Smooth Gameplay Overhaul: Gelombang Angin Padang Rumput, Konveksi Magma Hidup, Grazing Sun Rim Light, Step-Up Eye Smoothing & Eliminasi Double-Tick Kamera',

@@ -1442,12 +1442,12 @@ export const HUD: React.FC<HUDProps> = ({
           )}
         </div>
 
-        {/* Right: Unified Shortcut Dock (Dock Pintasan Terpadu) & Compass Radar */}
+        {/* Right: Unified Shortcut Dock (Dock Pintasan Terpadu) & Compass Radar — Unified Sapphire Blue Identity */}
         {!zenHudMode && (
           <div className="flex flex-col items-end gap-2 pointer-events-auto relative max-w-full">
-            <div className="flex flex-wrap items-center justify-end gap-0.5 p-1 rounded-full bg-slate-950/92 border border-white/10 shadow-lg max-w-full">
+            <div className="flex flex-wrap items-center justify-end gap-1 p-1 rounded-lg bg-[#0a101c]/94 border border-sky-400/20 shadow-lg max-w-full">
               {autoSaveState !== 'idle' && (
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-[10px] font-mono text-emerald-300 tabular-nums">
+                <span className="px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-400/30 text-[10px] font-mono text-sky-300 tabular-nums">
                   {autoSaveState === 'saving' ? 'Menyimpan...' : 'Tersimpan ✓'}
                 </span>
               )}
@@ -1456,12 +1456,12 @@ export const HUD: React.FC<HUDProps> = ({
                 <button
                   onClick={onOpenCharacter}
                   title="Progresi Karakter, Skill Tree, Mastery & Blueprint [K]"
-                  className="px-2.5 py-1 rounded-full hover:bg-amber-500/15 text-[11px] font-medium text-amber-200 hover:text-amber-100 transition-colors cursor-pointer flex items-center gap-1"
+                  className="px-2.5 py-1 rounded-md hover:bg-sky-500/15 text-[11px] font-medium text-slate-200 hover:text-white transition-colors cursor-pointer flex items-center gap-1"
                 >
                   <span>Karakter</span>
-                  <kbd className="text-[9px] font-mono text-amber-400">K</kbd>
+                  <kbd className="text-[9px] font-mono text-sky-400">K</kbd>
                   {unspentProgPoints > 0 && (
-                    <span className="ml-0.5 px-1 py-0.2 rounded bg-amber-400 text-slate-950 text-[9px] font-mono font-bold tabular-nums">
+                    <span className="ml-0.5 px-1 py-0.2 rounded bg-sky-400 text-slate-950 text-[9px] font-mono font-bold tabular-nums">
                       +{unspentProgPoints}
                     </span>
                   )}
@@ -1472,10 +1472,10 @@ export const HUD: React.FC<HUDProps> = ({
                 <button
                   onClick={onToggleDebugMap}
                   title="Peta Dunia & Fast Travel Prasasti [M]"
-                  className="px-2.5 py-1 rounded-full hover:bg-white/10 text-[11px] font-medium text-zinc-200 hover:text-white transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap"
+                  className="px-2.5 py-1 rounded-md hover:bg-sky-500/15 text-[11px] font-medium text-slate-200 hover:text-white transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap"
                 >
                   <span>Peta</span>
-                  <kbd className="text-[9px] font-mono text-zinc-400">M</kbd>
+                  <kbd className="text-[9px] font-mono text-sky-400">M</kbd>
                 </button>
               )}
 
@@ -1485,34 +1485,34 @@ export const HUD: React.FC<HUDProps> = ({
                   setShowMahakaryaModal(prev => !prev);
                 }}
                 title="Pusat Mahakarya Nusantara: Kapal Selam, Kereta Uap, Studio Gamelan, Khodam & Busana [N]"
-                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap ${
                   showMahakaryaModal
-                    ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
-                    : 'hover:bg-amber-500/15 text-amber-200 hover:text-amber-100'
+                    ? 'bg-sky-500/25 text-sky-200 border border-sky-400/40'
+                    : 'hover:bg-sky-500/15 text-slate-200 hover:text-white'
                 }`}
               >
                 <span>Mahakarya</span>
-                <kbd className="text-[9px] font-mono text-amber-400">N</kbd>
+                <kbd className="text-[9px] font-mono text-sky-400">N</kbd>
               </button>
 
               {/* Unified Quick Dock Drawer Toggle */}
               <button
                 onClick={() => setShowQuickTools(prev => !prev)}
                 title="Dock Pintasan Terpadu: Jurnal [J], Mode Foto 3D [P], Mode Zen [H], Performa & Uji Boss"
-                className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
                   showQuickTools || isLockOnActive || settings.graphics.turboFpsMode || showProfiler || mahakaryaV48?.photoModeActive
                     ? 'bg-sky-500/20 text-sky-300'
-                    : 'hover:bg-white/10 text-zinc-300 hover:text-white'
+                    : 'hover:bg-sky-500/15 text-slate-200 hover:text-white'
                 }`}
               >
                 <span>Pintasan</span>
-                <span className="text-[9px] opacity-75">{showQuickTools ? '▴' : '▾'}</span>
+                <span className="text-[9px] text-sky-400">{showQuickTools ? '▴' : '▾'}</span>
               </button>
 
               <button 
                 onClick={onOpenPause}
                 title="Menu Utama [ESC]"
-                className="px-3 py-1 rounded-full bg-white/10 hover:bg-white/15 text-[11px] font-semibold text-white transition-colors cursor-pointer flex items-center gap-1"
+                className="px-2.5 py-1 rounded-md bg-[#162238] hover:bg-[#1e2f4d] border border-sky-400/20 text-[11px] font-semibold text-sky-100 transition-colors cursor-pointer flex items-center gap-1"
               >
                 <span>Menu</span>
               </button>

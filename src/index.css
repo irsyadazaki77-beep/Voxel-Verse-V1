@@ -6,28 +6,28 @@
     --font-mono: 'JetBrains Mono', monospace;
     --font-display: 'Cinzel', serif;
     
-    /* VoxelVerse v8.4.0 Nusantara Carved Obsidian & Antique Gold Design Tokens */
-    --vv-bg: #0a0b0e;
-    --vv-surface: #12141a;
-    --vv-elevated: #1a1d25;
-    --vv-border: rgba(212, 168, 83, 0.22);
-    --vv-border-subtle: rgba(255, 255, 255, 0.09);
+    /* VoxelVerse v8.6.0 Architectural Sapphire & Cobalt Blue Design Tokens */
+    --vv-bg: #070b12;
+    --vv-surface: #0c1320;
+    --vv-elevated: #121c2e;
+    --vv-border: rgba(56, 189, 248, 0.22);
+    --vv-border-subtle: rgba(148, 163, 184, 0.12);
     
     /* Semantic Colors */
-    --vv-primary: #d4a853; /* Antique Gold */
-    --vv-aether: #38bdf8; /* Aether Sky */
-    --vv-success: #10b981; /* Jade Emerald */
+    --vv-primary: #38bdf8; /* Sapphire Ice Blue */
+    --vv-aether: #60a5fa; /* Royal Cobalt */
+    --vv-success: #10b981; /* Emerald */
     --vv-warning: #f59e0b; /* Amber */
     --vv-danger: #ef4444; /* Crimson */
-    --vv-legendary: #f5cb75; /* Burnished Gold */
-    --vv-text-main: #f4f1ea;
-    --vv-text-muted: #9ca3af;
+    --vv-legendary: #7dd3fc; /* Ice Crystal */
+    --vv-text-main: #f1f5f9;
+    --vv-text-muted: #94a3b8;
 
     /* Legacy mapping for existing code */
-    --panel-bg: rgba(14, 16, 21, 0.94);
-    --panel-bg-subtle: rgba(22, 25, 33, 0.88);
+    --panel-bg: rgba(10, 16, 28, 0.94);
+    --panel-bg-subtle: rgba(16, 24, 40, 0.88);
     --panel-border: var(--vv-border);
-    --panel-border-glow: rgba(212, 168, 83, 0.35);
+    --panel-border-glow: rgba(56, 189, 248, 0.35);
 
     --slot-bg: rgba(7, 9, 14, 0.7);
     --slot-bg-hover: rgba(255, 255, 255, 0.1);

@@ -400,15 +400,15 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
         <MenuVoxelDiorama />
 
         {/* Ambient Dark Vignette on Left for Crisp Readability without Hiding Diorama */}
-        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-r from-[#090a0d]/92 via-[#0b0d12]/72 to-transparent w-full lg:w-[50%] h-full" />
+        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-r from-[#060a12]/94 via-[#080e1a]/75 to-transparent w-full lg:w-[50%] h-full" />
 
         {/* Top Header Branding & Version Tag */}
         <div className="relative z-10 flex items-center justify-between px-6 lg:px-12 pt-6">
           <VoxelVerseLogo size="md" variant="full" />
 
           <div className="flex items-center gap-2.5">
-            <span className="text-[10px] font-mono px-2.5 py-1 text-amber-200/80 bg-[#12141a]/85 border border-amber-500/25 rounded-md font-semibold tracking-wider">
-              NUSANTARA EDITION · v8.4
+            <span className="text-[10px] font-mono px-2.5 py-1 text-sky-200/90 bg-[#0c1320]/90 border border-sky-400/25 rounded-md font-semibold tracking-wider">
+              SAPPHIRE EDITION · v8.6
             </span>
           </div>
         </div>
@@ -428,24 +428,24 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
           <div className="w-full max-w-[460px] lg:max-w-[480px] space-y-4 my-auto">
             {/* Crash Recovery Prompt Banner */}
             {crashRecoveryData && (
-              <div className="bg-[#14110b]/92 border border-amber-500/35 p-4 rounded-xl backdrop-blur-xl shadow-xl text-center space-y-2 animate-fade-in">
-                <div className="flex items-center justify-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider">
+              <div className="bg-[#0b1322]/94 border border-sky-400/30 p-4 rounded-xl backdrop-blur-xl shadow-xl text-center space-y-2 animate-fade-in">
+                <div className="flex items-center justify-center gap-2 text-sky-300 font-bold text-xs uppercase tracking-wider">
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   Unsaved Recovery Session Detected
                 </div>
-                <p className="text-[11px] text-white/70">
+                <p className="text-[11px] text-slate-300">
                   A previous session ('{crashRecoveryData.name}') was closed unexpectedly. Would you like to recover your progress?
                 </p>
                 <div className="flex gap-2 pt-1 justify-center">
                   <button
                     onClick={handleRecoverSession}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black rounded-xl font-bold text-xs cursor-pointer shadow-md transition-all active:scale-[0.98] hover:-translate-y-0.5"
+                    className="px-4 py-2 bg-[#2563eb] hover:bg-[#3b82f6] text-white rounded-lg font-bold text-xs cursor-pointer shadow-md transition-all"
                   >
                     Recover Progress
                   </button>
                   <button
                     onClick={handleDiscardRecovery}
-                    className="px-4 py-2 bg-white/5 hover:bg-white/15 text-white/80 rounded-xl font-bold text-xs cursor-pointer transition-all active:scale-[0.98] hover:-translate-y-0.5"
+                    className="px-4 py-2 bg-white/5 hover:bg-white/15 text-slate-300 rounded-lg font-bold text-xs cursor-pointer transition-all"
                   >
                     Discard
                   </button>
@@ -453,14 +453,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
               </div>
             )}
 
-            {/* Main Navigation Card — Carved Obsidian & Antique Gold */}
+            {/* Main Navigation Card — Architectural Sapphire & Cobalt Blue */}
             {viewState === 'main' && (
-              <div className="bg-[#0e1015]/88 backdrop-blur-xl rounded-xl border border-amber-500/20 p-6 sm:p-7 shadow-[0_24px_60px_rgba(0,0,0,0.65)] space-y-5 animate-fade-in relative overflow-hidden">
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent pointer-events-none" />
+              <div className="bg-[#0a101c]/92 backdrop-blur-xl rounded-xl border border-sky-400/20 p-6 sm:p-7 shadow-[0_24px_60px_rgba(2,6,23,0.75)] space-y-5 animate-fade-in relative overflow-hidden">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-400/60 to-transparent pointer-events-none" />
 
-                <div className="space-y-1 text-left relative z-10 pb-1 border-b border-white/8">
+                <div className="space-y-1 text-left relative z-10 pb-2 border-b border-sky-400/12">
                   <VoxelVerseLogo size="lg" variant="full" />
-                  <p className="text-xs text-stone-400 pt-1">
+                  <p className="text-xs text-slate-400 pt-1">
                     Jelajahi kepulauan voxel, bangun kerajaan adat, dan taklukkan penjaga purba.
                   </p>
                 </div>
@@ -469,60 +469,60 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
                   {/* Primary Continue / Play Button */}
                   <button
                     onClick={handleContinue}
-                    className="group w-full py-3.5 bg-gradient-to-b from-[#e0b865] to-[#b88933] hover:from-[#ecc574] hover:to-[#c9983d] text-[#14110b] rounded-lg font-extrabold text-sm uppercase tracking-wider shadow-[0_6px_20px_rgba(212,168,83,0.22)] border border-amber-300/40 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
+                    className="group w-full py-3.5 bg-gradient-to-b from-[#2563eb] to-[#1d4ed8] hover:from-[#3b82f6] hover:to-[#2563eb] text-white rounded-lg font-bold text-sm uppercase tracking-wider shadow-[0_6px_20px_rgba(37,99,235,0.28)] border border-sky-300/35 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
                   >
-                    <Play className="w-4 h-4 fill-[#14110b]" />
+                    <Play className="w-4 h-4 fill-white" />
                     <span>Continue Game</span>
                   </button>
 
                   {/* Singleplayer Realms */}
                   <button
                     onClick={() => setViewState('worlds')}
-                    className="group w-full py-3 bg-[#161922] hover:bg-[#1d212d] text-stone-100 rounded-lg font-semibold text-sm border border-white/10 hover:border-amber-500/30 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
+                    className="group w-full py-3 bg-[#10192b] hover:bg-[#162238] text-slate-100 rounded-lg font-semibold text-sm border border-sky-400/15 hover:border-sky-400/35 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
                   >
-                    <Compass className="w-4 h-4 text-amber-400" />
+                    <Compass className="w-4 h-4 text-sky-400" />
                     <span>Singleplayer Realms</span>
                   </button>
 
                   {/* Multiplayer */}
                   <button
                     onClick={() => setViewState('multiplayer')}
-                    className="group w-full py-3 bg-[#161922] hover:bg-[#1d212d] text-stone-100 rounded-lg font-semibold text-sm border border-white/10 hover:border-emerald-400/35 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
+                    className="group w-full py-3 bg-[#10192b] hover:bg-[#162238] text-slate-100 rounded-lg font-semibold text-sm border border-sky-400/15 hover:border-sky-400/35 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
                   >
-                    <Globe className="w-4 h-4 text-emerald-400" />
+                    <Globe className="w-4 h-4 text-sky-400" />
                     <span>Multiplayer</span>
                   </button>
 
                   {/* Nusantara Heritage Mode */}
                   <button
                     onClick={onEnterHeritageMode}
-                    className="group w-full py-3 bg-[#161922] hover:bg-[#1d212d] text-amber-200 rounded-lg font-semibold text-sm border border-amber-500/20 hover:border-amber-400/40 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
+                    className="group w-full py-3 bg-[#10192b] hover:bg-[#162238] text-sky-200 rounded-lg font-semibold text-sm border border-sky-400/20 hover:border-sky-300/45 transition-all duration-150 cursor-pointer flex items-center justify-center gap-2.5 active:scale-[0.99]"
                   >
-                    <Scroll className="w-4 h-4 text-amber-400" />
+                    <Scroll className="w-4 h-4 text-sky-400" />
                     <span>Nusantara Heritage Mode</span>
                   </button>
 
                   {/* Settings, Updates & Credits */}
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/8">
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-sky-400/12">
                     <button
                       onClick={() => setShowSettingsModal(true)}
-                      className="py-2.5 bg-white/[0.04] hover:bg-white/[0.09] text-stone-300 hover:text-white rounded-lg font-medium text-xs border border-white/8 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="py-2.5 bg-[#10192b]/80 hover:bg-[#162238] text-slate-300 hover:text-white rounded-lg font-medium text-xs border border-sky-400/12 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <SettingsIcon className="w-3.5 h-3.5 text-stone-400" />
+                      <SettingsIcon className="w-3.5 h-3.5 text-sky-400/80" />
                       <span>Settings</span>
                     </button>
                     <button
                       onClick={() => setShowChangelogModal(true)}
-                      className="py-2.5 bg-white/[0.04] hover:bg-white/[0.09] text-stone-300 hover:text-white rounded-lg font-medium text-xs border border-white/8 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="py-2.5 bg-[#10192b]/80 hover:bg-[#162238] text-slate-300 hover:text-white rounded-lg font-medium text-xs border border-sky-400/12 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <History className="w-3.5 h-3.5 text-stone-400" />
+                      <History className="w-3.5 h-3.5 text-sky-400/80" />
                       <span>Updates</span>
                     </button>
                     <button
                       onClick={() => setViewState('credits')}
-                      className="py-2.5 bg-white/[0.04] hover:bg-white/[0.09] text-stone-300 hover:text-white rounded-lg font-medium text-xs border border-white/8 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="py-2.5 bg-[#10192b]/80 hover:bg-[#162238] text-slate-300 hover:text-white rounded-lg font-medium text-xs border border-sky-400/12 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <Scroll className="w-3.5 h-3.5 text-stone-400" />
+                      <Scroll className="w-3.5 h-3.5 text-sky-400/80" />
                       <span>Credits</span>
                     </button>
                   </div>
@@ -532,7 +532,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
 
             {/* World Browser View */}
             {viewState === 'worlds' && (
-              <div className="bg-[#0e1015]/92 backdrop-blur-xl rounded-xl border border-amber-500/20 p-6 shadow-2xl space-y-5 animate-fade-in">
+              <div className="bg-[#0a101c]/92 backdrop-blur-xl rounded-xl border border-sky-400/20 p-6 shadow-2xl space-y-5 animate-fade-in">
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <h3 className="text-base font-black uppercase tracking-wider">World Browser</h3>
                   <div className="flex items-center gap-2">
@@ -654,7 +654,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
 
             {/* Create World Flow View */}
             {viewState === 'create' && (
-              <div className="bg-[#0e1015]/92 backdrop-blur-xl rounded-xl border border-amber-500/20 p-6 shadow-2xl space-y-5 animate-fade-in">
+              <div className="bg-[#0a101c]/92 backdrop-blur-xl rounded-xl border border-sky-400/20 p-6 shadow-2xl space-y-5 animate-fade-in">
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <h3 className="text-base font-black uppercase tracking-wider">New Realm Configuration</h3>
                   <div className="flex gap-2">
@@ -913,7 +913,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onEnterHeritage
 
             {/* Credits View */}
             {viewState === 'credits' && (
-              <div className="bg-[#0e1015]/92 backdrop-blur-xl rounded-xl border border-amber-500/20 p-6 shadow-2xl space-y-4 animate-fade-in text-center">
+              <div className="bg-[#0a101c]/92 backdrop-blur-xl rounded-xl border border-sky-400/20 p-6 shadow-2xl space-y-4 animate-fade-in text-center">
                 <h3 className="text-xl font-black uppercase tracking-wider text-sky-400">VoxelVerse Credits</h3>
                 <div className="space-y-2 text-xs text-white/70">
                   <p>VoxelVerse Procedural 3D Sandbox Engine</p>
