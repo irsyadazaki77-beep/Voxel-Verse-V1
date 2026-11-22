@@ -106,7 +106,9 @@ const CinematicPostShader = {
         // Vertical elevation guard prevents bright foreground sand/snow from catching golden sky-ray haze
         float skyElevationWeight = smoothstep(0.15, 0.65, vUv.y);
         vec3 goldenShaft = vec3(1.0, 0.86, 0.58) * radialGlow * rays * skyBright * skyElevationWeight * uGodRayIntensity * uSunVisibility * 0.30;
-        c += goldenShaft;
+        // v8.5.0: Subtle warm atmospheric horizon scattering bloom
+        float horizonGlow = exp(-abs(vUv.y - 0.52) * 5.5) * radialGlow * uSunVisibility * 0.06;
+        c += goldenShaft + vec3(1.0, 0.88, 0.68) * horizonGlow;
       }
 
       // Crisp S-curve Contrast (Toe-protected to preserve shadow visibility without milky lift)

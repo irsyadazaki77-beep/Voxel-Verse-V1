@@ -16,6 +16,7 @@ export interface CameraMotionState {
 
 export class CameraMotionSystem {
   private bobTimer: number = 0;
+  private bobAmplitude: number = 0;
   private shakePhase: number = 0;
   private landingDipAmount: number = 0;
   private damageTiltAmount: number = 0;
@@ -23,10 +24,25 @@ export class CameraMotionSystem {
   private recoilPitchAmount: number = 0;
   private vesselWavePitch: number = 0;
   private vesselWaveRoll: number = 0;
+  private lastState: CameraMotionState = {
+    bobOffset: 0,
+    bobRoll: 0,
+    landingDip: 0,
+    damageTilt: 0,
+    shakeOffsetX: 0,
+    shakeOffsetY: 0,
+    recoilPitch: 0,
+    vesselWavePitch: 0,
+    vesselWaveRoll: 0,
+  };
 
   public setVesselWaveSway(pitch: number, roll: number): void {
     this.vesselWavePitch = pitch;
     this.vesselWaveRoll = roll;
+  }
+
+  public getLastState(): CameraMotionState {
+    return this.lastState;
   }
 
   public update(
@@ -42,15 +58,16 @@ export class CameraMotionSystem {
     const bobMult = motionReduced ? 0 : (settings?.headBobIntensity ?? 1.0);
     const shakeMult = motionReduced ? 0.2 : (settings?.cameraShakeIntensity ?? 1.0);
 
-    // 1. Walking & Sprinting View Bob
-    if (isMoving && isGrounded && bobMult > 0) {
-      this.bobTimer += dt * (isSprinting ? 14.5 : 9.5);
-    } else {
-      this.bobTimer += (0 - this.bobTimer) * 6.0 * dt;
+    // 1. Silky-Smooth Walking & Sprinting View Bob (v8.5.0: monotonic phase + exponential amplitude damping, zero stop-rewind jitter!)
+    const targetAmp = isMoving && isGrounded && bobMult > 0 ? 1.0 : 0.0;
+    const ampSmooth = 1.0 - Math.exp(-dt * 11.0);
+    this.bobAmplitude += (targetAmp - this.bobAmplitude) * ampSmooth;
+    if (this.bobAmplitude > 0.005) {
+      this.bobTimer += dt * (isSprinting ? 13.5 : 9.2);
     }
 
-    const bobOffset = Math.sin(this.bobTimer) * 0.038 * bobMult;
-    const bobRoll = Math.cos(this.bobTimer * 0.5) * 0.008 * bobMult;
+    const bobOffset = Math.sin(this.bobTimer) * 0.034 * bobMult * this.bobAmplitude;
+    const bobRoll = Math.cos(this.bobTimer * 0.5) * 0.0065 * bobMult * this.bobAmplitude;
 
     // 2. Landing Impact Dip Recovery
     this.landingDipAmount = Math.max(0, this.landingDipAmount - dt * 2.4);
@@ -80,7 +97,7 @@ export class CameraMotionSystem {
     this.vesselWavePitch *= Math.max(0, 1 - dt * 5.0);
     this.vesselWaveRoll *= Math.max(0, 1 - dt * 5.0);
 
-    return {
+    this.lastState = {
       bobOffset,
       bobRoll,
       landingDip: this.landingDipAmount * (motionReduced ? 0.3 : 1.0),
@@ -91,6 +108,7 @@ export class CameraMotionSystem {
       vesselWavePitch: motionReduced ? 0 : this.vesselWavePitch * 0.35,
       vesselWaveRoll: motionReduced ? 0 : this.vesselWaveRoll * 0.45,
     };
+    return this.lastState;
   }
 
   public triggerLandingImpact(velocityDown: number, fallDist: number): void {

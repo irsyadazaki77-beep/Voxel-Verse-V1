@@ -30,20 +30,10 @@ export class RenderSystem implements GameSystem {
       player.isBlockingShield = isBlocking;
     }
 
-    // 2. Camera Dynamic Motion & Physics (Bob, Landing Dip, Damage Tilt, Shake)
+    // 2. Camera Dynamic Motion & Physics (Authoritatively updated once per frame in PlayerController.updateCamera)
     const isMoving = !!(player.keys.forward || player.keys.backward || player.keys.left || player.keys.right || Math.abs(player.velocity.x) > 0.1 || Math.abs(player.velocity.z) > 0.1);
     const isGrounded = player.isGrounded;
     const isSprinting = player.isSprinting;
-
-    if (cameraMotion) {
-      const motion = cameraMotion.update(deltaTime, isMoving, isGrounded, isSprinting);
-
-      camera.position.y += motion.bobOffset - motion.landingDip;
-      camera.rotation.z += motion.bobRoll + motion.damageTilt;
-      camera.rotation.x -= motion.recoilPitch;
-      camera.position.x += motion.shakeOffsetX;
-      camera.position.y += motion.shakeOffsetY;
-    }
 
     // 3. Viewmodel sync & animation
     const activeItem = inventory[activeHotbarIndex] || null;

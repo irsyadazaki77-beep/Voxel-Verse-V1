@@ -111,6 +111,8 @@ export class PlayerController {
   public landingDip: number = 0;
   public damageTilt: number = 0;
   public screenShakeAmount: number = 0;
+  private stepSmoothingOffset: number = 0;
+  private smoothedThirdPersonDist: number = 3.6;
 
   // Rhythmic Footstep Distance Accumulator & Surface Audio Tracking
   private stepDistanceAccum: number = 0;
@@ -667,10 +669,15 @@ export class PlayerController {
       this.rightArm.rotation.set(0, 0, 0);
     }
 
-    // 10. FOV & Camera Animations
-    this.currentFov += (this.targetFov - this.currentFov) * 8.0 * dt;
+    // 10. FOV & Camera Animations (exponential frame-rate independent damping)
+    const fovSmooth = 1.0 - Math.exp(-dt * 10.0);
+    this.currentFov += (this.targetFov - this.currentFov) * fovSmooth;
     this.camera.fov = this.currentFov;
     this.camera.updateProjectionMatrix();
+
+    // Smooth vertical step-up decay (eliminates harsh vertical camera snap on stairs/slabs/terraces)
+    this.stepSmoothingOffset *= Math.exp(-dt * 18.0);
+    if (Math.abs(this.stepSmoothingOffset) < 0.001) this.stepSmoothingOffset = 0;
 
     // View bobbing
     let bobOffset = 0;
@@ -720,7 +727,7 @@ export class PlayerController {
     this.avatarMesh.rotation.y = this.yaw;
 
     // 11. Camera System Placement (First Person & Third Person Spring Arm)
-    this.updateCamera(world, bobOffset);
+    this.updateCamera(world, bobOffset, dt);
 
     // Update State
     if (this.isFlying) this.state = 'flying';
@@ -741,10 +748,10 @@ export class PlayerController {
   }
 
   // Camera placement with obstacle collision for third-person views
-  private updateCamera(world: VoxelWorld, bobOffset: number): void {
+  private updateCamera(world: VoxelWorld, bobOffset: number, dt: number = 0.016): void {
     const isMoving = Math.hypot(this.velocity.x, this.velocity.z) > 0.35;
     const motion = this.cameraMotion
-      ? this.cameraMotion.update(0.016, isMoving, this.isGrounded, this.isSprinting)
+      ? this.cameraMotion.update(dt, isMoving, this.isGrounded, this.isSprinting)
       : null;
 
     const shakeX = motion ? motion.shakeOffsetX : (Math.random() * 2 - 1) * this.screenShakeAmount * 0.08;
@@ -758,7 +765,7 @@ export class PlayerController {
 
     const eyePos = PlayerController._tempEyePos.set(
       this.position.x + shakeX,
-      this.position.y + this.currentEyeHeight + effBob - effDip + shakeY,
+      this.position.y + this.currentEyeHeight + this.stepSmoothingOffset + effBob - effDip + shakeY,
       this.position.z
     );
 
@@ -772,16 +779,16 @@ export class PlayerController {
     } else if (this.cameraMode === 'third_person_back') {
       this.avatarMesh.visible = true;
       const targetDist = 3.6;
-      // Desired third person position
       const dir = PlayerController._tempDir.set(
         Math.sin(this.yaw) * Math.cos(this.pitch),
         Math.sin(-this.pitch),
         Math.cos(this.yaw) * Math.cos(this.pitch)
       ).normalize();
 
-      // Raycast to prevent camera clipping through solid terrain
-      const actualDist = this.raycastCameraDistance(world, eyePos, dir, targetDist);
-      const camPos = PlayerController._tempCamPos.copy(eyePos).addScaledVector(dir, actualDist);
+      const rawDist = this.raycastCameraDistance(world, eyePos, dir, targetDist);
+      const distSmooth = rawDist < this.smoothedThirdPersonDist ? 1.0 - Math.exp(-dt * 28.0) : 1.0 - Math.exp(-dt * 10.0);
+      this.smoothedThirdPersonDist += (rawDist - this.smoothedThirdPersonDist) * distSmooth;
+      const camPos = PlayerController._tempCamPos.copy(eyePos).addScaledVector(dir, this.smoothedThirdPersonDist);
 
       this.camera.position.copy(camPos);
       this.camera.lookAt(eyePos.x, eyePos.y, eyePos.z);
@@ -794,8 +801,10 @@ export class PlayerController {
         -Math.cos(this.yaw) * Math.cos(this.pitch)
       ).normalize();
 
-      const actualDist = this.raycastCameraDistance(world, eyePos, dir, targetDist);
-      const camPos = PlayerController._tempCamPos.copy(eyePos).addScaledVector(dir, actualDist);
+      const rawDist = this.raycastCameraDistance(world, eyePos, dir, targetDist);
+      const distSmooth = rawDist < this.smoothedThirdPersonDist ? 1.0 - Math.exp(-dt * 28.0) : 1.0 - Math.exp(-dt * 10.0);
+      this.smoothedThirdPersonDist += (rawDist - this.smoothedThirdPersonDist) * distSmooth;
+      const camPos = PlayerController._tempCamPos.copy(eyePos).addScaledVector(dir, this.smoothedThirdPersonDist);
 
       this.camera.position.copy(camPos);
       this.camera.lookAt(eyePos.x, eyePos.y, eyePos.z);
@@ -878,6 +887,7 @@ export class PlayerController {
               const stepDiff = bMaxY - this.position.y;
               const isStepObstacle = stepDiff > 0 && stepDiff <= this.config.stepHeight + 0.05;
               if (isStepObstacle && !this.isCrouching) {
+                this.stepSmoothingOffset = Math.max(-0.58, this.stepSmoothingOffset - stepDiff);
                 this.position.y = bMaxY;
                 continue;
               }
@@ -928,6 +938,7 @@ export class PlayerController {
               const stepDiff = bMaxY - this.position.y;
               const isStepObstacle = stepDiff > 0 && stepDiff <= this.config.stepHeight + 0.05;
               if (isStepObstacle && !this.isCrouching) {
+                this.stepSmoothingOffset = Math.max(-0.58, this.stepSmoothingOffset - stepDiff);
                 this.position.y = bMaxY;
                 continue;
               }

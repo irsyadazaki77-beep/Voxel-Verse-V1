@@ -11,6 +11,28 @@ export interface ChangelogEntry {
 
 export const GAME_CHANGELOG: ChangelogEntry[] = [
   {
+    version: '8.5.0',
+    date: '2026-11-22',
+    title: 'Ultra Living Shaders & Silky-Smooth Gameplay Overhaul: Gelombang Angin Padang Rumput, Konveksi Magma Hidup, Grazing Sun Rim Light, Step-Up Eye Smoothing & Eliminasi Double-Tick Kamera',
+    type: 'major',
+    changes: [
+      {
+        category: '1. Ultra Living World Shaders (VoxelWorld.ts & RenderPipeline.ts)',
+        items: [
+          'Menambahkan Traveling Wind-Gust Wave Sheen yang menyapu hamparan rumput & kanopi pohon, Schlick Grazing Sun Rim Light untuk kedalaman atmosferik, animasi konveksi retakan magma menyala pada Lava, serta riak tetes hujan pada genangan tanah.',
+          'Memperbarui highlight blok target ke warna Antique Gold (#e5be6e) serta menambahkan pendar cakrawala hangat (horizon scattering glow) di CinematicPostShader.'
+        ]
+      },
+      {
+        category: '2. Silky-Smooth Camera & Step-Up Physics (CameraMotionSystem.ts, PlayerController.ts, RenderSystem.ts)',
+        items: [
+          'Menghapus bug double-tick CameraMotionSystem (sebelumnya dipanggil dua kali per frame di PlayerController dan RenderSystem) serta mengganti rewind fase bobTimer dengan redaman amplitudo eksponensial sehingga kamera berhenti tanpa sentakan.',
+          'Menambahkan eksponensial step-up eye smoothing (stepSmoothingOffset) saat menaiki tangga/slab/terasering dan meredam jarak kamera third-person secara mulus.'
+        ]
+      }
+    ]
+  },
+  {
     version: '8.4.0',
     date: '2026-11-22',
     title: 'Nusantara Carved Obsidian & Antique Gold Frontend Overhaul: Merombak Main Menu, Pause Menu, Loading Screen & Overlay dari UI generik menjadi antarmuka RPG Nusantara yang bersih dan kohesif',

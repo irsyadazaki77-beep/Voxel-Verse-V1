@@ -265,29 +265,50 @@ export class VoxelWorld {
           metalnessVal = 0.4;
           float pulse = 0.5 + 0.5 * sin(uTime * 4.0 + vWorldPos.x * 2.0 + vWorldPos.z * 2.0);
           emissiveVal = vec3(0.12, 0.45, 0.92) * (0.35 + pulse * 0.65);
-        } else if (mClass == 8) { // LAVA
-          roughnessVal = 0.60;
-          metalnessVal = 0.1;
-          emissiveVal = vec3(1.0, 0.32, 0.0) * 1.4;
+        } else if (mClass == 8) { // LAVA (v8.5.0: Animated Molten Magma Convection & Golden Fissures)
+          roughnessVal = 0.55;
+          metalnessVal = 0.08;
+          float magmaFlow = sin(vWorldPos.x * 2.4 + uTime * 1.6 + cos(vWorldPos.z * 2.2 - uTime * 1.3))
+                          * cos(vWorldPos.z * 2.5 - uTime * 1.4 + sin(vWorldPos.x * 2.1 + uTime * 1.1));
+          float fissure = smoothstep(0.15, 0.85, magmaFlow * 0.5 + 0.5);
+          vec3 deepMagma = vec3(0.92, 0.22, 0.02);
+          vec3 hotFissure = vec3(1.0, 0.72, 0.18);
+          emissiveVal = mix(deepMagma, hotFissure, fissure) * (1.25 + fissure * 0.45);
         } else if (mClass == 10) { // FOLIAGE
-          roughnessVal = 0.90;
+          roughnessVal = 0.88;
           metalnessVal = 0.0;
         }
 
-        // Rain Puddles on upward-facing surfaces (vWorldNormal.y > 0.85)
+        // v8.5.0: Traveling Wind-Gust Wave Sheen across Grass Fields & Tree Canopies
+        if ((mClass == 1 || mClass == 10) && uShaderRealism > 0.3) {
+          float windWave = sin(vWorldPos.x * 0.16 + vWorldPos.z * 0.12 - uTime * 2.3 + sin(vWorldPos.z * 0.08 + uTime)) * 0.5 + 0.5;
+          float gustHighlight = smoothstep(0.55, 0.96, windWave);
+          diffuseColor.rgb *= (1.0 + gustHighlight * 0.075 * uShaderRealism);
+          roughnessVal = mix(roughnessVal, 0.68, gustHighlight * 0.25);
+        }
+
+        // Rain Puddles on upward-facing surfaces (vWorldNormal.y > 0.85) with Concentric Raindrop Shimmer
         if (uWetness > 0.04 && vWorldNormal.y > 0.85 && uShaderRealism > 0.3) {
           float pNoise = puddleNoise2D(vWorldPos.xz * 0.28) * 0.65 + puddleNoise2D(vWorldPos.xz * 0.72) * 0.35;
           float puddleMask = smoothstep(0.62 - uWetness * 0.25, 0.82 - uWetness * 0.15, pNoise) * uWetness;
-          roughnessVal = mix(roughnessVal, 0.06, puddleMask);
-          metalnessVal = mix(metalnessVal, 0.12, puddleMask);
-          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.68 + vec3(0.05, 0.09, 0.14), puddleMask * 0.75);
+          float dropRipple = sin(length(fract(vWorldPos.xz * 1.8) - 0.5) * 32.0 - uTime * 12.0) * 0.5 + 0.5;
+          roughnessVal = mix(roughnessVal, 0.05 + dropRipple * 0.04, puddleMask);
+          metalnessVal = mix(metalnessVal, 0.14, puddleMask);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.68 + vec3(0.06, 0.10, 0.16) * (0.9 + dropRipple * 0.2), puddleMask * 0.75);
         }
 
-        // Subtle Backlit Subsurface Scattering on Grass & Foliage
-        if ((mClass == 1 || mClass == 10) && uShaderRealism > 0.3 && uSunDirection.y > -0.05) {
+        // Subtle Backlit Subsurface Scattering & Golden Grazing Rim Light on Grass, Foliage & Terrain
+        if (uShaderRealism > 0.3 && uSunDirection.y > -0.05 && detailFade > 0.05) {
           vec3 vDir = normalize(cameraPosition - vWorldPos);
-          float sss = pow(max(0.0, dot(vDir, -normalize(uSunDirection))), 3.0);
-          diffuseColor.rgb += uSunColor * vec3(0.24, 0.42, 0.12) * sss * 0.35 * uShaderRealism;
+          vec3 sDir = normalize(uSunDirection);
+          if (mClass == 1 || mClass == 10) {
+            float sss = pow(max(0.0, dot(vDir, -sDir)), 2.8);
+            diffuseColor.rgb += uSunColor * vec3(0.26, 0.46, 0.14) * sss * 0.38 * uShaderRealism;
+          }
+          // Schlick grazing sun rim sheen for atmospheric depth
+          float rim = pow(clamp(1.0 - max(0.0, dot(vDir, vWorldNormal)), 0.0, 1.0), 3.2);
+          float sunAlign = max(0.0, dot(vWorldNormal, sDir) * 0.6 + 0.4);
+          diffuseColor.rgb += uSunColor * rim * sunAlign * 0.065 * uShaderRealism * detailFade;
         }
 
         // Snow accumulation response on top surfaces (vWorldNormal.y > 0.7)
@@ -754,11 +775,11 @@ export class VoxelWorld {
       );
     };
 
-    // Wireframe block outline for targeted block
-    const wireGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002));
+    // Wireframe block outline for targeted block (v8.5.0: sleek Antique-Gold outline)
+    const wireGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.003, 1.003, 1.003));
     this.highlightMesh = new THREE.LineSegments(
       wireGeo,
-      new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2.5, transparent: true, opacity: 0.75 })
+      new THREE.LineBasicMaterial({ color: 0xe5be6e, linewidth: 2.0, transparent: true, opacity: 0.68 })
     );
     this.highlightMesh.visible = false;
     this.worldGroup.add(this.highlightMesh);
